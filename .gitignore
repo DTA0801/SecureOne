@@ -1,0 +1,47 @@
+# ---- Java / Spring (backend) ----
+target/
+build/
+*.class
+*.jar
+*.war
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+HELP.md
+
+# ---- Node / Next.js (frontend, docs, SDKs) ----
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+
+# ---- Environment & secrets (NEVER commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+**/application-local.yml
+**/application-secret.yml
+
+# ---- IDE / OS ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.iml
+.DS_Store
+Thumbs.db
+
+# ---- Infra / local data ----
+*.log
+logs/
+pgdata/
+redisdata/
+docker-compose.override.yml
