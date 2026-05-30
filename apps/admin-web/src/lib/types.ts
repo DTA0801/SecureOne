@@ -52,29 +52,63 @@ export type User = {
   lastName: string;
   status: Status;
   emailVerified: boolean;
+  hasPassword?: boolean;
+  locked?: boolean;
+  failedLoginCount?: number;
   roleIds: string[];
   mfaFactors: MfaFactor[];
+  /** Per-user allow-list for app-enabled sign-in methods (app-scoped fetch only). */
+  allowedAuthMethods?: Record<string, boolean>;
   lastLoginAt: string | null;
   createdAt: string;
 };
 
 export type Permission = {
   id: string;
+  applicationId?: string;
   key: string;
   resource: string;
   action: string;
   description: string;
+  roleCount?: number;
 };
+
+export type PermissionDetail = Permission & {
+  roles: { id: string; name: string }[];
+};
+
+export type RoleLabel = "SYSTEM" | "BUILT_IN" | "COMPOSITE" | "CUSTOM";
 
 export type Role = {
   id: string;
   tenantId: string;
+  applicationId?: string;
   name: string;
   description: string;
   isComposite: boolean;
+  isSystem: boolean;
+  isDefault: boolean;
+  label: RoleLabel;
   permissionIds: string[];
   childRoleIds: string[];
   userCount: number;
+  permissionCount?: number;
+  childRoleCount?: number;
+};
+
+export type RoleDetail = Role & {
+  permissions: Permission[];
+  childRoles: { id: string; name: string }[];
+};
+
+export type RoleAssignedUser = {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  status: string;
+  emailVerified: boolean;
+  grantedAt: string | null;
 };
 
 export type AuditEvent = {
@@ -105,6 +139,7 @@ export type AuthMethod = {
   description: string;
   enabled: boolean;
   category: "primary" | "mfa" | "federation";
+  implemented?: boolean;
 };
 
 export type FeatureFlag = {

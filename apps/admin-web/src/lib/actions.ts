@@ -2,12 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { resetUserMfa } from "./data";
 import {
   createApplicationApi,
   deleteApplicationApi,
   updateApplicationApi,
 } from "./api/applications";
+import {
+  createPermissionApi,
+  deletePermissionApi,
+  seedDefaultPermissionsApi,
+  updatePermissionApi,
+} from "./api/permissions";
 import { createRoleApi, deleteRoleApi, updateRoleApi } from "./api/roles";
 import {
   createTenantApi,
@@ -15,26 +20,56 @@ import {
   updateTenantApi,
 } from "./api/tenants";
 import {
+  adminSetUserPasswordApi,
   createUserApi,
   deleteUserApi,
-  setUserStatusApi,
-  updateUserApi,
   markUserEmailVerifiedApi,
   resendUserVerificationEmailApi,
+  deleteUserMfaFactorApi,
   resetUserMfaApi,
+  resetUserMfaMethodApi,
   sendUserPasswordResetEmailApi,
+  setUserStatusApi,
+  unlockUserApi,
+  updateUserApi,
+  updateUserAuthMethodsApi,
 } from "./api/users";
 import { ApiError } from "./api/client";
+import { filterValidUuids, isValidUuid } from "./uuid";
+
+function formatApiError(e: ApiError): string {
+  const body = e.body;
+  if (typeof body === "object" && body !== null) {
+    const errors = (body as { errors?: { field?: string; message?: string }[] }).errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      return errors
+        .map((err) => `${err.field ?? "field"}: ${err.message ?? "invalid"}`)
+        .join("; ");
+    }
+    const detail = (body as { detail?: string }).detail;
+    if (detail && detail !== "Validation failed") return detail;
+  }
+  if (e.message.toLowerCase().includes("not valid")) {
+    return "Invalid ID in the request. Refresh the page and try again.";
+  }
+  return e.message;
+}
 
 function actionError(e: unknown): FormState {
-  if (e instanceof ApiError) return fail(e.message);
+  if (e instanceof ApiError) return fail(formatApiError(e));
   if (e instanceof Error) return fail(e.message);
   return fail("Request failed");
 }
 
-export type FormState = { ok: boolean; error?: string };
+export type FormState = {
+  ok: boolean;
+  error?: string;
+  createdRoleId?: string;
+  createdPermissionId?: string;
+  createdUserId?: string;
+};
 
-const ok: FormState = { ok: true };
+const ok = (extra?: Partial<FormState>): FormState => ({ ok: true, ...extra });
 const fail = (error: string): FormState => ({ ok: false, error });
 
 function str(fd: FormData, key: string): string {
@@ -70,7 +105,7 @@ export async function tenantCreateAction(_prev: FormState, fd: FormData): Promis
     });
     revalidatePath("/tenants");
     revalidatePath("/");
-    return ok;
+    return ok();
   } catch (e) {
     return actionError(e);
   }
@@ -91,7 +126,7 @@ export async function tenantUpdateAction(_prev: FormState, fd: FormData): Promis
     revalidatePath("/tenants");
     revalidatePath(`/tenants/${id}`);
     revalidatePath("/");
-    return ok;
+    return ok();
   } catch (e) {
     return actionError(e);
   }
@@ -126,7 +161,7 @@ export async function applicationCreateAction(_prev: FormState, fd: FormData): P
     revalidatePath("/applications");
     revalidatePath("/tenants");
     revalidatePath("/audit");
-    return ok;
+    return ok();
   } catch (e) {
     return actionError(e);
   }
@@ -148,7 +183,7 @@ export async function applicationUpdateAction(_prev: FormState, fd: FormData): P
     });
     revalidatePath("/applications");
     revalidatePath(`/applications/${id}`);
-    return ok;
+    return ok();
   } catch (e) {
     return actionError(e);
   }
@@ -164,24 +199,39 @@ export async function applicationDeleteAction(fd: FormData): Promise<void> {
 
 // ---- Users ----
 
+function revalidateUserPaths(applicationId?: string, userId?: string) {
+  revalidatePath("/users");
+  revalidatePath("/tenants");
+  if (applicationId) {
+    revalidatePath(`/app/${applicationId}/users`);
+  }
+  if (userId) {
+    revalidatePath(`/users/${userId}`);
+  }
+}
+
 export async function userCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const email = str(fd, "email");
   const tenantId = str(fd, "tenantId");
+  const applicationId = str(fd, "applicationId");
   if (!email) return fail("Email is required.");
   if (!tenantId) return fail("Tenant is required.");
+  if (applicationId && !isValidUuid(applicationId)) {
+    return fail("Invalid application. Refresh and try again.");
+  }
   try {
-    await createUserApi({
+    const created = await createUserApi({
       email,
       tenantId,
+      applicationId: applicationId || undefined,
       username: str(fd, "username") || email.split("@")[0],
       firstName: str(fd, "firstName"),
       lastName: str(fd, "lastName"),
       status: str(fd, "status") || "invited",
       roleIds: list(fd, "roleIds"),
     });
-    revalidatePath("/users");
-    revalidatePath("/tenants");
-    return ok;
+    revalidateUserPaths(applicationId, created.id);
+    return ok({ createdUserId: created.id });
   } catch (e) {
     return actionError(e);
   }
@@ -201,9 +251,9 @@ export async function userUpdateAction(_prev: FormState, fd: FormData): Promise<
       status: str(fd, "status") || "active",
       roleIds: list(fd, "roleIds"),
     });
-    revalidatePath("/users");
-    revalidatePath(`/users/${id}`);
-    return ok;
+    const applicationId = str(fd, "applicationId");
+    revalidateUserPaths(applicationId, id);
+    return ok();
   } catch (e) {
     return actionError(e);
   }
@@ -211,46 +261,121 @@ export async function userUpdateAction(_prev: FormState, fd: FormData): Promise<
 
 export async function userDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
   if (id) await deleteUserApi(id);
-  revalidatePath("/users");
-  revalidatePath("/tenants");
-  redirect("/users");
+  revalidateUserPaths(applicationId);
+  if (applicationId) {
+    redirect(`/app/${applicationId}/users`);
+  } else {
+    redirect("/users");
+  }
 }
 
 export async function userResetMfaAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
   if (id) await resetUserMfaApi(id);
-  revalidatePath(`/users/${id}`);
+  revalidateUserPaths(applicationId, id);
+}
+
+export async function userUpdateAuthMethodsAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  const methodsJson = str(fd, "methods");
+  if (!id || !applicationId || !methodsJson) return;
+  const methods = JSON.parse(methodsJson) as Record<string, boolean>;
+  await updateUserAuthMethodsApi(applicationId, id, methods);
+  revalidateUserPaths(applicationId, id);
+}
+
+export async function userDeleteMfaFactorAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  const factorId = str(fd, "factorId");
+  if (id && applicationId && factorId) {
+    await deleteUserMfaFactorApi(applicationId, id, factorId);
+    revalidateUserPaths(applicationId, id);
+  }
+}
+
+export async function userResetMfaMethodAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  const methodId = str(fd, "methodId");
+  if (id && applicationId && methodId) {
+    await resetUserMfaMethodApi(applicationId, id, methodId);
+    revalidateUserPaths(applicationId, id);
+  }
 }
 
 export async function userSetStatusAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const status = str(fd, "status");
+  const applicationId = str(fd, "applicationId");
   if (id && status) await setUserStatusApi(id, status);
-  revalidatePath("/users");
-  revalidatePath(`/users/${id}`);
-  revalidatePath("/tenants");
+  revalidateUserPaths(applicationId, id);
+}
+
+export async function userUnlockAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  if (id) await unlockUserApi(id);
+  revalidateUserPaths(applicationId, id);
+}
+
+export async function userAdminSetPasswordAction(
+  _prev: FormState,
+  fd: FormData,
+): Promise<FormState> {
+  const id = str(fd, "id");
+  const password = str(fd, "password");
+  const applicationId = str(fd, "applicationId");
+  if (!id) return fail("Missing user id.");
+  if (!password || password.length < 8) {
+    return fail("Password must be at least 8 characters.");
+  }
+  try {
+    await adminSetUserPasswordApi(id, password);
+    revalidateUserPaths(applicationId, id);
+    return ok();
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function userSendPasswordResetEmailAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
   if (id) await sendUserPasswordResetEmailApi(id);
-  revalidatePath(`/users/${id}`);
+  revalidateUserPaths(applicationId, id);
 }
 
 export async function userResendVerificationEmailAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
   if (id) await resendUserVerificationEmailApi(id);
-  revalidatePath(`/users/${id}`);
+  revalidateUserPaths(applicationId, id);
 }
 
 export async function userMarkEmailVerifiedAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
   if (id) await markUserEmailVerifiedApi(id);
-  revalidatePath(`/users/${id}`);
+  revalidateUserPaths(applicationId, id);
 }
 
 // ---- Roles ----
+
+function roleIdsFromForm(fd: FormData, key: string): string[] {
+  return filterValidUuids(fd.getAll(key).map((v) => String(v)));
+}
+
+function revalidateRolePaths(applicationId?: string) {
+  revalidatePath("/roles");
+  if (applicationId) {
+    revalidatePath(`/app/${applicationId}/roles`);
+  }
+}
 
 export async function roleCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const name = str(fd, "name");
@@ -259,16 +384,21 @@ export async function roleCreateAction(_prev: FormState, fd: FormData): Promise<
   if (!name) return fail("Name is required.");
   if (!tenantId) return fail("Tenant is required.");
   if (!applicationId) return fail("Application is required.");
+  if (!isValidUuid(tenantId) || !isValidUuid(applicationId)) {
+    return fail("Invalid tenant or application. Refresh the page and try again.");
+  }
   try {
-    await createRoleApi({
+    const created = await createRoleApi({
       name,
       tenantId,
       applicationId,
       description: str(fd, "description"),
       isComposite: str(fd, "isComposite") === "on",
+      permissionIds: roleIdsFromForm(fd, "permissionIds"),
+      childRoleIds: roleIdsFromForm(fd, "childRoleIds"),
     });
-    revalidatePath("/roles");
-    return ok;
+    revalidateRolePaths(applicationId);
+    return ok({ createdRoleId: created.id });
   } catch (e) {
     return actionError(e);
   }
@@ -276,17 +406,28 @@ export async function roleCreateAction(_prev: FormState, fd: FormData): Promise<
 
 export async function roleUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
   if (!id) return fail("Missing role id.");
+  if (!isValidUuid(id)) return fail("Invalid role id.");
   const name = str(fd, "name");
   if (!name) return fail("Name is required.");
+  if (!applicationId || !isValidUuid(applicationId)) {
+    return fail("Invalid application. Refresh the page and try again.");
+  }
   try {
-    await updateRoleApi(id, {
-      name,
-      description: str(fd, "description"),
-      isComposite: str(fd, "isComposite") === "on",
-    });
-    revalidatePath("/roles");
-    return ok;
+    await updateRoleApi(
+      id,
+      {
+        name,
+        description: str(fd, "description"),
+        isComposite: str(fd, "isComposite") === "on",
+        permissionIds: roleIdsFromForm(fd, "permissionIds"),
+        childRoleIds: roleIdsFromForm(fd, "childRoleIds"),
+      },
+      applicationId,
+    );
+    revalidateRolePaths(applicationId);
+    return ok();
   } catch (e) {
     return actionError(e);
   }
@@ -294,7 +435,89 @@ export async function roleUpdateAction(_prev: FormState, fd: FormData): Promise<
 
 export async function roleDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) await deleteRoleApi(id);
-  revalidatePath("/roles");
-  redirect("/roles");
+  const applicationId = str(fd, "applicationId");
+  if (!id || !isValidUuid(id)) throw new Error("Invalid role id");
+  if (!applicationId || !isValidUuid(applicationId)) throw new Error("Invalid application id");
+  await deleteRoleApi(id, applicationId);
+  revalidateRolePaths(applicationId);
+  redirect(`/app/${applicationId}/roles`);
+}
+
+// ---- Permissions (catalog ↔ `permission` table) ----
+
+function revalidatePermissionPaths(applicationId: string) {
+  revalidatePath(`/app/${applicationId}/permissions`);
+  revalidatePath(`/app/${applicationId}/roles`);
+}
+
+export async function seedDefaultPermissionsAction(
+  applicationId: string,
+): Promise<{ ok: boolean; error?: string; created?: number }> {
+  if (!isValidUuid(applicationId)) {
+    return { ok: false, error: "Invalid application id." };
+  }
+  try {
+    const result = await seedDefaultPermissionsApi(applicationId);
+    revalidatePermissionPaths(applicationId);
+    return { ok: true, created: result.created };
+  } catch (e) {
+    if (e instanceof ApiError) return { ok: false, error: formatApiError(e) };
+    if (e instanceof Error) return { ok: false, error: e.message };
+    return { ok: false, error: "Request failed" };
+  }
+}
+
+export async function permissionCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const applicationId = str(fd, "applicationId");
+  const key = str(fd, "key").trim().toLowerCase();
+  const description = str(fd, "description");
+  if (!applicationId || !isValidUuid(applicationId)) {
+    return fail("Invalid application. Refresh the page and try again.");
+  }
+  if (!key) return fail("Key is required (e.g. user:read).");
+  if (!/^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/.test(key)) {
+    return fail("Key must be resource:action (lowercase letters, numbers, hyphens).");
+  }
+  try {
+    const created = await createPermissionApi(applicationId, { key, description });
+    revalidatePermissionPaths(applicationId);
+    return ok({ createdPermissionId: created.id });
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function permissionUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  const key = str(fd, "key").trim().toLowerCase();
+  const description = str(fd, "description");
+  if (!id || !isValidUuid(id)) return fail("Invalid permission id.");
+  if (!applicationId || !isValidUuid(applicationId)) {
+    return fail("Invalid application. Refresh the page and try again.");
+  }
+  if (key && !/^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/.test(key)) {
+    return fail("Key must be resource:action (lowercase).");
+  }
+  try {
+    await updatePermissionApi(
+      applicationId,
+      id,
+      { key: key || undefined, description },
+    );
+    revalidatePermissionPaths(applicationId);
+    return ok();
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function permissionDeleteAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  if (!id || !isValidUuid(id)) throw new Error("Invalid permission id");
+  if (!applicationId || !isValidUuid(applicationId)) throw new Error("Invalid application id");
+  await deletePermissionApi(applicationId, id);
+  revalidatePermissionPaths(applicationId);
+  redirect(`/app/${applicationId}/permissions`);
 }

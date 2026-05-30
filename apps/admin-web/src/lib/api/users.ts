@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, appScopeHeaders } from "./client";
 import type { User } from "@/lib/types";
 
 type MfaFactorDto = {
@@ -17,13 +17,20 @@ type UserDto = {
   lastName: string;
   status: string;
   emailVerified: boolean;
+  hasPassword?: boolean;
+  locked?: boolean;
+  failedLoginCount?: number;
   roleIds: string[];
   mfaFactors?: MfaFactorDto[];
+  allowedAuthMethods?: Record<string, boolean>;
   lastLoginAt: string | null;
   createdAt: string;
 };
 
 function mapUser(dto: UserDto): User {
+  const status = dto.status.toLowerCase();
+  const normalizedStatus =
+    status === "pending" ? "invited" : (status as User["status"]);
   return {
     id: dto.id,
     tenantId: dto.tenantId,
@@ -31,8 +38,11 @@ function mapUser(dto: UserDto): User {
     username: dto.username,
     firstName: dto.firstName,
     lastName: dto.lastName,
-    status: dto.status as User["status"],
+    status: normalizedStatus,
     emailVerified: dto.emailVerified,
+    hasPassword: dto.hasPassword ?? false,
+    locked: dto.locked ?? false,
+    failedLoginCount: dto.failedLoginCount ?? 0,
     roleIds: dto.roleIds,
     mfaFactors: (dto.mfaFactors ?? []).map((f) => ({
       id: f.id,
@@ -46,15 +56,18 @@ function mapUser(dto: UserDto): User {
   };
 }
 
-export async function listUsers(tenantId?: string): Promise<User[]> {
-  const path = tenantId
-    ? `/api/admin/v1/users?tenantId=${tenantId}`
-    : "/api/admin/v1/users";
-  const rows = await apiFetch<UserDto[]>(path);
+export async function listUsers(tenantId?: string, applicationId?: string): Promise<User[]> {
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenantId", tenantId);
+  if (applicationId) params.set("applicationId", applicationId);
+  const qs = params.toString();
+  const path = qs ? `/api/admin/v1/users?${qs}` : "/api/admin/v1/users";
+  const rows = await apiFetch<UserDto[]>(path, {
+    headers: applicationId ? appScopeHeaders(applicationId) : undefined,
+  });
   return rows.map(mapUser);
 }
 
-/** Users assigned to a role whose name contains "admin" (Tenant Admin, Super Admin, …). */
 export async function listAdminUsers(tenantId?: string): Promise<User[]> {
   const params = new URLSearchParams({ adminOnly: "true" });
   if (tenantId) params.set("tenantId", tenantId);
@@ -74,8 +87,66 @@ export async function getUser(id: string): Promise<User | null> {
   }
 }
 
+export async function getApplicationUser(
+  applicationId: string,
+  userId: string,
+): Promise<User | null> {
+  try {
+    const dto = await apiFetch<UserDto>(
+      `/api/admin/v1/applications/${applicationId}/users/${userId}`,
+      { headers: appScopeHeaders(applicationId) },
+    );
+    return mapUser(dto);
+  } catch (e) {
+    if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) {
+      return null;
+    }
+    throw e;
+  }
+}
+
+export async function updateUserAuthMethodsApi(
+  applicationId: string,
+  userId: string,
+  methods: Record<string, boolean>,
+): Promise<User> {
+  const dto = await apiFetch<UserDto>(
+    `/api/admin/v1/applications/${applicationId}/users/${userId}/auth-methods`,
+    {
+      method: "PUT",
+      headers: appScopeHeaders(applicationId),
+      body: JSON.stringify({ methods }),
+    },
+  );
+  return mapUser(dto);
+}
+
+export async function deleteUserMfaFactorApi(
+  applicationId: string,
+  userId: string,
+  factorId: string,
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/admin/v1/applications/${applicationId}/users/${userId}/mfa/factors/${factorId}`,
+    { method: "DELETE", headers: appScopeHeaders(applicationId) },
+  );
+}
+
+export async function resetUserMfaMethodApi(
+  applicationId: string,
+  userId: string,
+  methodId: string,
+): Promise<User> {
+  const dto = await apiFetch<UserDto>(
+    `/api/admin/v1/applications/${applicationId}/users/${userId}/mfa/methods/${methodId}/reset`,
+    { method: "POST", headers: appScopeHeaders(applicationId) },
+  );
+  return mapUser(dto);
+}
+
 export async function createUserApi(input: {
   tenantId: string;
+  applicationId?: string;
   email: string;
   username?: string;
   firstName: string;
@@ -87,6 +158,7 @@ export async function createUserApi(input: {
     method: "POST",
     body: JSON.stringify({
       tenantId: input.tenantId,
+      applicationId: input.applicationId ?? null,
       email: input.email,
       username: input.username,
       firstName: input.firstName,
@@ -127,10 +199,23 @@ export async function deleteUserApi(id: string): Promise<void> {
   await apiFetch<void>(`/api/admin/v1/users/${id}`, { method: "DELETE" });
 }
 
-export async function setUserStatusApi(id: string, status: string): Promise<void> {
-  await apiFetch<UserDto>(`/api/admin/v1/users/${id}/status`, {
+export async function setUserStatusApi(id: string, status: string): Promise<User> {
+  const dto = await apiFetch<UserDto>(`/api/admin/v1/users/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+  return mapUser(dto);
+}
+
+export async function unlockUserApi(id: string): Promise<User> {
+  const dto = await apiFetch<UserDto>(`/api/admin/v1/users/${id}/unlock`, { method: "POST" });
+  return mapUser(dto);
+}
+
+export async function adminSetUserPasswordApi(id: string, password: string): Promise<void> {
+  await apiFetch<void>(`/api/admin/v1/users/${id}/password/set`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
   });
 }
 

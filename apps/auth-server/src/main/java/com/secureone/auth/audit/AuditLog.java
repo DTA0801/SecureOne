@@ -27,6 +27,9 @@ public class AuditLog {
     @Column(name = "tenant_id")
     private UUID tenantId;
 
+    @Column(name = "application_id")
+    private UUID applicationId;
+
     @Column(name = "actor_type", nullable = false)
     private String actorType;
 

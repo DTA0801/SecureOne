@@ -6,6 +6,15 @@ import com.secureone.auth.admin.user.UserAdminDtos.UserCreateRequest;
 import com.secureone.auth.admin.user.UserAdminDtos.UserResponse;
 import com.secureone.auth.admin.user.UserAdminDtos.UserUpdateRequest;
 import com.secureone.auth.account.AccountNotificationService;
+import com.secureone.auth.account.UserPasswordService;
+import com.secureone.auth.application.ApplicationRepository;
+import com.secureone.auth.application.ApplicationSettingsService;
+import com.secureone.auth.application.UserApplication;
+import com.secureone.auth.application.UserApplicationRepository;
+import com.secureone.auth.mfa.MfaFactor;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import com.secureone.auth.admin.user.UserAdminDtos.MfaFactorResponse;
 import com.secureone.auth.audit.AuditService;
 import com.secureone.auth.mfa.MfaFactorRepository;
@@ -38,6 +47,10 @@ public class UserAdminService {
     private final AccountNotificationService accountNotifications;
     private final MfaFactorRepository mfaFactors;
     private final EmailNotificationService emailService;
+    private final UserPasswordService passwords;
+    private final ApplicationRepository applicationRepository;
+    private final UserApplicationRepository userApplications;
+    private final ApplicationSettingsService applicationSettings;
 
     public UserAdminService(
             UserAccountRepository userRepository,
@@ -47,7 +60,11 @@ public class UserAdminService {
             AuditService auditService,
             AccountNotificationService accountNotifications,
             MfaFactorRepository mfaFactors,
-            EmailNotificationService emailService) {
+            EmailNotificationService emailService,
+            UserPasswordService passwords,
+            ApplicationRepository applicationRepository,
+            UserApplicationRepository userApplications,
+            ApplicationSettingsService applicationSettings) {
         this.userRepository = userRepository;
         this.tenantRepository = tenantRepository;
         this.userRoleRepository = userRoleRepository;
@@ -56,6 +73,10 @@ public class UserAdminService {
         this.accountNotifications = accountNotifications;
         this.mfaFactors = mfaFactors;
         this.emailService = emailService;
+        this.passwords = passwords;
+        this.applicationRepository = applicationRepository;
+        this.userApplications = userApplications;
+        this.applicationSettings = applicationSettings;
     }
 
     @Transactional(readOnly = true)
@@ -101,7 +122,75 @@ public class UserAdminService {
 
     @Transactional(readOnly = true)
     public UserResponse get(UUID id) {
-        return toResponse(require(id));
+        return get(id, null);
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse get(UUID id, UUID applicationId) {
+        UserAccount user = require(id);
+        return toResponse(user, effectiveAuthMethods(user, applicationId));
+    }
+
+    public UserResponse updateAuthMethods(UUID id, UUID applicationId, Map<String, Boolean> updates) {
+        UserAccount user = require(id);
+        requireApplication(applicationId);
+        List<Map<String, Object>> appMethods = applicationSettings.getAuthMethods(applicationId);
+        Map<String, Boolean> current = UserAuthPreferences.read(user.getAttributes());
+        Map<String, Boolean> merged = new LinkedHashMap<>(UserAuthPreferences.effective(appMethods, current));
+        for (Map<String, Object> method : appMethods) {
+            if (!Boolean.TRUE.equals(method.get("enabled"))) {
+                continue;
+            }
+            String methodId = String.valueOf(method.get("id"));
+            if (updates.containsKey(methodId)) {
+                merged.put(methodId, Boolean.TRUE.equals(updates.get(methodId)));
+            }
+        }
+        user.setAttributes(UserAuthPreferences.write(user.getAttributes(), merged));
+        userRepository.save(user);
+        auditService.record(
+                user.getTenantId(), "admin", "user.auth_methods_updated", "user_account", user.getId(), user.getEmail(), true);
+        return toResponse(user, merged);
+    }
+
+    public void deleteMfaFactor(UUID userId, UUID factorId) {
+        UserAccount user = require(userId);
+        MfaFactor factor =
+                mfaFactors
+                        .findById(factorId)
+                        .orElseThrow(() -> new ResourceNotFoundException("MFA factor not found: " + factorId));
+        if (!user.getId().equals(factor.getUserId())) {
+            throw new ResourceNotFoundException("MFA factor not found for this user.");
+        }
+        mfaFactors.delete(factor);
+        auditService.record(
+                user.getTenantId(), "admin", "user.mfa_factor_removed", "user_account", user.getId(), factor.getType(), true);
+    }
+
+    public UserResponse resetMfaForMethod(UUID userId, UUID applicationId, String methodId) {
+        UserAccount user = require(userId);
+        requireApplication(applicationId);
+        String factorType = UserAuthPreferences.mfaFactorTypeForMethodId(methodId);
+        if (factorType == null) {
+            throw new IllegalArgumentException("Not an MFA method: " + methodId);
+        }
+        mfaFactors.findByUserIdOrderByCreatedAtAsc(userId).stream()
+                .filter(f -> factorType.equalsIgnoreCase(f.getType()))
+                .forEach(mfaFactors::delete);
+        auditService.record(
+                user.getTenantId(), "admin", "user.mfa_reset_method", "user_account", user.getId(), methodId, true);
+        return toResponse(user, effectiveAuthMethods(user, applicationId));
+    }
+
+    /** Used by application-scoped admin to map entities without exposing private helpers. */
+    @Transactional(readOnly = true)
+    public UserResponse toResponsePublic(UserAccount user) {
+        return toResponse(user);
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse toResponsePublic(UserAccount user, UUID applicationId) {
+        return toResponse(user, effectiveAuthMethods(user, applicationId));
     }
 
     public UserResponse create(UserCreateRequest request) {
@@ -120,9 +209,32 @@ public class UserAdminService {
         user.setType("USER");
         userRepository.save(user);
         syncUserRoles(user.getId(), request.roleIds());
+        if (request.applicationId() != null) {
+            grantApplicationAccess(request.applicationId(), user.getId());
+        }
         auditService.record(user.getTenantId(), "admin", "user.created", "user_account", user.getId(), user.getEmail(), true);
         accountNotifications.onUserInvited(user);
         return toResponse(user);
+    }
+
+    public UserResponse unlockAccount(UUID id) {
+        UserAccount user = require(id);
+        user.setFailedLoginCount(0);
+        user.setLockedUntil(null);
+        if ("LOCKED".equalsIgnoreCase(user.getStatus())) {
+            user.setStatus("ACTIVE");
+        }
+        auditService.record(user.getTenantId(), "admin", "user.unlocked", "user_account", user.getId(), user.getEmail(), true);
+        return toResponse(user);
+    }
+
+    public void adminSetPassword(UUID id, String plainPassword) {
+        UserAccount user = require(id);
+        passwords.setPassword(user.getId(), plainPassword);
+        auditService.record(
+                user.getTenantId(), "admin", "user.password_set", "user_account", user.getId(), user.getEmail(), true);
+        emailService.sendAdminSecurityAlert(
+                "Password set by admin", "An administrator set a new password for " + user.getEmail() + ".");
     }
 
     public void sendPasswordResetEmail(UUID id) {
@@ -198,7 +310,23 @@ public class UserAdminService {
         }
     }
 
-    private UserResponse toResponse(UserAccount user) {
+    private Map<String, Boolean> effectiveAuthMethods(UserAccount user, UUID applicationId) {
+        if (applicationId == null) {
+            return Map.of();
+        }
+        requireApplication(applicationId);
+        return UserAuthPreferences.effective(
+                applicationSettings.getAuthMethods(applicationId),
+                UserAuthPreferences.read(user.getAttributes()));
+    }
+
+    private void requireApplication(UUID applicationId) {
+        if (!applicationRepository.existsById(applicationId)) {
+            throw new ResourceNotFoundException("Application not found: " + applicationId);
+        }
+    }
+
+    private UserResponse toResponse(UserAccount user, Map<String, Boolean> allowedAuthMethods) {
         NameParts parts = splitDisplayName(user.getDisplayName());
         List<String> roleIds = userRoleRepository.findByUserId(user.getId()).stream()
                 .map(ur -> ur.getRoleId().toString())
@@ -211,6 +339,9 @@ public class UserAdminService {
                         f.getLabel() != null ? f.getLabel() : f.getType(),
                         f.isVerified()))
                 .toList();
+        boolean locked =
+                user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now())
+                        || "LOCKED".equalsIgnoreCase(user.getStatus());
         return new UserResponse(
                 user.getId(),
                 user.getTenantId(),
@@ -220,10 +351,38 @@ public class UserAdminService {
                 parts.lastName(),
                 user.getStatus().toLowerCase(Locale.ROOT),
                 user.isEmailVerified(),
+                passwords.hasPassword(user.getId()),
+                locked,
+                user.getFailedLoginCount(),
                 roleIds,
                 factors,
+                allowedAuthMethods,
                 user.getLastLoginAt(),
                 user.getCreatedAt());
+    }
+
+    private UserResponse toResponse(UserAccount user) {
+        return toResponse(user, Map.of());
+    }
+
+    private void grantApplicationAccess(UUID applicationId, UUID userId) {
+        var app =
+                applicationRepository
+                        .findById(applicationId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Application not found: " + applicationId));
+        var user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        if (!user.getTenantId().equals(app.getTenantId())) {
+            throw new IllegalArgumentException("User must belong to the same tenant as the application");
+        }
+        if (!userApplications.existsByUserIdAndApplicationId(userId, applicationId)) {
+            UserApplication link = new UserApplication();
+            link.setUserId(userId);
+            link.setApplicationId(applicationId);
+            userApplications.save(link);
+        }
     }
 
     private void syncUserRoles(UUID userId, List<UUID> roleIds) {

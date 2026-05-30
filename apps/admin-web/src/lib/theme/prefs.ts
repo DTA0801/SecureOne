@@ -101,6 +101,7 @@ export function applyGradientPreset(prefs: UiPreferences, preset: GradientPreset
 }
 
 export function saveUiPreferences(prefs: UiPreferences): void {
+  if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
 }
 
@@ -262,6 +263,7 @@ export function applyThemeVars(root: HTMLElement, colors: ResolvedThemeColors): 
 }
 
 export function applyUiPreferences(prefs: UiPreferences): void {
+  if (typeof document === "undefined") return;
   const mode = resolveThemeMode(prefs);
   applyThemeVars(document.documentElement, resolveThemeColors(prefs, mode));
 }

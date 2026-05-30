@@ -126,6 +126,16 @@ Passkeys, TOTP, SMS/email OTP, push, Google/GitHub/OIDC/SAML/LDAP, and self-regi
 
 Set `SECUREONE_PUBLIC_BASE_URL` if links must point at a host other than `http://localhost:9000`.
 
+## 9. Admin console layout (application-first)
+
+| Area | Who | URL |
+|------|-----|-----|
+| **Application console** | Super admin + app operators (users with a role on that client) | http://localhost:3000/app → pick application → Users / Roles / Settings / Audit / Sessions |
+| **Manage clients** | Platform super-admin only (`admin` dev user) | http://localhost:3000/applications |
+| **Platform settings** | Super-admin only | http://localhost:3000/settings |
+
+Simulate an app-only operator (e.g. Sarah Chen on Acme Web) by setting `SECUREONE_ACT_AS_EMAIL=sarah.chen@acme.com` in the admin-web environment. The API grants access to applications where that user has a `user_role` assignment.
+
 For production, point SMTP at your provider (e.g. SendGrid, SES) via `SECUREONE_SMTP_*` and set notification toggles in the same Settings tab (stored in `platform_setting` in Postgres).
 
 ## 9. Verify

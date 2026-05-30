@@ -51,12 +51,12 @@ export const permissions: Permission[] = [
 ];
 
 export const roles: Role[] = [
-  { id: "r_superadmin", tenantId: "t_acme", name: "Super Admin", description: "Full platform control, composite of all admin roles", isComposite: true, permissionIds: [], childRoleIds: ["r_admin", "r_security"], userCount: 3 },
-  { id: "r_admin", tenantId: "t_acme", name: "Tenant Admin", description: "Manage users, roles, and applications", isComposite: false, permissionIds: ["p_user_read", "p_user_write", "p_user_delete", "p_role_read", "p_role_write", "p_app_read", "p_app_write", "p_settings_write"], childRoleIds: [], userCount: 14 },
-  { id: "r_security", tenantId: "t_acme", name: "Security Auditor", description: "Read-only access to audit & security data", isComposite: false, permissionIds: ["p_audit_read", "p_user_read", "p_role_read"], childRoleIds: [], userCount: 5 },
-  { id: "r_billing", tenantId: "t_acme", name: "Billing Manager", description: "Manage billing and subscriptions", isComposite: false, permissionIds: ["p_billing_read", "p_billing_write", "p_user_read"], childRoleIds: [], userCount: 2 },
-  { id: "r_developer", tenantId: "t_acme", name: "Developer", description: "Manage applications and integrations", isComposite: false, permissionIds: ["p_app_read", "p_app_write", "p_user_read"], childRoleIds: [], userCount: 28 },
-  { id: "r_member", tenantId: "t_acme", name: "Member", description: "Standard end-user access", isComposite: false, permissionIds: ["p_user_read"], childRoleIds: [], userCount: 1790 },
+  { id: "r_superadmin", tenantId: "t_acme", name: "Super Admin", description: "Full platform control, composite of all admin roles", isComposite: true, isSystem: true, isDefault: false, label: "SYSTEM", permissionIds: [], childRoleIds: ["r_admin", "r_security"], userCount: 3 },
+  { id: "r_admin", tenantId: "t_acme", name: "Tenant Admin", description: "Manage users, roles, and applications", isComposite: false, isSystem: true, isDefault: true, label: "BUILT_IN", permissionIds: ["p_user_read", "p_user_write", "p_user_delete", "p_role_read", "p_role_write", "p_app_read", "p_app_write", "p_settings_write"], childRoleIds: [], userCount: 14 },
+  { id: "r_security", tenantId: "t_acme", name: "Security Auditor", description: "Read-only access to audit & security data", isComposite: false, isSystem: true, isDefault: false, label: "SYSTEM", permissionIds: ["p_audit_read", "p_user_read", "p_role_read"], childRoleIds: [], userCount: 5 },
+  { id: "r_billing", tenantId: "t_acme", name: "Billing Manager", description: "Manage billing and subscriptions", isComposite: false, isSystem: false, isDefault: false, label: "CUSTOM", permissionIds: ["p_billing_read", "p_billing_write", "p_user_read"], childRoleIds: [], userCount: 2 },
+  { id: "r_developer", tenantId: "t_acme", name: "Developer", description: "Manage applications and integrations", isComposite: false, isSystem: false, isDefault: false, label: "CUSTOM", permissionIds: ["p_app_read", "p_app_write", "p_user_read"], childRoleIds: [], userCount: 28 },
+  { id: "r_member", tenantId: "t_acme", name: "Member", description: "Standard end-user access", isComposite: false, isSystem: true, isDefault: true, label: "BUILT_IN", permissionIds: ["p_user_read"], childRoleIds: [], userCount: 1790 },
 ];
 
 export const users: User[] = [
@@ -282,6 +282,9 @@ export function createRole(input: RoleInput): Role {
   const role: Role = {
     id: uid("r"),
     ...input,
+    isSystem: false,
+    isDefault: false,
+    label: input.isComposite ? "COMPOSITE" : "CUSTOM",
     userCount: 0,
   };
   roles.unshift(role);

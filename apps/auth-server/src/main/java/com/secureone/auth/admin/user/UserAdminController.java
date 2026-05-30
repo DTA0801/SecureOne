@@ -1,5 +1,6 @@
 package com.secureone.auth.admin.user;
 
+import com.secureone.auth.admin.application.ApplicationUserAdminService;
 import com.secureone.auth.admin.user.UserAdminDtos.UserCreateRequest;
 import com.secureone.auth.admin.user.UserAdminDtos.UserResponse;
 import com.secureone.auth.admin.user.UserAdminDtos.UserUpdateRequest;
@@ -25,15 +26,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserAdminController {
 
     private final UserAdminService service;
+    private final ApplicationUserAdminService applicationUsers;
 
-    public UserAdminController(UserAdminService service) {
+    public UserAdminController(UserAdminService service, ApplicationUserAdminService applicationUsers) {
         this.service = service;
+        this.applicationUsers = applicationUsers;
     }
 
     @GetMapping
     public List<UserResponse> list(
             @RequestParam(required = false) UUID tenantId,
+            @RequestParam(required = false) UUID applicationId,
             @RequestParam(required = false) Boolean adminOnly) {
+        if (applicationId != null) {
+            return applicationUsers.listUsers(applicationId);
+        }
         if (Boolean.TRUE.equals(adminOnly)) {
             return service.listWithAdminRole(tenantId);
         }
@@ -93,5 +100,17 @@ public class UserAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetMfa(@PathVariable UUID id) {
         service.resetMfa(id);
+    }
+
+    @PostMapping("/{id}/unlock")
+    public UserResponse unlock(@PathVariable UUID id) {
+        return service.unlockAccount(id);
+    }
+
+    @PostMapping("/{id}/password/set")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void adminSetPassword(
+            @PathVariable UUID id, @Valid @RequestBody UserAdminDtos.AdminSetPasswordRequest request) {
+        service.adminSetPassword(id, request.password());
     }
 }

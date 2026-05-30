@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, appScopeHeaders } from "./client";
 import type { LoginEvent } from "@/lib/types";
 
 type SessionDto = {
@@ -13,11 +13,20 @@ type SessionDto = {
   result: string;
 };
 
-export async function listLoginEvents(userId?: string): Promise<LoginEvent[]> {
-  const path = userId
-    ? `/api/admin/v1/sessions?userId=${encodeURIComponent(userId)}`
-    : "/api/admin/v1/sessions";
-  const rows = await apiFetch<SessionDto[]>(path);
+export async function listLoginEvents(opts?: {
+  userId?: string;
+  applicationId?: string;
+  tenantId?: string;
+}): Promise<LoginEvent[]> {
+  const params = new URLSearchParams();
+  if (opts?.userId) params.set("userId", opts.userId);
+  if (opts?.applicationId) params.set("applicationId", opts.applicationId);
+  if (opts?.tenantId) params.set("tenantId", opts.tenantId);
+  const qs = params.toString();
+  const path = qs ? `/api/admin/v1/sessions?${qs}` : "/api/admin/v1/sessions";
+  const rows = await apiFetch<SessionDto[]>(path, {
+    headers: opts?.applicationId ? appScopeHeaders(opts.applicationId) : undefined,
+  });
   return rows.map((r) => ({
     id: r.id,
     userId: r.userId,

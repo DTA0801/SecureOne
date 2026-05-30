@@ -31,8 +31,16 @@ public class AuditAdminController {
             String result) {}
 
     @GetMapping
-    public List<AuditEventResponse> list() {
-        return repository.findRecent().stream().map(this::toResponse).toList();
+    public List<AuditEventResponse> list(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) UUID applicationId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) UUID tenantId) {
+        var rows =
+                applicationId != null && tenantId != null
+                        ? repository.findByApplicationIdAndTenantIdOrderByCreatedAtDesc(applicationId, tenantId)
+                        : applicationId != null
+                                ? repository.findByApplicationIdOrderByCreatedAtDesc(applicationId)
+                                : repository.findRecent();
+        return rows.stream().map(this::toResponse).toList();
     }
 
     private AuditEventResponse toResponse(AuditLog log) {

@@ -1,5 +1,6 @@
 package com.secureone.auth.admin.application;
 
+import com.secureone.auth.admin.AdminAccessService;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationCreateRequest;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationResponse;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationUpdateRequest;
@@ -7,6 +8,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,17 +25,29 @@ import org.springframework.web.bind.annotation.RestController;
 public class ApplicationAdminController {
 
     private final ApplicationAdminService service;
+    private final AdminAccessService access;
 
-    public ApplicationAdminController(ApplicationAdminService service) {
+    public ApplicationAdminController(ApplicationAdminService service, AdminAccessService access) {
         this.service = service;
+        this.access = access;
     }
 
     @GetMapping
-    public List<ApplicationResponse> list(@RequestParam(required = false) UUID tenantId) {
-        if (tenantId != null) {
-            return service.listByTenant(tenantId);
+    public List<ApplicationResponse> list(
+            Authentication authentication,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Act-As-Email", required = false)
+                    String actAsEmail,
+            @RequestParam(required = false) UUID tenantId) {
+        if (access.isPlatformSuperAdmin(authentication)) {
+            if (tenantId != null) {
+                return service.listByTenant(tenantId);
+            }
+            return service.list();
         }
-        return service.list();
+        return access.accessibleApplications(authentication, actAsEmail).stream()
+                .filter(a -> tenantId == null || tenantId.equals(a.tenantId()))
+                .map(a -> service.get(a.id()))
+                .toList();
     }
 
     @GetMapping("/{id}")

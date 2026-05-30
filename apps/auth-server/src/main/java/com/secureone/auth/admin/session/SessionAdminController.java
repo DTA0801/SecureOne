@@ -36,8 +36,19 @@ public class SessionAdminController {
             String result) {}
 
     @GetMapping
-    public List<LoginEventResponse> list(@org.springframework.web.bind.annotation.RequestParam(required = false) UUID userId) {
-        var rows = userId != null ? repository.findByUserIdOrderByCreatedAtDesc(userId) : repository.findRecent();
+    public List<LoginEventResponse> list(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) UUID userId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) UUID applicationId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) UUID tenantId) {
+        var rows =
+                userId != null
+                        ? repository.findByUserIdOrderByCreatedAtDesc(userId)
+                        : applicationId != null && tenantId != null
+                                ? repository.findByApplicationIdAndTenantIdOrderByCreatedAtDesc(
+                                        applicationId, tenantId)
+                                : applicationId != null
+                                        ? repository.findByApplicationIdOrderByCreatedAtDesc(applicationId)
+                                        : repository.findRecent();
         return rows.stream().map(this::toResponse).toList();
     }
 

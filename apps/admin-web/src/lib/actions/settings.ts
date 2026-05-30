@@ -71,7 +71,7 @@ export async function loadAdminRecipientOptionsAction(): Promise<{
     const [adminUsers, allAccounts, roles] = await Promise.all([
       listAdminUsers(),
       listUsers(),
-      listRoles(),
+      listRoles({}),
     ]);
     const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
     const adminOptions: AdminRecipientOption[] = adminUsers.map((u) => {
@@ -101,12 +101,32 @@ export async function loadAdminRecipientOptionsAction(): Promise<{
   }
 }
 
-export async function loadNotificationsAction(): Promise<{
+export async function loadNotificationsAction(applicationId?: string): Promise<{
   notifications: NotificationSettings;
   email: EmailSettings;
+  inheritsPlatformDefaults?: boolean;
   error?: string;
 }> {
   try {
+    if (applicationId) {
+      const {
+        fetchApplicationNotifications,
+        fetchApplicationEmail,
+      } = await import("@/lib/api/application-settings");
+      const notifications = await fetchApplicationNotifications(applicationId);
+      let email: EmailSettings = {};
+      try {
+        email = await fetchApplicationEmail(applicationId);
+      } catch {
+        email = await fetchEmailSettings();
+      }
+      const inherits =
+        Boolean(
+          (notifications as { inheritsPlatformDefaults?: boolean }).inheritsPlatformDefaults,
+        ) &&
+        Boolean((email as { inheritsPlatformDefaults?: boolean }).inheritsPlatformDefaults);
+      return { notifications, email, inheritsPlatformDefaults: inherits };
+    }
     const [notifications, email] = await Promise.all([
       fetchNotificationSettings(),
       fetchEmailSettings(),
@@ -130,13 +150,51 @@ export async function sendTestEmailAction(to: string): Promise<{ ok: boolean; er
   }
 }
 
-export async function saveNotificationsAction(input: {
-  notifications: NotificationSettings & { adminRecipients?: string[] };
-  email: EmailSettings;
-}): Promise<{ ok: boolean; error?: string }> {
+export async function saveNotificationsAction(
+  input: {
+    notifications: NotificationSettings & { adminRecipients?: string[] };
+    email: EmailSettings;
+  },
+  applicationId?: string,
+): Promise<{ ok: boolean; error?: string }> {
   try {
+    if (applicationId) {
+      const {
+        saveApplicationNotifications,
+        saveApplicationEmail,
+      } = await import("@/lib/api/application-settings");
+      const { scope: _s, inheritsPlatformDefaults: _i, smtpConfigured: _m, ...notifications } =
+        input.notifications as NotificationSettings & Record<string, unknown>;
+      const { scope: _es, inheritsPlatformDefaults: _ei, smtpConfigured: _em, ...email } =
+        input.email as EmailSettings & Record<string, unknown>;
+      await saveApplicationNotifications(applicationId, notifications);
+      try {
+        await saveApplicationEmail(applicationId, email);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 404) throw e;
+      }
+      return { ok: true };
+    }
     await saveNotificationSettings(input.notifications);
     await saveEmailSettings(input.email);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function resetApplicationNotificationsAction(
+  applicationId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const {
+      resetApplicationNotifications,
+      resetApplicationEmail,
+    } = await import("@/lib/api/application-settings");
+    await Promise.all([
+      resetApplicationNotifications(applicationId),
+      resetApplicationEmail(applicationId),
+    ]);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: formatSettingsError(e) };

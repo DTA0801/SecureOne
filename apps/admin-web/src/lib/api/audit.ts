@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, appScopeHeaders } from "./client";
 import type { AuditEvent } from "@/lib/types";
 
 type AuditDto = {
@@ -11,8 +11,11 @@ type AuditDto = {
   result: string;
 };
 
-export async function listAuditEvents(): Promise<AuditEvent[]> {
-  const rows = await apiFetch<AuditDto[]>("/api/admin/v1/audit");
+export async function listAuditEvents(applicationId: string, tenantId: string): Promise<AuditEvent[]> {
+  const params = new URLSearchParams({ applicationId, tenantId });
+  const rows = await apiFetch<AuditDto[]>(`/api/admin/v1/audit?${params}`, {
+    headers: appScopeHeaders(applicationId),
+  });
   return rows.map((r) => ({
     id: r.id,
     timestamp: r.timestamp,

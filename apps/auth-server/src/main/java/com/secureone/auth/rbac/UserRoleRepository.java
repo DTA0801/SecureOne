@@ -10,10 +10,21 @@ import org.springframework.data.repository.query.Param;
 public interface UserRoleRepository extends JpaRepository<UserRole, UUID> {
     long countByRoleId(UUID roleId);
 
+    List<UserRole> findByRoleIdOrderByGrantedAtDesc(UUID roleId);
+
     List<UserRole> findByUserId(UUID userId);
 
     void deleteByUserId(UUID userId);
 
     @Query("SELECT DISTINCT ur.userId FROM UserRole ur WHERE ur.userId IS NOT NULL AND ur.roleId IN :roleIds")
     List<UUID> findDistinctUserIdsByRoleIdIn(@Param("roleIds") Collection<UUID> roleIds);
+
+    @Query(
+            """
+            SELECT DISTINCT r.applicationId FROM UserRole ur
+            JOIN Role r ON r.id = ur.roleId
+            JOIN UserAccount u ON u.id = ur.userId
+            WHERE LOWER(u.email) = LOWER(:email)
+            """)
+    List<UUID> findDistinctApplicationIdsByUserEmail(@Param("email") String email);
 }

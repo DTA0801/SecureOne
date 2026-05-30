@@ -17,13 +17,26 @@ function formatError(e: unknown): string {
   return "Request failed";
 }
 
-export async function loadAuthSettingsAction(): Promise<{
+export async function loadAuthSettingsAction(applicationId?: string): Promise<{
   authMethods: AuthMethod[];
   featureFlags: FeatureFlag[];
   passwordPolicy: PasswordPolicy;
   error?: string;
 }> {
   try {
+    if (applicationId) {
+      const {
+        fetchApplicationAuthMethods,
+        fetchApplicationFeatureFlags,
+        fetchApplicationPasswordPolicy,
+      } = await import("@/lib/api/application-settings");
+      const [authMethods, featureFlags, passwordPolicy] = await Promise.all([
+        fetchApplicationAuthMethods(applicationId),
+        fetchApplicationFeatureFlags(applicationId),
+        fetchApplicationPasswordPolicy(applicationId),
+      ]);
+      return { authMethods, featureFlags, passwordPolicy };
+    }
     const [authMethods, featureFlags, passwordPolicy] = await Promise.all([
       fetchAuthMethods(),
       fetchFeatureFlags(),
@@ -48,8 +61,16 @@ export async function loadAuthSettingsAction(): Promise<{
   }
 }
 
-export async function saveAuthMethodsAction(methods: AuthMethod[]): Promise<{ ok: boolean; error?: string }> {
+export async function saveAuthMethodsAction(
+  methods: AuthMethod[],
+  applicationId?: string,
+): Promise<{ ok: boolean; error?: string }> {
   try {
+    if (applicationId) {
+      const { saveApplicationAuthMethods } = await import("@/lib/api/application-settings");
+      await saveApplicationAuthMethods(applicationId, methods);
+      return { ok: true };
+    }
     await saveAuthMethods(methods);
     return { ok: true };
   } catch (e) {
@@ -59,8 +80,16 @@ export async function saveAuthMethodsAction(methods: AuthMethod[]): Promise<{ ok
 
 export async function savePasswordPolicyAction(
   policy: PasswordPolicy,
+  applicationId?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    if (applicationId) {
+      const { saveApplicationPasswordPolicy } = await import("@/lib/api/application-settings");
+      const { scope: _s, inheritsPlatformDefaults: _i, ...body } = policy as PasswordPolicy &
+        Record<string, unknown>;
+      await saveApplicationPasswordPolicy(applicationId, body as PasswordPolicy);
+      return { ok: true };
+    }
     await savePasswordPolicy(policy);
     return { ok: true };
   } catch (e) {
@@ -70,9 +99,30 @@ export async function savePasswordPolicyAction(
 
 export async function saveFeatureFlagsAction(
   flags: FeatureFlag[],
+  applicationId?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    if (applicationId) {
+      const { saveApplicationFeatureFlags } = await import("@/lib/api/application-settings");
+      await saveApplicationFeatureFlags(applicationId, flags);
+      return { ok: true };
+    }
     await saveFeatureFlags(flags);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: formatError(e) };
+  }
+}
+
+export async function resetApplicationAuthSettingsAction(
+  applicationId: string,
+  section: "auth-methods" | "password-policy" | "feature-flags",
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const api = await import("@/lib/api/application-settings");
+    if (section === "auth-methods") await api.resetApplicationAuthMethods(applicationId);
+    else if (section === "password-policy") await api.resetApplicationPasswordPolicy(applicationId);
+    else await api.resetApplicationFeatureFlags(applicationId);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: formatError(e) };

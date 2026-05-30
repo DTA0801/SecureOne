@@ -5,9 +5,13 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** A human identity within a tenant. */
 @Entity
@@ -41,8 +45,18 @@ public class UserAccount {
     @Column(name = "type", nullable = false)
     private String type = "USER";
 
+    @Column(name = "failed_login_count", nullable = false)
+    private int failedLoginCount;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "attributes", nullable = false)
+    private Map<String, Object> attributes = new HashMap<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

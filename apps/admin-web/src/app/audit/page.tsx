@@ -1,21 +1,11 @@
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
-import { listAuditEvents } from "@/lib/api/audit";
-import { AuditTable } from "./AuditTable";
+import { redirect } from "next/navigation";
+import { loadAdminContextSafe } from "@/lib/api/app-workspace";
+import { buildAppPath } from "@/lib/app-routes";
 
-export const dynamic = "force-dynamic";
-
-export default async function AuditPage() {
-  const events = await listAuditEvents();
-
-  return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeader
-        title="Audit Log"
-        description="Immutable record of administrative and security-relevant events."
-        actions={<Button variant="secondary">Export</Button>}
-      />
-      <AuditTable events={events} />
-    </div>
-  );
+export default async function AuditRedirectPage() {
+  const ctx = await loadAdminContextSafe();
+  if (ctx.applications.length > 0) {
+    redirect(buildAppPath(ctx.applications[0].id, "audit"));
+  }
+  redirect("/app");
 }

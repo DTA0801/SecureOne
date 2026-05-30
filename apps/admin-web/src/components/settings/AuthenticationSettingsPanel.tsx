@@ -17,7 +17,13 @@ import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
 
 type Tab = "auth" | "mfa" | "password" | "flags";
 
-export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
+export function AuthenticationSettingsPanel({
+  tab,
+  applicationId,
+}: {
+  tab: Tab;
+  applicationId?: string;
+}) {
   const { toast } = useToast();
   const [authMethods, setAuthMethods] = useState<AuthMethod[]>([]);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
@@ -33,7 +39,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
       setLoaded(true);
       if (error) toast(error, "error");
     });
-  }, [toast]);
+  }, [toast, applicationId]);
 
   const scheduleSave = useCallback(
     (fn: () => Promise<{ ok: boolean; error?: string }>) => {
@@ -61,7 +67,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
             methods={primary}
             onToggle={(next) => {
               setAuthMethods(next);
-              scheduleSave(() => saveAuthMethodsAction(next));
+              scheduleSave(() => saveAuthMethodsAction(next, applicationId));
             }}
           />
           <MethodSection
@@ -70,7 +76,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
             methods={federation}
             onToggle={(next) => {
               setAuthMethods(next);
-              scheduleSave(() => saveAuthMethodsAction(next));
+              scheduleSave(() => saveAuthMethodsAction(next, applicationId));
             }}
           />
         </div>
@@ -99,7 +105,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
                 onChange={(e) => {
                   const next = { ...passwordPolicy, minLength: Number(e.target.value) };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
                 }}
               />
             </FieldRow>
@@ -110,7 +116,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
                 onChange={(e) => {
                   const next = { ...passwordPolicy, historyCount: Number(e.target.value) };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
                 }}
               />
             </FieldRow>
@@ -124,7 +130,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
                 onChange={(v) => {
                   const next = { ...passwordPolicy, requireUppercase: v };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
                 }}
               />
               <PolicyToggle
@@ -133,7 +139,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
                 onChange={(v) => {
                   const next = { ...passwordPolicy, requireNumber: v };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
                 }}
               />
               <PolicyToggle
@@ -142,7 +148,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
                 onChange={(v) => {
                   const next = { ...passwordPolicy, requireSymbol: v };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
                 }}
               />
             </div>
@@ -168,7 +174,7 @@ export function AuthenticationSettingsPanel({ tab }: { tab: Tab }) {
                   onChange={(enabled) => {
                     const next = featureFlags.map((x, i) => (i === idx ? { ...x, enabled } : x));
                     setFeatureFlags(next);
-                    scheduleSave(() => saveFeatureFlagsAction(next));
+                    scheduleSave(() => saveFeatureFlagsAction(next, applicationId));
                   }}
                   aria-label={f.name}
                 />

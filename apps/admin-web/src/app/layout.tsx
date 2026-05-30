@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
-import { Topbar } from "@/components/Topbar";
+import { ConsoleProviders } from "@/components/ConsoleProviders";
+import { loadAdminContextSafe } from "@/lib/api/app-workspace";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeInitScript } from "@/components/ThemeInitScript";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -22,11 +22,15 @@ export const metadata: Metadata = {
   description: "Admin console for the SecureOne Identity & Access Management platform.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const ctx = await loadAdminContextSafe();
+  const superAdmin = ctx.platformSuperAdmin;
+  const applications = ctx.applications;
+
   return (
     <html
       lang="en"
@@ -38,13 +42,9 @@ export default function RootLayout({
         <ThemeInitScript />
         <ToastProvider>
           <ThemeProvider>
-            <div className="flex min-h-screen text-ui">
-              <Sidebar />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <Topbar />
-                <main className="flex-1 px-8 py-8">{children}</main>
-              </div>
-            </div>
+            <ConsoleProviders superAdmin={superAdmin} applications={applications}>
+              {children}
+            </ConsoleProviders>
           </ThemeProvider>
         </ToastProvider>
       </body>

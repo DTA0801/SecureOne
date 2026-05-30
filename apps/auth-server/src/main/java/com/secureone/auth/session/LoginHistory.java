@@ -27,6 +27,9 @@ public class LoginHistory {
     @Column(name = "tenant_id")
     private UUID tenantId;
 
+    @Column(name = "application_id")
+    private UUID applicationId;
+
     @Column(name = "user_id")
     private UUID userId;
 

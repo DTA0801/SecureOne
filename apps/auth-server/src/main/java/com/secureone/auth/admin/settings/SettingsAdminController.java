@@ -3,6 +3,7 @@ package com.secureone.auth.admin.settings;
 import com.secureone.auth.notify.EmailNotificationService;
 import com.secureone.auth.platform.AuthSettingsService;
 import com.secureone.auth.platform.PlatformSettingsService;
+import com.secureone.auth.platform.SettingsExposureService;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import java.util.HashMap;
@@ -22,14 +23,28 @@ public class SettingsAdminController {
     private final EmailNotificationService emailService;
     private final PlatformSettingsService platformSettings;
     private final AuthSettingsService authSettings;
+    private final SettingsExposureService exposure;
 
     public SettingsAdminController(
             EmailNotificationService emailService,
             PlatformSettingsService platformSettings,
-            AuthSettingsService authSettings) {
+            AuthSettingsService authSettings,
+            SettingsExposureService exposure) {
         this.emailService = emailService;
         this.platformSettings = platformSettings;
         this.authSettings = authSettings;
+        this.exposure = exposure;
+    }
+
+    /** Which setting sections applications may customize (platform super admin). */
+    @GetMapping("/app-exposure")
+    public Map<String, Boolean> getAppExposure() {
+        return exposure.getExposure();
+    }
+
+    @PutMapping("/app-exposure")
+    public Map<String, Boolean> updateAppExposure(@RequestBody Map<String, Boolean> body) {
+        return exposure.saveExposure(body);
     }
 
     @GetMapping("/notifications")

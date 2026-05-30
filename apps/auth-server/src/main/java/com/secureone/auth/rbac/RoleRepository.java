@@ -7,5 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface RoleRepository extends JpaRepository<Role, UUID> {
     List<Role> findByTenantIdOrderByNameAsc(UUID tenantId);
 
+    List<Role> findByApplicationIdOrderByNameAsc(UUID applicationId);
+
     List<Role> findByNameContainingIgnoreCase(String namePart);
+
+    boolean existsByApplicationIdAndName(UUID applicationId, String name);
 }

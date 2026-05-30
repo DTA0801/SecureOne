@@ -20,7 +20,7 @@ export function Modal({
   triggerSize?: "sm" | "md";
   title: string;
   description?: string;
-  width?: "md" | "lg";
+  width?: "md" | "lg" | "xl";
   children: (close: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,18 +51,19 @@ export function Modal({
             role="dialog"
             aria-modal="true"
             className={cn(
-              "relative z-10 my-4 w-full rounded-2xl border border-black/10 bg-[var(--background)] shadow-2xl dark:border-white/10",
-              width === "lg" ? "max-w-2xl" : "max-w-lg",
+              "relative z-10 my-4 flex max-h-[min(90vh,48rem)] w-full flex-col rounded-2xl border border-black/10 bg-[var(--background)] shadow-2xl dark:border-white/10",
+              width === "xl" ? "max-w-3xl" : width === "lg" ? "max-w-2xl" : "max-w-lg",
             )}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-black/10 px-5 py-4 dark:border-white/10">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-black/10 px-5 py-4 dark:border-white/10">
               <div>
-                <h2 className="text-base font-semibold">{title}</h2>
+                <h2 className="text-base font-semibold text-ui">{title}</h2>
                 {description && (
-                  <p className="mt-0.5 text-xs text-muted">{description}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted">{description}</p>
                 )}
               </div>
               <button
+                type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
                 className="rounded-lg px-2 text-lg leading-none text-black/40 hover:bg-black/5 dark:text-white/40 dark:hover:bg-white/10"
@@ -70,7 +71,9 @@ export function Modal({
                 ×
               </button>
             </div>
-            <div className="p-5">{children(() => setOpen(false))}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {children(() => setOpen(false))}
+            </div>
           </div>
         </div>
       )}

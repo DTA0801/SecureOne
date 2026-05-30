@@ -19,8 +19,20 @@ public class LoginHistoryService {
 
     public void record(
             UserAccount user, String result, String ip, String device, String method, String location) {
+        record(user, null, result, ip, device, method, location);
+    }
+
+    public void record(
+            UserAccount user,
+            UUID applicationId,
+            String result,
+            String ip,
+            String device,
+            String method,
+            String location) {
         LoginHistory row = new LoginHistory();
         row.setTenantId(user.getTenantId());
+        row.setApplicationId(applicationId);
         row.setUserId(user.getId());
         row.setResult(result);
         row.setIp(ip != null ? ip : "unknown");

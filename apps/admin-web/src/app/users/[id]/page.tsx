@@ -39,9 +39,9 @@ export default async function UserDetailPage({
   if (!user) notFound();
 
   const [logins, tenants, roles] = await Promise.all([
-    listLoginEvents(user.id),
+    listLoginEvents({ userId: user.id }),
     listTenants(),
-    listRoles(user.tenantId),
+    listRoles({ tenantId: user.tenantId }),
   ]);
   const fullName = `${user.firstName} ${user.lastName}`;
   const roleById = new Map(roles.map((r) => [r.id, r]));

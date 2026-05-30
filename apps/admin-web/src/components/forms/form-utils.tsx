@@ -6,14 +6,19 @@ import { Button } from "@/components/ui/Button";
 import type { FormState } from "@/lib/actions";
 
 /** Closes the modal and refreshes server components once an action succeeds. */
-export function useCloseOnSuccess(state: FormState, close: () => void) {
+export function useCloseOnSuccess(
+  state: FormState,
+  close: () => void,
+  onSuccess?: (state: FormState) => void,
+) {
   const router = useRouter();
   useEffect(() => {
     if (state.ok) {
+      onSuccess?.(state);
       router.refresh();
       close();
     }
-  }, [state.ok, close, router]);
+  }, [state.ok, state.createdRoleId, state.createdUserId, close, router, onSuccess]);
 }
 
 export function FormError({ state }: { state: FormState }) {
@@ -29,17 +34,27 @@ export function FormActions({
   pending,
   close,
   submitLabel = "Save",
+  submitDisabled = false,
+  sticky = false,
 }: {
   pending: boolean;
   close: () => void;
   submitLabel?: string;
+  submitDisabled?: boolean;
+  sticky?: boolean;
 }) {
   return (
-    <div className="flex justify-end gap-2 pt-2">
+    <div
+      className={
+        sticky
+          ? "sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-ui bg-[var(--background)] px-5 py-4"
+          : "flex justify-end gap-2 border-t border-ui pt-4"
+      }
+    >
       <Button type="button" variant="secondary" onClick={close} disabled={pending}>
         Cancel
       </Button>
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending || submitDisabled}>
         {pending ? "Saving…" : submitLabel}
       </Button>
     </div>

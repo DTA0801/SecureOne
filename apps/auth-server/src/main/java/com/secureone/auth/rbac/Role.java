@@ -34,6 +34,12 @@ public class Role {
     @Column(name = "is_composite", nullable = false)
     private boolean composite;
 
+    @Column(name = "is_system", nullable = false)
+    private boolean systemRole;
+
+    @Column(name = "is_default", nullable = false)
+    private boolean defaultRole;
+
     @PrePersist
     void onCreate() {
         if (id == null) {

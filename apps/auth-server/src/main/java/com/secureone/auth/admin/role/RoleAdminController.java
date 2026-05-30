@@ -1,19 +1,9 @@
 package com.secureone.auth.admin.role;
 
-import com.secureone.auth.admin.ConflictException;
-import com.secureone.auth.admin.ResourceNotFoundException;
-import com.secureone.auth.application.ApplicationRepository;
-import com.secureone.auth.audit.AuditService;
-import com.secureone.auth.rbac.Role;
-import com.secureone.auth.rbac.RoleRepository;
-import com.secureone.auth.rbac.UserRoleRepository;
-import com.secureone.auth.tenant.TenantRepository;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,116 +16,81 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/admin/v1/roles")
-@Transactional
+@RequestMapping("/api/admin/v1")
 public class RoleAdminController {
 
-    private final RoleRepository roleRepository;
-    private final UserRoleRepository userRoleRepository;
-    private final TenantRepository tenantRepository;
-    private final ApplicationRepository applicationRepository;
-    private final AuditService auditService;
+    private final RoleAdminService roles;
+    private final PermissionAdminService permissions;
 
-    public RoleAdminController(
-            RoleRepository roleRepository,
-            UserRoleRepository userRoleRepository,
-            TenantRepository tenantRepository,
-            ApplicationRepository applicationRepository,
-            AuditService auditService) {
-        this.roleRepository = roleRepository;
-        this.userRoleRepository = userRoleRepository;
-        this.tenantRepository = tenantRepository;
-        this.applicationRepository = applicationRepository;
-        this.auditService = auditService;
+    public RoleAdminController(RoleAdminService roles, PermissionAdminService permissions) {
+        this.roles = roles;
+        this.permissions = permissions;
     }
 
-    public record RoleResponse(
-            UUID id,
-            UUID tenantId,
-            UUID applicationId,
-            String name,
-            String description,
-            boolean isComposite,
-            long userCount) {}
-
-    public record RoleCreateRequest(
-            @NotNull UUID tenantId,
-            @NotNull UUID applicationId,
-            @NotBlank String name,
-            String description,
-            boolean isComposite) {}
-
-    public record RoleUpdateRequest(@NotBlank String name, String description, boolean isComposite) {}
-
-    @GetMapping
-    public List<RoleResponse> list(@RequestParam(required = false) UUID tenantId) {
-        List<Role> roles = tenantId != null
-                ? roleRepository.findByTenantIdOrderByNameAsc(tenantId)
-                : roleRepository.findAll();
-        return roles.stream().map(this::toResponse).toList();
+    @GetMapping("/permissions")
+    public List<RoleAdminDtos.PermissionResponse> listPermissions(
+            @RequestParam UUID applicationId) {
+        return permissions.list(applicationId);
     }
 
-    @GetMapping("/{id}")
-    public RoleResponse get(@PathVariable UUID id) {
-        return toResponse(require(id));
+    @GetMapping("/permissions/{id}")
+    public PermissionAdminDtos.PermissionDetailResponse getPermission(
+            @PathVariable UUID id, @RequestParam UUID applicationId) {
+        return permissions.get(applicationId, id);
     }
 
-    @PostMapping
+    @PostMapping("/permissions")
     @ResponseStatus(HttpStatus.CREATED)
-    public RoleResponse create(@RequestBody RoleCreateRequest request) {
-        requireTenant(request.tenantId());
-        if (!applicationRepository.existsById(request.applicationId())) {
-            throw new ResourceNotFoundException("Application not found: " + request.applicationId());
-        }
-        Role role = new Role();
-        role.setTenantId(request.tenantId());
-        role.setApplicationId(request.applicationId());
-        role.setName(request.name().trim());
-        role.setDescription(request.description());
-        role.setComposite(request.isComposite());
-        roleRepository.save(role);
-        auditService.record(request.tenantId(), "admin", "role.created", "role", role.getId(), role.getName(), true);
-        return toResponse(role);
+    public PermissionAdminDtos.PermissionDetailResponse createPermission(
+            @RequestParam UUID applicationId,
+            @Valid @RequestBody PermissionAdminDtos.PermissionCreateRequest request) {
+        return permissions.create(applicationId, request);
     }
 
-    @PutMapping("/{id}")
-    public RoleResponse update(@PathVariable UUID id, @RequestBody RoleUpdateRequest request) {
-        Role role = require(id);
-        role.setName(request.name().trim());
-        role.setDescription(request.description());
-        role.setComposite(request.isComposite());
-        auditService.record(role.getTenantId(), "admin", "role.updated", "role", role.getId(), role.getName(), true);
-        return toResponse(role);
+    @PutMapping("/permissions/{id}")
+    public PermissionAdminDtos.PermissionDetailResponse updatePermission(
+            @PathVariable UUID id,
+            @RequestParam UUID applicationId,
+            @Valid @RequestBody PermissionAdminDtos.PermissionUpdateRequest request) {
+        return permissions.update(applicationId, id, request);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/permissions/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID id) {
-        Role role = require(id);
-        roleRepository.delete(role);
-        auditService.record(role.getTenantId(), "admin", "role.deleted", "role", id, role.getName(), true);
+    public void deletePermission(@PathVariable UUID id, @RequestParam UUID applicationId) {
+        permissions.delete(applicationId, id);
     }
 
-    private Role require(UUID id) {
-        return roleRepository
-                .findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + id));
+    @GetMapping("/roles")
+    public List<RoleAdminDtos.RoleSummaryResponse> list(
+            @RequestParam(required = false) UUID tenantId,
+            @RequestParam(required = false) UUID applicationId) {
+        return roles.listRoles(tenantId, applicationId);
     }
 
-    private void requireTenant(UUID tenantId) {
-        if (!tenantRepository.existsById(tenantId)) {
-            throw new ResourceNotFoundException("Tenant not found: " + tenantId);
-        }
+    @GetMapping("/roles/{id}")
+    public RoleAdminDtos.RoleDetailResponse get(
+            @PathVariable UUID id, @RequestParam(required = false) UUID applicationId) {
+        return roles.getRole(id, applicationId);
     }
 
-    private RoleResponse toResponse(Role role) {
-        return new RoleResponse(
-                role.getId(),
-                role.getTenantId(),
-                role.getApplicationId(),
-                role.getName(),
-                role.getDescription(),
-                role.isComposite(),
-                userRoleRepository.countByRoleId(role.getId()));
+    @PostMapping("/roles")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RoleAdminDtos.RoleDetailResponse create(@Valid @RequestBody RoleAdminDtos.RoleCreateRequest request) {
+        return roles.create(request);
+    }
+
+    @PutMapping("/roles/{id}")
+    public RoleAdminDtos.RoleDetailResponse update(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID applicationId,
+            @Valid @RequestBody RoleAdminDtos.RoleUpdateRequest request) {
+        return roles.update(id, applicationId, request);
+    }
+
+    @DeleteMapping("/roles/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id, @RequestParam(required = false) UUID applicationId) {
+        roles.delete(id, applicationId);
     }
 }

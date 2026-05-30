@@ -16,7 +16,7 @@ import {
 } from "@/lib/actions/settings";
 import type { EmailSettings, NotificationSettings } from "@/lib/api/settings";
 
-export function NotificationsSettings() {
+export function NotificationsSettings({ applicationId }: { applicationId?: string }) {
   const { toast } = useToast();
   const [notifications, setNotifications] = useState<NotificationSettings>({});
   const [email, setEmail] = useState<EmailSettings>({});
@@ -30,7 +30,14 @@ export function NotificationsSettings() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    Promise.all([loadNotificationsAction(), loadAdminRecipientOptionsAction()]).then(
+    const recipientsPromise = applicationId
+      ? Promise.resolve({
+          adminOptions: [] as AdminRecipientOption[],
+          allUsers: [] as RecipientUserOption[],
+          error: undefined as string | undefined,
+        })
+      : loadAdminRecipientOptionsAction();
+    Promise.all([loadNotificationsAction(applicationId), recipientsPromise]).then(
       ([{ notifications: n, email: e, error }, { adminOptions: admins, allUsers: users, error: optionsError }]) => {
         setNotifications(n);
         setEmail(e);
@@ -47,19 +54,22 @@ export function NotificationsSettings() {
         setLoaded(true);
       },
     );
-  }, [toast]);
+  }, [toast, applicationId]);
 
   const persist = useCallback(async () => {
     setSaving(true);
-    const result = await saveNotificationsAction({
-      notifications: { ...notifications, adminRecipients: selectedEmails },
-      email,
-    });
+    const result = await saveNotificationsAction(
+      {
+        notifications: { ...notifications, adminRecipients: selectedEmails },
+        email,
+      },
+      applicationId,
+    );
     const msg = result.ok ? "Saved to database." : (result.error ?? "Save failed");
     setMessage(msg);
     toast(msg, result.ok ? "success" : "error");
     setSaving(false);
-  }, [notifications, email, selectedEmails, toast]);
+  }, [notifications, email, selectedEmails, toast, applicationId]);
 
   useEffect(() => {
     if (!loaded) return;

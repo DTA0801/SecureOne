@@ -25,8 +25,8 @@ export default async function ApplicationsPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Applications"
-        description="OAuth 2.1 / OIDC clients and relying parties registered across tenants."
+        title="Manage clients"
+        description="Super-admin only: register OAuth clients and credentials. Day-to-day user, role, and policy work happens in the application console."
         actions={<ApplicationFormModal tenants={tenants} triggerLabel="+ Register client" />}
       />
 

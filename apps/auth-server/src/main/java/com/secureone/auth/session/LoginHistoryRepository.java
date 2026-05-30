@@ -11,4 +11,8 @@ public interface LoginHistoryRepository extends JpaRepository<LoginHistory, UUID
     List<LoginHistory> findRecent();
 
     List<LoginHistory> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    List<LoginHistory> findByApplicationIdOrderByCreatedAtDesc(UUID applicationId);
+
+    List<LoginHistory> findByApplicationIdAndTenantIdOrderByCreatedAtDesc(UUID applicationId, UUID tenantId);
 }

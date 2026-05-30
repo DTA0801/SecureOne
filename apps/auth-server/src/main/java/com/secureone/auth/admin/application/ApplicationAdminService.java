@@ -9,6 +9,7 @@ import com.secureone.auth.application.Application;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.audit.AuditService;
 import com.secureone.auth.notify.EmailNotificationService;
+import com.secureone.auth.rbac.RbacBootstrapService;
 import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.util.JsonMaps;
 import java.util.HashMap;
@@ -27,16 +28,19 @@ public class ApplicationAdminService {
     private final TenantRepository tenantRepository;
     private final AuditService auditService;
     private final EmailNotificationService emailService;
+    private final RbacBootstrapService rbacBootstrap;
 
     public ApplicationAdminService(
             ApplicationRepository applicationRepository,
             TenantRepository tenantRepository,
             AuditService auditService,
-            EmailNotificationService emailService) {
+            EmailNotificationService emailService,
+            RbacBootstrapService rbacBootstrap) {
         this.applicationRepository = applicationRepository;
         this.tenantRepository = tenantRepository;
         this.auditService = auditService;
         this.emailService = emailService;
+        this.rbacBootstrap = rbacBootstrap;
     }
 
     @Transactional(readOnly = true)
@@ -73,6 +77,7 @@ public class ApplicationAdminService {
         app.setStatus(normalizeStatus(request.status(), "ACTIVE"));
         app.setConfig(buildConfig(request.type(), request.clientId(), slug, request.grantTypes(), request.scopes(), request.redirectUris()));
         applicationRepository.save(app);
+        rbacBootstrap.seedDefaultPermissions(app.getId());
         auditService.record(request.tenantId(), "admin", "application.created", "application", app.getId(), app.getName(), true);
         emailService.sendAdminNotification("Application registered", "New application: " + app.getName());
         return toResponse(app);

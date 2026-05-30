@@ -2,23 +2,30 @@ export type NavItem = {
   label: string;
   href: string;
   description: string;
-  enabled: boolean;
-  group: "Overview" | "Identity" | "Access" | "Security" | "Platform";
+  superAdminOnly?: boolean;
 };
 
-/**
- * Primary admin navigation, grouped by control-plane domain
- * (see docs/11-admin-control.md).
- */
-export const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/", description: "Platform overview & health", enabled: true, group: "Overview" },
-  { label: "Tenants", href: "/tenants", description: "Organizations & isolation", enabled: true, group: "Identity" },
-  { label: "Users", href: "/users", description: "Accounts, credentials & MFA", enabled: true, group: "Identity" },
-  { label: "Applications", href: "/applications", description: "OAuth2 clients & relying parties", enabled: true, group: "Access" },
-  { label: "Roles & Permissions", href: "/roles", description: "RBAC, composite roles", enabled: true, group: "Access" },
-  { label: "Audit Log", href: "/audit", description: "Security & admin events", enabled: true, group: "Security" },
-  { label: "Sessions", href: "/sessions", description: "Login history & active sessions", enabled: true, group: "Security" },
-  { label: "Settings", href: "/settings", description: "Auth methods & policies", enabled: true, group: "Platform" },
+/** Super-admin / platform operations (shown at bottom of sidebar). */
+export const SUPER_ADMIN_NAV: NavItem[] = [
+  { label: "Manage clients", href: "/applications", description: "Register OAuth clients", superAdminOnly: true },
+  { label: "Tenants", href: "/tenants", description: "Organizations", superAdminOnly: true },
+  { label: "Platform settings", href: "/settings", description: "Global defaults", superAdminOnly: true },
 ];
 
-export const NAV_GROUPS = ["Overview", "Identity", "Access", "Security", "Platform"] as const;
+/** Legacy platform nav (picker + super admin) — used when no application context. */
+export const PLATFORM_NAV: NavItem[] = [
+  { label: "Application console", href: "/app", description: "Users, roles, settings — use header dropdown to switch app" },
+  ...SUPER_ADMIN_NAV,
+];
+
+export function appNav(applicationId: string): NavItem[] {
+  const base = `/app/${applicationId}`;
+  return [
+    { label: "Users", href: `${base}/users`, description: "Members of this application" },
+    { label: "Roles", href: `${base}/roles`, description: "RBAC for this application" },
+    { label: "Permissions", href: `${base}/permissions`, description: "Permission catalog (database)" },
+    { label: "Settings", href: `${base}/settings`, description: "Auth & notifications overrides" },
+    { label: "Audit log", href: `${base}/audit`, description: "Events for this application" },
+    { label: "Sessions", href: `${base}/sessions`, description: "Sign-ins for this application" },
+  ];
+}

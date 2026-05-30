@@ -24,8 +24,22 @@ public class AuditService {
             UUID targetId,
             String targetLabel,
             boolean success) {
+        record(tenantId, null, actorEmail, action, targetType, targetId, targetLabel, success);
+    }
+
+    @Transactional
+    public void record(
+            UUID tenantId,
+            UUID applicationId,
+            String actorEmail,
+            String action,
+            String targetType,
+            UUID targetId,
+            String targetLabel,
+            boolean success) {
         AuditLog log = new AuditLog();
         log.setTenantId(tenantId);
+        log.setApplicationId(applicationId);
         log.setActorType("ADMIN");
         log.setAction(action);
         log.setTargetType(targetType);
