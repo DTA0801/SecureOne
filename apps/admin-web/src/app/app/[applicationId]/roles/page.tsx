@@ -39,7 +39,7 @@ export default async function AppRolesPage({
   const tenant = tenants.find((t) => t.id === appMeta.tenantId);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={<Link href={`/app/${applicationId}/roles`} className="hover:underline">Roles</Link>}
         title="Role management"

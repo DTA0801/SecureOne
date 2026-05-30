@@ -28,7 +28,7 @@ export default async function AppUsersPage({
   const tenant = tenants.find((t) => t.id === app.tenantId);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col min-h-0">
+    <div className="flex w-full min-w-0 flex-1 flex-col">
       <PageHeader
         breadcrumb={
           <Link href={`/app/${applicationId}/users`} className="hover:underline">

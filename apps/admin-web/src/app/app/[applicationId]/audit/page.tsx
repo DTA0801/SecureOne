@@ -24,7 +24,7 @@ export default async function AppAuditPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={<Link href={`/app/${applicationId}/audit`} className="hover:underline">Audit log</Link>}
         title="Audit log"

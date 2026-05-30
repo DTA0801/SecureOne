@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { UserFormModal } from "@/components/forms/UserFormModal";
 import { UserSetPasswordModal } from "@/components/users/UserSetPasswordModal";
 import { Badge } from "@/components/ui/Badge";
@@ -146,7 +146,7 @@ export function UserDetailPanel({
   ];
 
   return (
-    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <Card padded={false} className="flex w-full min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-ui bg-ui-surface/80 px-5 py-4">
         <Button
           type="button"
@@ -231,25 +231,37 @@ export function UserDetailPanel({
         </nav>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
         {loading && tab !== "overview" ? (
           <p className="text-sm text-muted">Loading…</p>
         ) : null}
 
         {tab === "overview" && (
-          <div className="space-y-4">
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <InfoRow label="User ID" value={<code className="text-xs">{user.id}</code>} />
+          <div className="flex min-h-0 flex-1 flex-col gap-6">
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              <InfoRow label="User ID" value={<code className="text-xs break-all">{user.id}</code>} />
               <InfoRow label="Tenant" value={tenantName} />
+              <InfoRow label="Application" value={appName} />
               <InfoRow label="Created" value={formatDate(user.createdAt)} />
               <InfoRow
                 label="Last login"
                 value={user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "Never"}
               />
               <InfoRow label="Password set" value={user.hasPassword ? "Yes" : "No (invite pending)"} />
+              <InfoRow label="Failed logins" value={String(user.failedLoginCount ?? 0)} />
               <InfoRow
-                label="Failed logins"
-                value={String(user.failedLoginCount ?? 0)}
+                label="MFA factors"
+                value={user.mfaFactors.length > 0 ? String(user.mfaFactors.length) : "None"}
+              />
+              <InfoRow
+                label="Roles"
+                value={
+                  user.roleIds.length > 0
+                    ? user.roleIds
+                        .map((id) => roleById.get(id)?.name ?? id)
+                        .join(", ")
+                    : "None assigned"
+                }
               />
             </dl>
             <div className="flex flex-wrap gap-2">
@@ -282,11 +294,98 @@ export function UserDetailPanel({
                 </form>
               )}
             </div>
+
+            <div className="flex min-h-0 flex-1 flex-col border-t border-ui pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Account sections
+              </p>
+              <div className="mt-3 grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                <SectionShortcut
+                  title="Security"
+                  description="Email verification, password reset, and admin-set password."
+                  onClick={() => setTab("security")}
+                />
+                {showMfaTab && (
+                  <SectionShortcut
+                    title="MFA"
+                    description={
+                      visibleMfaFactors.length > 0
+                        ? `${visibleMfaFactors.length} enrolled factor(s)`
+                        : "No factors enrolled yet"
+                    }
+                    onClick={() => setTab("mfa")}
+                  />
+                )}
+                <SectionShortcut
+                  title="Roles"
+                  description={
+                    user.roleIds.length > 0
+                      ? `${user.roleIds.length} role(s) assigned`
+                      : "No roles assigned"
+                  }
+                  onClick={() => setTab("roles")}
+                />
+                {showAuthTab && (
+                  <SectionShortcut
+                    title="Sign-in methods"
+                    description="Per-user allow list for app-enabled authentication."
+                    onClick={() => setTab("auth")}
+                  />
+                )}
+                <SectionShortcut
+                  title="Sign-ins"
+                  description={
+                    logins.length > 0
+                      ? `${logins.length} event(s) for this app`
+                      : "No sign-in history yet"
+                  }
+                  onClick={() => setTab("signins")}
+                />
+              </div>
+
+              {logins.length > 0 && (
+                <div className="mt-6">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      Recent sign-ins
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setTab("signins")}
+                      className="text-xs font-medium text-brand hover:underline"
+                    >
+                      View all →
+                    </button>
+                  </div>
+                  <ul className="divide-y divide-ui rounded-xl border border-ui">
+                    {logins.slice(0, 3).map((l) => (
+                      <li
+                        key={l.id}
+                        className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium text-ui">{l.location || "Unknown"}</p>
+                          <p className="text-xs text-muted">
+                            {l.device} · {l.ip}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <Badge tone={l.result === "success" ? "success" : "danger"}>
+                            {l.method}
+                          </Badge>
+                          <p className="mt-1 text-xs text-faint">{formatDateTime(l.timestamp)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {tab === "security" && (
-          <div className="space-y-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-6">
             <section>
               <h3 className="text-sm font-semibold text-ui">Email</h3>
               <p className="mt-1 text-xs text-muted">
@@ -326,11 +425,22 @@ export function UserDetailPanel({
                 <UserSetPasswordModal userId={user.id} applicationId={applicationId} />
               </div>
             </section>
+            <div className="mt-auto rounded-xl border border-dashed border-ui px-4 py-6 text-center text-xs text-muted">
+              Need MFA or role changes? Use the tabs above or open{" "}
+              <button
+                type="button"
+                onClick={() => setTab("overview")}
+                className="font-medium text-brand hover:underline"
+              >
+                Overview
+              </button>{" "}
+              for shortcuts to every section.
+            </div>
           </div>
         )}
 
         {tab === "mfa" && showMfaTab && (
-          <div className="space-y-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-6">
             <section>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-muted">
@@ -420,7 +530,7 @@ export function UserDetailPanel({
         )}
 
         {tab === "roles" && (
-          <div>
+          <div className="flex min-h-0 flex-1 flex-col">
             <div className="mb-3 flex justify-between">
               <p className="text-sm text-muted">RBAC roles assigned to this user.</p>
               <UserFormModal
@@ -457,7 +567,7 @@ export function UserDetailPanel({
         )}
 
         {tab === "auth" && showAuthTab && (
-          <div className="space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
             <p className="text-sm text-muted">
               Allow or block sign-in methods for this user. Only methods enabled for{" "}
               <strong className="text-ui">{appName}</strong> appear here. Change app-wide options in{" "}
@@ -496,7 +606,7 @@ export function UserDetailPanel({
         )}
 
         {tab === "signins" && (
-          <div>
+          <div className="flex min-h-0 flex-1 flex-col">
             {logins.length > 0 ? (
               <ul className="divide-y divide-ui rounded-xl border border-ui">
                 {logins.map((l) => (
@@ -524,7 +634,29 @@ export function UserDetailPanel({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+function SectionShortcut({
+  title,
+  description,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-full min-h-[5.5rem] flex-col rounded-xl border border-ui bg-ui-elevated/40 px-4 py-3 text-left transition-colors hover:border-brand/40 hover:bg-brand-muted/20"
+    >
+      <span className="text-sm font-medium text-ui">{title}</span>
+      <span className="mt-1 flex-1 text-xs text-muted">{description}</span>
+      <span className="mt-2 text-xs font-medium text-brand">Open →</span>
+    </button>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-lg border border-ui bg-ui-elevated/30 px-3 py-2">
       <dt className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</dt>

@@ -37,7 +37,7 @@ export default async function AppPermissionsPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={
           <Link href={`/app/${applicationId}/permissions`} className="hover:underline">

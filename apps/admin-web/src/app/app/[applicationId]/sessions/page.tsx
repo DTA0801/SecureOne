@@ -26,7 +26,7 @@ export default async function AppSessionsPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={<Link href={`/app/${applicationId}/sessions`} className="hover:underline">Sessions</Link>}
         title="Sessions"

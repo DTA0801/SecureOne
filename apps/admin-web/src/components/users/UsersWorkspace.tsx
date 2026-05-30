@@ -193,7 +193,7 @@ export function UsersWorkspace({
         {filtered.length > 0 ? (
           <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-ui text-xs font-semibold uppercase tracking-wide text-faint">
                   <th className="px-4 py-3 font-semibold">User</th>
@@ -331,7 +331,7 @@ function UserListFooter({
   return (
     <div className="mt-auto border-t border-ui">
       {showQuickStart && (
-        <div className="grid gap-3 px-5 py-5 sm:grid-cols-3">
+        <div className="grid gap-3 px-5 py-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <QuickStartTile
             title="Invite a user"
             description="Send an invitation and assign roles for this application."

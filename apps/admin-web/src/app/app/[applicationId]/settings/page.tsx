@@ -16,7 +16,7 @@ export default async function AppSettingsPage({
   if (!app) notFound();
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={<Link href={`/app/${applicationId}/settings`} className="hover:underline">Settings</Link>}
         title="Settings"
