@@ -1,0 +1,55 @@
+import { cn } from "@/lib/cn";
+
+export type BadgeTone =
+  | "neutral"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "indigo";
+
+const TONES: Record<BadgeTone, string> = {
+  neutral: "bg-black/5 text-black/70 dark:bg-white/10 dark:text-white/70",
+  success: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  danger: "bg-red-500/15 text-red-700 dark:text-red-300",
+  info: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  indigo: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+};
+
+export function Badge({
+  children,
+  tone = "neutral",
+  dot = false,
+  className,
+}: {
+  children: React.ReactNode;
+  tone?: BadgeTone;
+  dot?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
+        TONES[tone],
+        className,
+      )}
+    >
+      {dot && (
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            tone === "success" && "bg-emerald-500",
+            tone === "warning" && "bg-amber-500",
+            tone === "danger" && "bg-red-500",
+            tone === "info" && "bg-sky-500",
+            tone === "indigo" && "bg-indigo-500",
+            tone === "neutral" && "bg-black/40 dark:bg-white/40",
+          )}
+        />
+      )}
+      {children}
+    </span>
+  );
+}

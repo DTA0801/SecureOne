@@ -1,0 +1,92 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { StatCard } from "@/components/ui/StatCard";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
+import { getAppsForTenant, getTenant, getUsersForTenant } from "@/lib/data";
+import { formatDate } from "@/lib/format";
+import { planTone, statusTone } from "@/lib/status";
+
+export default async function TenantDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const tenant = getTenant(id);
+  if (!tenant) notFound();
+
+  const apps = getAppsForTenant(tenant.id);
+  const users = getUsersForTenant(tenant.id);
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <PageHeader
+        breadcrumb={<Link href="/tenants" className="hover:underline">Tenants</Link>}
+        title={tenant.name}
+        description={`@${tenant.slug} · created ${formatDate(tenant.createdAt)}`}
+        actions={
+          <>
+            <Badge tone={planTone(tenant.plan)} className="capitalize">{tenant.plan}</Badge>
+            <Badge tone={statusTone(tenant.status)} dot className="capitalize">{tenant.status}</Badge>
+            <Button variant="secondary">Edit</Button>
+          </>
+        }
+      />
+
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Users" value={tenant.userCount.toLocaleString()} />
+        <StatCard label="Applications" value={tenant.appCount} />
+        <StatCard label="Plan" value={tenant.plan} />
+        <StatCard label="Status" value={tenant.status} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card padded={false}>
+          <CardHeader title="Applications" description={`${apps.length} registered`} action={<ButtonLink href="/applications" variant="ghost" size="sm">All</ButtonLink>} />
+          <Table>
+            <THead>
+              <tr><TH>Name</TH><TH>Type</TH><TH>Status</TH></tr>
+            </THead>
+            <TBody>
+              {apps.map((a) => (
+                <TR key={a.id}>
+                  <TD>
+                    <Link href={`/applications/${a.id}`} className="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">{a.name}</Link>
+                    <p className="font-mono text-xs text-black/45 dark:text-white/45">{a.clientId}</p>
+                  </TD>
+                  <TD><Badge tone="neutral" className="uppercase">{a.type}</Badge></TD>
+                  <TD><Badge tone={statusTone(a.status)} dot className="capitalize">{a.status}</Badge></TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </Card>
+
+        <Card padded={false}>
+          <CardHeader title="Recent users" description={`${users.length} shown`} action={<ButtonLink href="/users" variant="ghost" size="sm">All</ButtonLink>} />
+          <Table>
+            <THead>
+              <tr><TH>User</TH><TH>Status</TH><TH>MFA</TH></tr>
+            </THead>
+            <TBody>
+              {users.map((u) => (
+                <TR key={u.id}>
+                  <TD>
+                    <Link href={`/users/${u.id}`} className="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">{u.firstName} {u.lastName}</Link>
+                    <p className="text-xs text-black/45 dark:text-white/45">{u.email}</p>
+                  </TD>
+                  <TD><Badge tone={statusTone(u.status)} dot className="capitalize">{u.status}</Badge></TD>
+                  <TD>{u.mfaFactors.length > 0 ? <Badge tone="success">{u.mfaFactors.length} factor{u.mfaFactors.length > 1 ? "s" : ""}</Badge> : <Badge tone="warning">none</Badge>}</TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </Card>
+      </div>
+    </div>
+  );
+}
