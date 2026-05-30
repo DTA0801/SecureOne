@@ -8,7 +8,8 @@ Security is the product. This document lists non-negotiables and scalability pra
 |---|---|
 | Password hashing | **Argon2id** with tuned cost; rehash-on-login when params upgrade. Never MD5/SHA/bcrypt-only. |
 | Secrets at rest | Encrypt TOTP seeds, client secrets, API keys; **hash** refresh tokens & API keys (store hash only). MFA seeds encrypted with a KMS-managed key. |
-| Brute-force defense | Progressive delays, account lockout (`locked_until`), IP + device throttling, CAPTCHA on abuse. |
+| MFA | **Passkeys/FIDO2 first** (phishing-resistant); TOTP fallback; SMS/email OTP only when policy allows. Per-tenant `mfa_policy`, AAL tracking, attestation allow-lists, step-up for sensitive ops. Secure recovery never bypasses MFA. |
+| Brute-force defense | Progressive delays, account lockout (`locked_until`), IP + device throttling, CAPTCHA on abuse, leaked-password detection. |
 | Refresh tokens | Rotation + **reuse detection** → replay revokes the whole token family. |
 | Access tokens | Short TTL (5–15 min) + Redis-backed revocation for "log out everywhere." |
 | Signing keys | Rotation with overlapping keys in JWKS; private keys in KMS/Vault. |

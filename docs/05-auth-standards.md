@@ -4,14 +4,23 @@ SecureOne adopts the modern, consolidated standards set so existing OAuth/OIDC c
 
 ## Protocols
 
-| Standard | Use |
-|---|---|
-| **OAuth 2.1** | Consolidated best practices: PKCE everywhere, no implicit flow, no password grant |
-| **OpenID Connect (OIDC)** | Authentication, ID tokens, discovery (`/.well-known/openid-configuration`) |
-| **SAML 2.0** | Optional enterprise SSO via a separate, feature-flagged IdP module |
-| **SCIM 2.0** | User provisioning/deprovisioning (Phase 3) |
-| **WebAuthn / FIDO2** | Passkeys / hardware MFA (strategic direction) |
-| **TOTP (RFC 6238)** | App-based 2FA (first MFA factor implemented) |
+| Standard | Use | Phase |
+|---|---|---|
+| **OAuth 2.1** | Consolidated best practices: PKCE everywhere, no implicit flow, no password grant | MVP |
+| **OpenID Connect (OIDC)** | Authentication, ID tokens, discovery (`/.well-known/openid-configuration`) | MVP |
+| **WebAuthn / FIDO2** | Passkeys / hardware MFA (the strategic primary factor) | 2 |
+| **TOTP (RFC 6238)** | App-based 2FA fallback | 2 |
+| **SAML 2.0** | Enterprise SSO via a separate, feature-flagged IdP/brokering module | 3 |
+| **SCIM 2.0** | User provisioning/deprovisioning | 3 |
+| **Token Exchange (RFC 8693)** | Delegation / impersonation, service-to-service token swap | 2–3 |
+| **PAR (RFC 9126)** | Pushed Authorization Requests (tamper-proof request params) | 3 |
+| **DPoP (RFC 9449) / mTLS (RFC 8705)** | Sender-constrained (proof-of-possession) tokens | 3 |
+| **CIBA** | Decoupled / back-channel authentication | 3 |
+| **JARM** | Signed authorization responses | 3 |
+| **UMA 2.0** | User-managed access / resource sharing | 3 |
+| **FAPI 2.0** | Financial-grade / high-assurance client profile | 4 |
+
+See [Enterprise Capabilities](10-enterprise.md) for the full enterprise feature set; phases are defined in the [Roadmap](08-roadmap.md).
 
 ## Supported flows
 
@@ -21,6 +30,8 @@ SecureOne adopts the modern, consolidated standards set so existing OAuth/OIDC c
 | **Client Credentials** | Machine-to-machine / service accounts |
 | **Refresh Token (with rotation)** | Long-lived sessions |
 | **Device Authorization Grant** | CLIs / TVs (later) |
+| **CIBA** | Decoupled auth (approve on a second device) — Phase 3 |
+| **Token Exchange** | Delegation / impersonation between services — Phase 2–3 |
 
 > The Authorization Code flow with PKCE is the default for all interactive clients. The legacy Implicit and Resource Owner Password grants are **not** supported.
 
@@ -45,23 +56,49 @@ SecureOne adopts the modern, consolidated standards set so existing OAuth/OIDC c
 | `/userinfo` | OIDC user claims |
 | `/connect/logout` | RP-initiated logout |
 
-## MFA / 2FA
+## MFA / 2FA (graded, passkey-first)
 
-- **TOTP first**, then **WebAuthn/passkeys**.
-- **Recovery codes** mandatory (stored hashed, single-use).
-- TOTP seeds stored **encrypted with a KMS-managed key**, never plaintext.
-- MFA challenges held in **Redis** (short TTL).
+SecureOne treats MFA as a **graded ladder** and steers users toward phishing-resistant factors. Every factor is supported, but defaults and policies favor the strongest.
 
-## Federation (optional)
+| Tier | Factor | Notes |
+|---|---|---|
+| Weakest | **SMS / voice OTP** | Phishable + SIM-swap; **last-resort fallback only**, never default (NIST discourages). |
+| Basic | **Email OTP** | Only as strong as the mailbox; low-risk fallback / recovery. |
+| Good | **TOTP** (authenticator app) | No SIM-swap, but still phishable. Standard fallback. |
+| Better | **Push w/ number-matching** | Defeats MFA-fatigue bombing; still relay-phishable. |
+| **Best** | **WebAuthn / FIDO2 passkeys** | **Phishing-resistant** (origin-bound). The strategic primary factor; supports **passwordless** login. |
+| Highest | **Hardware FIDO2 keys / smart cards (PIV/CAC) + attestation** | Meets **NIST AAL3**; for admins / regulated tenants. |
+
+**Principles**
+- **Passkeys-first**: WebAuthn is the primary factor and can be the *entire* login (passwordless), not just a 2nd step.
+- **TOTP** as the standard fallback; **SMS / email OTP** offered only when policy explicitly allows.
+- **Recovery codes** mandatory at enrollment (stored hashed, single-use).
+- TOTP seeds and any factor secrets stored **encrypted with a KMS-managed key**, never plaintext.
+- MFA challenges held in **Redis** (short TTL); verification is **rate-limited + lockable**; TOTP has replay prevention + bounded drift window.
+
+**Enterprise controls**
+- **Phishing-resistant enforcement** — a tenant/role can require *only* passkeys/FIDO2, rejecting TOTP/SMS for admins or sensitive apps.
+- **Assurance levels (NIST 800-63B)** — track **AAL1/2/3**; emit `acr`/`amr` claims so relying apps can demand a level.
+- **WebAuthn attestation** — verify authenticator model (AAGUID); allow-list hardware keys, block unknown authenticators.
+- **Adaptive / step-up** — risk signals (new device, geo-velocity, IP reputation) trigger step-up; sensitive operations force re-auth via `max_age` / `acr_values`.
+- **Per-tenant/org/role MFA policy** — required factors, grace periods, remembered-device TTL, reauth intervals, synced-vs-device-bound passkey rules.
+
+**Secure recovery** — recovery requires a verified second factor or audited admin-assisted flow; **never** an email-only reset that silently bypasses MFA.
+
+Data model: see `mfa_factor` and `mfa_policy` in [Data Model](04-data-model.md#domain-5--mfa). Libraries: Yubico **java-webauthn-server** for WebAuthn/FIDO2, RFC 6238 for TOTP.
+
+## Federation & brokering (enterprise — Phase 3)
 
 - **SAML 2.0 IdP/SP** as a separate module behind a feature flag — kept out of the core so it never complicates the primary OIDC path.
-- External IdP logins (Google, GitHub, enterprise OIDC/SAML) link to `user_identity`.
+- **Identity brokering** from many external IdPs (enterprise OIDC, SAML, social) with **home-realm discovery** and **JIT provisioning**.
+- **LDAP / Active Directory** user federation (sync or on-demand, group→role mapping).
+- External IdP logins link to `user_identity`. Full detail in [Enterprise Capabilities](10-enterprise.md#1-identity-federation--brokering).
 
 ## Authorization model
 
 - **RBAC scoped per application/tenant**: `permission` (atomic) → `role` (bundle) → `user_role` (grant).
 - All checks flow through a **`PolicyEvaluator` interface**.
-- **Future:** ABAC/ReBAC via **OpenFGA** — a new `PolicyEvaluator` implementation, no caller changes.
+- **Future (enterprise):** ABAC/ReBAC via **OpenFGA**, **policy-as-code** (OPA/Cedar), and **UMA 2.0** resource sharing — all new `PolicyEvaluator` implementations, no caller changes. See [Enterprise Capabilities](10-enterprise.md#3-fine-grained-authorization-pdp--pep).
 
 ## Standards compliance targets
 

@@ -49,14 +49,16 @@ One central system provides:
 - **Tenant / organization support** — multi-tenancy with app-layer isolation (see [Architecture](03-architecture.md)).
 - **OAuth2 & OIDC** — Authorization Code + PKCE, Client Credentials, refresh-token rotation, discovery, JWKS.
 - **JWT access + refresh tokens** — short-lived signed JWTs; refresh tokens server-side and revocable.
-- **Optional SAML** — enterprise SSO via a separate, feature-flagged module.
-- **MFA/2FA** — TOTP first, then WebAuthn/passkeys; recovery codes.
+- **Optional SAML & identity brokering** — enterprise SSO + federation from external IdPs / LDAP / AD (Phase 3).
+- **MFA/2FA — passkeys-first** — phishing-resistant WebAuthn/FIDO2 (incl. passwordless), with TOTP, **SMS OTP**, **email OTP**, and push fallbacks; recovery codes; per-tenant MFA policy, AAL levels, and step-up.
 - **Password reset & email verification** — single-use, short-lived, hashed tokens.
 - **Audit logs & login history** — append-only audit trail + per-user login outcomes.
 - **API keys / service accounts** — M2M access mapped onto the same RBAC engine.
-- **Admin dashboard** — manage tenants, apps, users, roles, clients, sessions, audit.
-- **Developer docs & SDKs** — OpenAPI spec, a docs portal, and a TypeScript SDK.
+- **Admin dashboard & self-service portal** — manage tenants, apps, users, roles, clients, sessions, audit; end-user self-service for security/MFA/sessions.
+- **Developer docs & SDKs** — OpenAPI spec, a docs portal, and a TypeScript SDK (more in later phases).
 - **Flexible database setup** — PostgreSQL connection configured at install; the data layer is abstracted (repository interfaces) so other engines can be added later.
+
+> Beyond the core above, SecureOne has a full **enterprise capability roadmap** (governance/IGA, fine-grained authorization, adaptive auth, compliance, multi-region scale). See [Enterprise Capabilities](10-enterprise.md).
 
 ## Primary user personas
 

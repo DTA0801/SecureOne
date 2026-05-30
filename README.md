@@ -14,8 +14,8 @@ This repository currently contains the **planning, architecture, and design docu
 - Tenant / organization support (multi-tenancy)
 - OAuth 2.1 and OpenID Connect (OIDC)
 - JWT access tokens + refresh tokens (with rotation & reuse detection)
-- Optional SAML 2.0 federation
-- MFA/2FA (TOTP, then WebAuthn/passkeys)
+- Optional SAML 2.0 federation + identity brokering (LDAP/AD)
+- MFA/2FA — passkeys-first (WebAuthn/FIDO2, passwordless) with TOTP, SMS/email OTP & push fallbacks
 - Password reset & email verification
 - Audit logs & login history
 - API keys / service accounts for machine-to-machine access
@@ -54,6 +54,8 @@ Full rationale and the comparison of alternatives are in [docs/02-tech-stack.md]
 | 07 | [Security](docs/07-security.md) | Security best practices and non-negotiables |
 | 08 | [Roadmap](docs/08-roadmap.md) | Phased delivery plan (MVP → enterprise) |
 | 09 | [Installation](docs/09-installation.md) | Local setup, configuration, install-time DB selection |
+| 10 | [Enterprise Capabilities](docs/10-enterprise.md) | Federation, IGA, adaptive auth, compliance, scale (phased) |
+| 11 | [Admin Control Plane](docs/11-admin-control.md) | Admin scopes, feature toggles, auth-method & MFA control, full user control |
 | — | [Diagrams](docs/diagrams/README.md) | Mermaid + editable `.drawio` sources for all diagrams |
 | — | [Decision Records](docs/decisions/README.md) | ADRs — why key choices were made |
 

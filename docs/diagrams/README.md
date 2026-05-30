@@ -17,6 +17,8 @@ Every architecture/flow diagram exists in two forms:
 | Deployment — Production | [`deployment-production.drawio`](deployment-production.drawio) | [03-architecture](../03-architecture.md) |
 | Data-layer layering | [`data-layer-layering.drawio`](data-layer-layering.drawio) | [06-database](../06-database.md) |
 | Tenant isolation (defense in depth) | [`tenant-isolation.drawio`](tenant-isolation.drawio) | [06-database](../06-database.md), [03-architecture](../03-architecture.md) |
+| Enterprise capability map | [`enterprise-capability-map.drawio`](enterprise-capability-map.drawio) | [10-enterprise](../10-enterprise.md) |
+| Configuration inheritance | [`config-inheritance.drawio`](config-inheritance.drawio) | [11-admin-control](../11-admin-control.md) |
 
 ## Editing notes
 

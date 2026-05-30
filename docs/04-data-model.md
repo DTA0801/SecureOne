@@ -181,16 +181,52 @@ Maps to Spring's `OAuth2Authorization` (JDBC `OAuth2AuthorizationService`), exte
 
 ## Domain 5 — MFA
 
-### `mfa_factor`
-| id, user_id (FK) | UUID | |
-| type | VARCHAR | `TOTP / WEBAUTHN / RECOVERY_CODE` |
-| status | VARCHAR | `PENDING / ACTIVE` |
-| secret_encrypted | BYTEA | TOTP seed, **KMS-encrypted** |
-| credential_id, public_key | VARCHAR/BLOB | WebAuthn |
-| label | VARCHAR | |
-| created_at, last_used_at | TIMESTAMP | |
+MFA is a **graded, passkey-first** model (see [Auth Standards](05-auth-standards.md#mfa--2fa-graded-passkey-first)). The schema supports every factor option, while policy steers toward phishing-resistant ones.
 
-Recovery codes stored **hashed**, one row each, marked when consumed.
+### `mfa_factor`
+| Column | Type | Notes |
+|---|---|---|
+| id, user_id (FK) | UUID | |
+| type | VARCHAR | `PASSKEY / SECURITY_KEY / TOTP / PUSH / SMS / EMAIL / RECOVERY_CODE` |
+| status | VARCHAR | `PENDING / ACTIVE / REVOKED` |
+| aal | VARCHAR | assurance level reached: `AAL1 / AAL2 / AAL3` |
+| label / device_name | VARCHAR | user-friendly name |
+| secret_encrypted | BYTEA | TOTP seed / phone / email target — **KMS-encrypted** |
+| phishing_resistant | BOOLEAN | true for PASSKEY / SECURITY_KEY |
+| created_at, last_used_at | TIMESTAMP | |
+| **WebAuthn fields** | | (PASSKEY / SECURITY_KEY) |
+| credential_id | VARCHAR | base64url, unique |
+| public_key | BYTEA | COSE key |
+| aaguid | UUID | authenticator model (for attestation allow-lists) |
+| sign_count | BIGINT | clone-detection counter |
+| transports | JSON | `["internal","usb","nfc","ble"]` |
+| attestation_fmt | VARCHAR | e.g. `packed`, `none` |
+| backup_eligible / backup_state | BOOLEAN | synced-passkey signals |
+
+Recovery codes stored **hashed**, one row each, marked `consumed_at` when used.
+
+### `mfa_policy` (per tenant / org / role)
+| Column | Type | Notes |
+|---|---|---|
+| id, tenant_id (FK) | UUID | |
+| scope_type | VARCHAR | `TENANT / ORG / ROLE` |
+| scope_id | UUID | nullable (tenant-wide) |
+| required | BOOLEAN | MFA mandatory? |
+| min_aal | VARCHAR | `AAL1 / AAL2 / AAL3` |
+| allowed_factor_types | JSON | e.g. `["PASSKEY","SECURITY_KEY","TOTP"]` |
+| phishing_resistant_only | BOOLEAN | reject TOTP/SMS/email |
+| allow_synced_passkeys | BOOLEAN | device-bound vs cloud-synced |
+| allowed_aaguids | JSON | hardware-key allow-list (nullable = any) |
+| remembered_device_ttl | INT (seconds) | "trust this device" |
+| reauth_interval | INT (seconds) | step-up re-auth cadence |
+| created_at, updated_at | TIMESTAMP | |
+
+### `trusted_device` (remembered devices for adaptive auth)
+| id, user_id (FK), tenant_id | UUID | |
+| device_fingerprint | VARCHAR | hashed |
+| label, ip, user_agent | VARCHAR | |
+| trusted_until | TIMESTAMP | |
+| created_at, last_seen_at | TIMESTAMP | |
 
 ---
 
@@ -243,6 +279,73 @@ Append-only enforced at the app layer (no update/delete repository methods); arc
 
 ---
 
+## Domain 8 — Administration & Configuration
+
+Backs the [Admin Control Plane](11-admin-control.md): admin scopes, layered settings, feature flags, and selectable auth methods. Settings resolve **Platform → Tenant → Org → App** with lockable overrides.
+
+### `admin_scope` (catalog of admin capabilities)
+| id | UUID | PK |
+| key | VARCHAR | e.g. `users:write`, `mfa:reset`, `feature:toggle`; unique |
+| description | VARCHAR | |
+
+### `admin_role` (bundle of admin scopes)
+| id, tenant_id (nullable for platform) | UUID | |
+| name | VARCHAR | unique within boundary |
+| boundary_type | VARCHAR | `PLATFORM / TENANT / ORG` |
+| is_system | BOOLEAN | |
+
+### `admin_role_scope` (join)
+| admin_role_id (FK), admin_scope_id (FK) | UUID | PK pair |
+
+### `admin_assignment` (who is an admin, and where)
+| id | UUID | PK |
+| principal_type | VARCHAR | `USER / PLATFORM_ADMIN` |
+| principal_id | UUID | |
+| admin_role_id (FK) | UUID | |
+| boundary_type | VARCHAR | `PLATFORM / TENANT / ORG` |
+| boundary_id | UUID | nullable for platform |
+| granted_by, granted_at, expires_at | UUID/TIMESTAMP | |
+
+### `setting` (layered key/value configuration)
+| id | UUID | PK |
+| scope_type | VARCHAR | `PLATFORM / TENANT / ORG / APP` |
+| scope_id | UUID | nullable for platform |
+| key | VARCHAR | e.g. `session.idle_timeout`, `password.min_length` |
+| value | JSON | typed value |
+| locked | BOOLEAN | if true, lower scopes cannot override |
+| updated_by, updated_at | UUID/TIMESTAMP | |
+| | | unique `(scope_type, scope_id, key)` |
+
+### `feature_flag` (enable/disable capabilities per scope)
+| id | UUID | PK |
+| scope_type, scope_id | VARCHAR/UUID | as above |
+| key | VARCHAR | e.g. `self_registration`, `social_login`, `saml`, `ldap`, `passwordless` |
+| enabled | BOOLEAN | |
+| locked | BOOLEAN | platform lock |
+| plan_gated | BOOLEAN | availability tied to tenant plan |
+| updated_by, updated_at | UUID/TIMESTAMP | |
+
+### `auth_method_config` (selectable authentication methods)
+| id, tenant_id (FK) | UUID | |
+| scope_type, scope_id | VARCHAR/UUID | tenant or app |
+| method | VARCHAR | `PASSWORD / PASSKEY / SOCIAL / SAML / LDAP / MAGIC_LINK / OTP` |
+| enabled | BOOLEAN | |
+| is_default | BOOLEAN | |
+| display_order | INT | login-page ordering |
+| config | JSON | method-specific (e.g. provider id) |
+
+### `password_policy` (per tenant / org)
+| id, tenant_id (FK) | UUID | |
+| scope_type, scope_id | VARCHAR/UUID | |
+| min_length, history_count | INT | |
+| require_upper, require_number, require_symbol | BOOLEAN | |
+| max_age_days | INT | nullable (no expiry) |
+| breach_check | BOOLEAN | leaked-password detection |
+
+> **Admin actions are audited** via `audit_log` (Domain 7). Sensitive actions (impersonation, disabling MFA enforcement, editing locked settings) require step-up; **self-lockout protection** and the **≥1 super-admin** invariant are enforced in the service layer.
+
+---
+
 ## Indexing & key-design cheat-sheet
 
 - `user_account`: unique `(tenant_id, lower(email))`; index `(tenant_id, status)`.
@@ -250,4 +353,6 @@ Append-only enforced at the app layer (no update/delete repository methods); arc
 - `refresh_token`: index `(token_hash)`, `(family_id)`, `(user_id)`.
 - `audit_log` / `login_history`: composite `(tenant_id, created_at)`; consider monthly partitioning.
 - `oauth_client`: unique `(client_id)`.
+- `setting`: unique `(scope_type, scope_id, key)`; `feature_flag`: unique `(scope_type, scope_id, key)`.
+- `admin_assignment`: index `(principal_type, principal_id)`, `(boundary_type, boundary_id)`.
 - All tenant-scoped tables: lead composite indexes with `tenant_id`.

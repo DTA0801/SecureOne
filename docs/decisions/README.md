@@ -14,3 +14,6 @@ Each ADR: Context → Decision → Consequences → Status.
 | [0003](0003-tenant-isolation.md) | Tenant isolation: layered (app-layer + PostgreSQL RLS) | Accepted |
 | [0004](0004-frontend-nextjs.md) | Frontend: Next.js + TypeScript | Accepted |
 | [0005](0005-rbac-with-policy-layer.md) | RBAC now, ABAC/ReBAC-ready via PolicyEvaluator | Accepted |
+| [0006](0006-passkey-first-mfa.md) | Passkey-first, phishing-resistant MFA | Accepted |
+| [0007](0007-enterprise-scope-phasing.md) | Enterprise capabilities are phased, not in the MVP | Accepted |
+| [0008](0008-admin-control-layered-config.md) | Admin control via admin scopes + layered, lockable config | Accepted |
