@@ -1,0 +1,38 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="roles-permissions" name="Roles &amp; Permissions">
+    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1040" pageHeight="520" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="usr" value="user_account" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="60" width="160" height="50" as="geometry" /></mxCell>
+        <mxCell id="svc" value="service_account" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="160" width="160" height="50" as="geometry" /></mxCell>
+
+        <mxCell id="ur" value="user_role&#10;(grant; many-to-many)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" vertex="1" parent="1"><mxGeometry x="290" y="110" width="170" height="50" as="geometry" /></mxCell>
+
+        <mxCell id="role" value="role&#10;(is_composite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="560" y="110" width="160" height="60" as="geometry" /></mxCell>
+
+        <mxCell id="rc" value="role_composite&#10;(parent_role_id, child_role_id)&#10;role hierarchy" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" vertex="1" parent="1"><mxGeometry x="555" y="10" width="180" height="60" as="geometry" /></mxCell>
+
+        <mxCell id="rp" value="role_permission&#10;(many-to-many)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" vertex="1" parent="1"><mxGeometry x="560" y="240" width="160" height="50" as="geometry" /></mxCell>
+
+        <mxCell id="perm" value="permission&#10;(e.g. invoice:read)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="820" y="235" width="170" height="60" as="geometry" /></mxCell>
+
+        <mxCell id="grp" value="group (Phase 3)&#10;nested groups" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="290" y="330" width="170" height="50" as="geometry" /></mxCell>
+        <mxCell id="gr" value="group_role (Phase 3)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="560" y="335" width="160" height="40" as="geometry" /></mxCell>
+
+        <mxCell id="ea" value="has many" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;" edge="1" parent="1" source="usr" target="ur"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eb" value="has many" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;" edge="1" parent="1" source="svc" target="ur"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ec" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="ur" target="role"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ed" value="bundles" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;" edge="1" parent="1" source="role" target="rp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ee" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="perm" target="rp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ef" value="parent of" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;" edge="1" parent="1" source="role" target="rc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="eg" value="includes child role" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;fontSize=10;" edge="1" parent="1" source="rc" target="role"><mxGeometry relative="1" as="geometry"><mxPoint x="520" y="40" as="sourcePoint" /></mxGeometry></mxCell>
+        <mxCell id="eh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;strokeColor=#999999;" edge="1" parent="1" source="grp" target="gr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ei" value="maps to role" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;dashed=1;strokeColor=#999999;fontSize=10;" edge="1" parent="1" source="gr" target="role"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="legend" value="Solid = MVP RBAC (multi-role + composite).  Dashed grey = Phase 3 (groups).  Effective permissions = transitive union of direct + child + group roles." style="text;html=1;align=left;fontSize=10;fontStyle=2;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="40" y="430" width="960" height="30" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

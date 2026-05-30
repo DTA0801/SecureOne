@@ -19,6 +19,7 @@ Every architecture/flow diagram exists in two forms:
 | Tenant isolation (defense in depth) | [`tenant-isolation.drawio`](tenant-isolation.drawio) | [06-database](../06-database.md), [03-architecture](../03-architecture.md) |
 | Enterprise capability map | [`enterprise-capability-map.drawio`](enterprise-capability-map.drawio) | [10-enterprise](../10-enterprise.md) |
 | Configuration inheritance | [`config-inheritance.drawio`](config-inheritance.drawio) | [11-admin-control](../11-admin-control.md) |
+| Roles & permissions (multi-role + composite) | [`roles-permissions.drawio`](roles-permissions.drawio) | [04-data-model](../04-data-model.md) |
 
 ## Editing notes
 

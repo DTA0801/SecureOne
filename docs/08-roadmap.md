@@ -15,7 +15,7 @@ A phased plan from MVP to enterprise. The architecture is production-shaped from
 - [ ] JWT issuance + JWKS + refresh-token rotation & reuse detection
 - [ ] User management (CRUD, lifecycle: active/disabled/locked/pending)
 - [ ] Multi-tenancy (shared schema + `tenant_id` + Hibernate filters + PostgreSQL RLS + isolation tests)
-- [ ] Per-application RBAC (roles, permissions, `PolicyEvaluator`)
+- [ ] Per-application RBAC (roles, permissions, `PolicyEvaluator`) — multi-role + **composite/hierarchical roles** (`role_composite`, cycle-safe resolution)
 - [ ] Hosted login UI + basic admin dashboard
 - [ ] Password reset + email verification
 - [ ] Platform-admin (super-admin) tier

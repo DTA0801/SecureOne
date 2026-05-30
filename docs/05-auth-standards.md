@@ -97,6 +97,7 @@ Data model: see `mfa_factor` and `mfa_policy` in [Data Model](04-data-model.md#d
 ## Authorization model
 
 - **RBAC scoped per application/tenant**: `permission` (atomic) → `role` (bundle) → `user_role` (grant).
+- **Multi-role + composite/hierarchical roles**: a principal can hold many roles, and a **composite role can include other roles** (`role_composite`). Effective permissions = transitive union of direct + child + group-derived roles, resolved at token issuance.
 - All checks flow through a **`PolicyEvaluator` interface**.
 - **Future (enterprise):** ABAC/ReBAC via **OpenFGA**, **policy-as-code** (OPA/Cedar), and **UMA 2.0** resource sharing — all new `PolicyEvaluator` implementations, no caller changes. See [Enterprise Capabilities](10-enterprise.md#3-fine-grained-authorization-pdp--pep).
 

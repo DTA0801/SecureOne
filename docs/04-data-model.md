@@ -130,6 +130,23 @@ Separate table with its own credentials + MFA, so a tenant-scoped bug cannot esc
 
 ## Domain 3 — Authorization (RBAC, app-scoped)
 
+The model is **multi-role and many-to-many** end to end: a principal can hold many roles, each role bundles many permissions, and **composite roles** can include other roles (hierarchy). A principal's **effective permissions = the transitive union** of direct roles + composite (child) roles + group-derived roles (Phase 3).
+
+> Editable source: [`diagrams/roles-permissions.drawio`](diagrams/roles-permissions.drawio)
+
+```mermaid
+erDiagram
+    USER_ACCOUNT ||--o{ USER_ROLE : "has many"
+    SERVICE_ACCOUNT ||--o{ USER_ROLE : "has many"
+    ROLE ||--o{ USER_ROLE : "granted via"
+    ROLE ||--o{ ROLE_PERMISSION : bundles
+    PERMISSION ||--o{ ROLE_PERMISSION : "included in"
+    ROLE ||--o{ ROLE_COMPOSITE : "parent of"
+    ROLE ||--o{ ROLE_COMPOSITE : "child of"
+    GROUP ||--o{ GROUP_ROLE : "maps to (Phase 3)"
+    ROLE ||--o{ GROUP_ROLE : "via group"
+```
+
 ### `permission`
 | id, application_id (FK) | UUID | |
 | key | VARCHAR | e.g. `invoice:read`; unique `(application_id, key)` |
@@ -140,19 +157,29 @@ Separate table with its own credentials + MFA, so a tenant-scoped bug cannot esc
 | name | VARCHAR | unique `(application_id, name)` |
 | description | VARCHAR | |
 | is_default, is_system | BOOLEAN | |
+| is_composite | BOOLEAN | true if it includes child roles |
 
-### `role_permission` (join)
+### `role_permission` (join — role ↔ permission, many-to-many)
 | role_id (FK), permission_id (FK) | UUID | PK `(role_id, permission_id)` |
 
-### `user_role` (assignment / grant)
+### `role_composite` (self-referential — role hierarchy)
+| parent_role_id (FK → role) | UUID | the composite role |
+| child_role_id (FK → role) | UUID | role it includes |
+| | | PK `(parent_role_id, child_role_id)` |
+
+- A composite role **inherits all permissions of its child roles**, recursively (e.g. `super-editor` → `editor` + `reviewer`).
+- **Cycle prevention**: insertion is rejected if it would create a loop (parent cannot be its own ancestor); resolution is depth-limited and memoized.
+- Effective permissions are resolved at **token-issuance time** and cached; the `PolicyEvaluator` flattens the hierarchy.
+
+### `user_role` (assignment / grant — principal ↔ role, many-to-many)
 | id | UUID | PK |
 | user_id (FK, nullable) | UUID | one of user/service |
 | service_account_id (FK, nullable) | UUID | |
 | role_id (FK) | UUID | |
 | granted_by, granted_at | UUID/TIMESTAMP | |
-| expires_at | TIMESTAMP | nullable |
+| expires_at | TIMESTAMP | nullable (time-bound grant) |
 
-> Permission checks go through a **`PolicyEvaluator` interface** — RBAC today, ABAC/ReBAC (OpenFGA) later with no caller changes.
+> A principal may hold **multiple roles across multiple applications** simultaneously. Permission checks go through a **`PolicyEvaluator` interface** — flat + composite RBAC today, ABAC/ReBAC (OpenFGA) later with no caller changes. Group-based role mapping (`group_role`) arrives with organizations/groups in Phase 3.
 
 ---
 
@@ -350,6 +377,7 @@ Backs the [Admin Control Plane](11-admin-control.md): admin scopes, layered sett
 
 - `user_account`: unique `(tenant_id, lower(email))`; index `(tenant_id, status)`.
 - `user_role`: index `(user_id)`, `(role_id)`, `(service_account_id)`.
+- `role_composite`: PK `(parent_role_id, child_role_id)`; index `(child_role_id)` for reverse lookups.
 - `refresh_token`: index `(token_hash)`, `(family_id)`, `(user_id)`.
 - `audit_log` / `login_history`: composite `(tenant_id, created_at)`; consider monthly partitioning.
 - `oauth_client`: unique `(client_id)`.
