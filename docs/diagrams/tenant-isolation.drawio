@@ -1,0 +1,24 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="tenant-isolation" name="Tenant Isolation (Defense in Depth)">
+    <mxGraphModel dx="900" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="560" pageHeight="640" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="req" value="Authenticated request&#10;(carries tenant context)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="150" y="30" width="240" height="50" as="geometry" /></mxCell>
+        <mxCell id="l1" value="Layer 1 - tenant_id on every tenant-scoped table" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="120" y="120" width="300" height="50" as="geometry" /></mxCell>
+        <mxCell id="l2" value="Layer 2 - Hibernate @Filter auto-applies the tenant predicate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="120" y="210" width="300" height="50" as="geometry" /></mxCell>
+        <mxCell id="l3" value="Layer 3 - PostgreSQL Row-Level Security (DB-enforced backstop)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="120" y="300" width="300" height="50" as="geometry" /></mxCell>
+        <mxCell id="data" value="Tenant-scoped rows" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="200" y="400" width="140" height="80" as="geometry" /></mxCell>
+
+        <mxCell id="ci" value="Layer 4 - CI cross-tenant isolation tests&#10;(tenant A must NOT read tenant B)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="120" y="540" width="300" height="60" as="geometry" /></mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="req" target="l1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="l1" target="l2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="l2" target="l3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="l3" target="data"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" value="continuously guards" style="endArrow=block;dashed=1;html=1;strokeColor=#9673a6;fontColor=#9673a6;fontSize=10;" edge="1" parent="1" source="ci" target="data"><mxGeometry relative="1" as="geometry"><mxPoint x="400" y="470" as="targetPoint" /></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

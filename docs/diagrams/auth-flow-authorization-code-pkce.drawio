@@ -1,0 +1,31 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="auth-code-pkce" name="Authorization Code + PKCE">
+    <mxGraphModel dx="900" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="h_user" value="User" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="60" y="20" width="120" height="40" as="geometry" /></mxCell>
+        <mxCell id="h_app" value="Integrated App" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="260" y="20" width="120" height="40" as="geometry" /></mxCell>
+        <mxCell id="h_auth" value="auth-server (SAS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="460" y="20" width="120" height="40" as="geometry" /></mxCell>
+        <mxCell id="h_login" value="Hosted Login UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="660" y="20" width="120" height="40" as="geometry" /></mxCell>
+
+        <mxCell id="ll_user" style="endArrow=none;dashed=1;html=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="60" as="sourcePoint" /><mxPoint x="120" y="540" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="ll_app" style="endArrow=none;dashed=1;html=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="320" y="60" as="sourcePoint" /><mxPoint x="320" y="540" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="ll_auth" style="endArrow=none;dashed=1;html=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="520" y="60" as="sourcePoint" /><mxPoint x="520" y="540" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="ll_login" style="endArrow=none;dashed=1;html=1;strokeColor=#999999;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="720" y="60" as="sourcePoint" /><mxPoint x="720" y="540" as="targetPoint" /></mxGeometry></mxCell>
+
+        <mxCell id="m1" value="1. /oauth2/authorize (PKCE challenge)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="320" y="100" as="sourcePoint" /><mxPoint x="520" y="100" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m2" value="2. redirect to login" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="520" y="140" as="sourcePoint" /><mxPoint x="720" y="140" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m3" value="3. credentials + MFA" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="180" as="sourcePoint" /><mxPoint x="720" y="180" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m4" value="4. authenticated" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="720" y="220" as="sourcePoint" /><mxPoint x="520" y="220" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m5" value="5. authorization code (redirect)" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="520" y="260" as="sourcePoint" /><mxPoint x="320" y="260" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m6" value="6. /oauth2/token (code + PKCE verifier)" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="320" y="300" as="sourcePoint" /><mxPoint x="520" y="300" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m7" value="7. ID + access + refresh tokens" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="520" y="340" as="sourcePoint" /><mxPoint x="320" y="340" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m8" value="8. GET /oauth2/jwks" style="html=1;endArrow=block;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="320" y="380" as="sourcePoint" /><mxPoint x="520" y="380" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m9" value="9. JWKS public keys" style="html=1;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="520" y="420" as="sourcePoint" /><mxPoint x="320" y="420" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="m10" value="10. validate JWT signature" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1"><mxGeometry x="245" y="450" width="150" height="40" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

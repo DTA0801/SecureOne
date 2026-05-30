@@ -54,6 +54,7 @@ Full rationale and the comparison of alternatives are in [docs/02-tech-stack.md]
 | 07 | [Security](docs/07-security.md) | Security best practices and non-negotiables |
 | 08 | [Roadmap](docs/08-roadmap.md) | Phased delivery plan (MVP → enterprise) |
 | 09 | [Installation](docs/09-installation.md) | Local setup, configuration, install-time DB selection |
+| — | [Diagrams](docs/diagrams/README.md) | Mermaid + editable `.drawio` sources for all diagrams |
 | — | [Decision Records](docs/decisions/README.md) | ADRs — why key choices were made |
 
 ---

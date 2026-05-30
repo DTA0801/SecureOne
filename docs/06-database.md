@@ -16,21 +16,26 @@ IAM data is deeply relational: users, roles, permissions, grants, hierarchical t
 
 ## Layering: ORM **and** Repository (complementary, not either/or)
 
+> Editable source: [`diagrams/data-layer-layering.drawio`](diagrams/data-layer-layering.drawio)
+
+```mermaid
+flowchart TB
+    DOM["Domain / Services"] -- "depends on" --> PORT["Repository Interfaces (ports)<br/><i>domain never imports the ORM</i>"]
+    PORT -- "implemented by" --> IMPL["JPA / Hibernate Repository Impls"]
+    IMPL --> HIB["Hibernate (PostgreSQL dialect)"]
+    HIB --> PG[("PostgreSQL")]
+
+    classDef authc fill:#ffe6cc,stroke:#d79b00,color:#000;
+    classDef uic fill:#d5e8d4,stroke:#82b366,color:#000;
+    classDef client fill:#dae8fc,stroke:#6c8ebf,color:#000;
+    classDef store fill:#f8cecc,stroke:#b85450,color:#000;
+    class DOM authc;
+    class PORT uic;
+    class IMPL,HIB client;
+    class PG store;
 ```
-Domain / Services
-        │ depends on
-        ▼
-Repository Interfaces (ports)        ← domain never imports the ORM
-        │
-        ▼
-JPA/Hibernate Repository Impls
-        │
-        ▼
-Hibernate (PostgreSQL dialect)
-        │
-        ▼
-   PostgreSQL
-```
+
+> The **ports** layer is the swap point: adding a future engine means new adapters below this line, with the domain untouched.
 
 - **ORM = JPA/Hibernate.** Maps `UUID`, `jsonb`, timestamps, etc. cleanly.
 - **Repository pattern.** Domain logic depends on repository *interfaces*, not Hibernate — keeps the ORM/engine swappable and makes unit testing trivial (in-memory fakes). This is the abstraction that would let a future engine be added.
@@ -67,6 +72,28 @@ db/migration/
 - Liquibase (DB-agnostic XML/YAML) remains an alternative if multi-engine support is ever revived.
 
 ## Tenant isolation (defense in depth)
+
+> Editable source: [`diagrams/tenant-isolation.drawio`](diagrams/tenant-isolation.drawio)
+
+```mermaid
+flowchart TB
+    REQ["Authenticated request<br/>(carries tenant context)"] --> L1["Layer 1 — tenant_id on every tenant-scoped table"]
+    L1 --> L2["Layer 2 — Hibernate @Filter auto-applies the tenant predicate"]
+    L2 --> L3["Layer 3 — PostgreSQL Row-Level Security (DB-enforced backstop)"]
+    L3 --> DATA[("Tenant-scoped rows")]
+    CI["Layer 4 — CI cross-tenant isolation tests<br/>(tenant A must NOT read tenant B)"] -. "continuously guards" .-> DATA
+
+    classDef client fill:#dae8fc,stroke:#6c8ebf,color:#000;
+    classDef uic fill:#d5e8d4,stroke:#82b366,color:#000;
+    classDef authc fill:#ffe6cc,stroke:#d79b00,color:#000;
+    classDef store fill:#f8cecc,stroke:#b85450,color:#000;
+    classDef sec fill:#e1d5e7,stroke:#9673a6,color:#000;
+    class REQ client;
+    class L1,L2 uic;
+    class L3 authc;
+    class DATA store;
+    class CI sec;
+```
 
 PostgreSQL lets us enforce isolation at multiple layers:
 

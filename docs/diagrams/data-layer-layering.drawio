@@ -1,0 +1,23 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="data-layer-layering" name="Data Layer Layering">
+    <mxGraphModel dx="900" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="500" pageHeight="560" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="dom" value="Domain / Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="140" y="40" width="220" height="50" as="geometry" /></mxCell>
+        <mxCell id="port" value="Repository Interfaces (ports)&#10;domain never imports the ORM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="120" y="140" width="260" height="55" as="geometry" /></mxCell>
+        <mxCell id="impl" value="JPA / Hibernate Repository Impls" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="120" y="245" width="260" height="50" as="geometry" /></mxCell>
+        <mxCell id="hib" value="Hibernate (PostgreSQL dialect)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="120" y="345" width="260" height="50" as="geometry" /></mxCell>
+        <mxCell id="pg" value="PostgreSQL" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="190" y="445" width="120" height="80" as="geometry" /></mxCell>
+
+        <mxCell id="e1" value="depends on" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;" edge="1" parent="1" source="dom" target="port"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" value="implemented by" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;fontSize=10;" edge="1" parent="1" source="port" target="impl"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="impl" target="hib"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;" edge="1" parent="1" source="hib" target="pg"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="note" value="Swap point for a future engine:&#10;add adapters here, domain untouched" style="text;html=1;align=left;fontSize=10;fontStyle=2;fontColor=#82b366;" vertex="1" parent="1"><mxGeometry x="390" y="150" width="110" height="60" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
