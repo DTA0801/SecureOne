@@ -1,0 +1,20 @@
+{
+  "name": "secureone",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SecureOne — centralized Identity & Access Management platform (JS workspaces).",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "start": "turbo run start",
+    "admin-web": "pnpm --filter admin-web"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  }
+}

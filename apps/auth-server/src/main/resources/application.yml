@@ -1,0 +1,72 @@
+spring:
+  application:
+    name: auth-server
+
+  datasource:
+    url: ${SECUREONE_DB_URL:jdbc:postgresql://localhost:5432/secureone}
+    username: ${SECUREONE_DB_USERNAME:secureone}
+    password: ${SECUREONE_DB_PASSWORD:secureone}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema. Tighten to "validate" once entities fully match migrations.
+      ddl-auto: none
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/postgresql
+
+  data:
+    redis:
+      url: ${SECUREONE_REDIS_URL:redis://localhost:6379}
+
+  # Dev login user (replace with real user store in Phase 1)
+  security:
+    user:
+      name: ${SECUREONE_DEV_USER:admin}
+      password: ${SECUREONE_DEV_PASSWORD:admin}
+    oauth2:
+      authorizationserver:
+        issuer: ${SECUREONE_ISSUER_URL:http://localhost:9000}
+        client:
+          demo-client:
+            require-authorization-consent: true
+            registration:
+              client-id: demo-client
+              client-secret: "{noop}demo-secret"
+              client-authentication-methods:
+                - client_secret_basic
+              authorization-grant-types:
+                - authorization_code
+                - refresh_token
+                - client_credentials
+              redirect-uris:
+                - http://127.0.0.1:3000/login/oauth2/code/secureone
+              post-logout-redirect-uris:
+                - http://127.0.0.1:3000
+              scopes:
+                - openid
+                - profile
+
+server:
+  port: ${SECUREONE_PORT:9000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+info:
+  app:
+    name: SecureOne Auth Server
+    description: Centralized IAM platform — authorization server
+    version: 0.0.1-SNAPSHOT
