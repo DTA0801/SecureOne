@@ -12,7 +12,7 @@ export function Card({
   return (
     <section
       className={cn(
-        "rounded-xl border border-black/10 bg-white/70 dark:border-white/10 dark:bg-white/5",
+        "rounded-[var(--ui-radius)] border border-ui bg-ui-surface text-[var(--ui-text)]",
         padded && "p-5",
         className,
       )}
@@ -32,11 +32,11 @@ export function CardHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-black/5 px-5 py-4 dark:border-white/5">
+    <div className="flex items-start justify-between gap-4 border-b border-ui px-5 py-4">
       <div>
-        <h2 className="text-sm font-semibold">{title}</h2>
+        <h2 className="text-sm font-semibold text-[var(--ui-text)]">{title}</h2>
         {description && (
-          <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">{description}</p>
+          <p className="mt-0.5 text-xs text-muted">{description}</p>
         )}
       </div>
       {action}

@@ -46,7 +46,7 @@ export function AuditTable({ events }: { events: AuditEvent[] }) {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
                 filter === t.id
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-brand text-on-brand"
                   : "text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10",
               )}
             >
@@ -77,17 +77,17 @@ export function AuditTable({ events }: { events: AuditEvent[] }) {
         <TBody>
           {filtered.map((e) => (
             <TR key={e.id}>
-              <TD className="whitespace-nowrap text-black/55 dark:text-white/55">{formatDateTime(e.timestamp)}</TD>
+              <TD className="whitespace-nowrap text-muted">{formatDateTime(e.timestamp)}</TD>
               <TD>{e.actor}</TD>
-              <TD><code className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{e.action}</code></TD>
-              <TD className="text-black/70 dark:text-white/70">{e.target}</TD>
-              <TD className="font-mono text-xs text-black/55 dark:text-white/55">{e.ip}</TD>
+              <TD><code className="font-mono text-xs text-brand">{e.action}</code></TD>
+              <TD className="text-soft">{e.target}</TD>
+              <TD className="font-mono text-xs text-muted">{e.ip}</TD>
               <TD><Badge tone={e.result === "success" ? "success" : "danger"} dot>{e.result}</Badge></TD>
             </TR>
           ))}
           {filtered.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45">
+              <td colSpan={6} className="px-4 py-10 text-center text-sm text-faint">
                 No events match your filters.
               </td>
             </tr>

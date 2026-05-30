@@ -7,7 +7,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ApplicationFormModal } from "@/components/forms/ApplicationFormModal";
 import { applicationDeleteAction } from "@/lib/actions";
-import { getApplication, getTenants, tenantName } from "@/lib/data";
+import { getApplication } from "@/lib/api/applications";
+import { getTenant } from "@/lib/api/tenants";
 import { formatDate } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 
@@ -17,16 +18,17 @@ export default async function ApplicationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const app = getApplication(id);
+  const app = await getApplication(id);
   if (!app) notFound();
-  const tenants = getTenants();
+  const tenant = await getTenant(app.tenantId);
+  const tenants = tenant ? [tenant] : [];
 
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
         breadcrumb={<Link href="/applications" className="hover:underline">Applications</Link>}
         title={app.name}
-        description={`${tenantName(app.tenantId)} · created ${formatDate(app.createdAt)}`}
+        description={`${tenant?.name ?? app.tenantId} · created ${formatDate(app.createdAt)}`}
         actions={
           <>
             <Badge tone={statusTone(app.status)} dot className="capitalize">{app.status}</Badge>
@@ -63,7 +65,7 @@ export default async function ApplicationDetailPage({
               value={
                 <div className="flex flex-wrap gap-1.5">
                   {app.grantTypes.map((g) => (
-                    <span key={g} className="rounded bg-indigo-500/10 px-2 py-0.5 font-mono text-xs text-indigo-600 dark:text-indigo-400">{g}</span>
+                    <span key={g} className="rounded bg-brand-muted px-2 py-0.5 font-mono text-xs text-brand">{g}</span>
                   ))}
                 </div>
               }

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign in · SecureOne</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 24rem; margin: 3rem auto; padding: 0 1rem; }
+      label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; }
+      input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; box-sizing: border-box; border-radius: 8px; border: 1px solid #ccc; }
+      button { width: 100%; padding: 0.6rem; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+      .links { margin-top: 1rem; font-size: 0.875rem; }
+      .links a { color: #4f46e5; }
+    </style>
+  </head>
+  <body>
+    <h1>Sign in</h1>
+    <p id="methods"></p>
+    <form method="post" action="/login">
+      <label for="tenant">Tenant slug</label>
+      <input id="tenant" name="tenant" value="acme" required />
+      <label for="email">Email</label>
+      <input id="email" type="email" required />
+      <input type="hidden" name="username" id="username" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password" />
+      <button type="submit">Sign in with password</button>
+    </form>
+    <div class="links">
+      <p><a href="/account/forgot-password.html">Forgot password</a></p>
+      <p><a href="/account/magic-link.html">Sign in with magic link</a></p>
+    </div>
+    <script>
+      fetch("/api/v1/auth/methods")
+        .then((r) => r.json())
+        .then((methods) => {
+          const available = methods.filter((m) => m.available).map((m) => m.name);
+          document.getElementById("methods").textContent =
+            "Available: " + (available.length ? available.join(", ") : "none");
+        });
+      document.querySelector("form").addEventListener("submit", (e) => {
+        const tenant = document.getElementById("tenant").value.trim();
+        const email = document.getElementById("email").value.trim();
+        document.getElementById("username").value = tenant + ":" + email;
+      });
+    </script>
+  </body>
+</html>

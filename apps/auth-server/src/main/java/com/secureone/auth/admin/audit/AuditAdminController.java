@@ -1,0 +1,46 @@
+package com.secureone.auth.admin.audit;
+
+import com.secureone.auth.audit.AuditLog;
+import com.secureone.auth.audit.AuditLogRepository;
+import com.secureone.auth.util.JsonMaps;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/admin/v1/audit")
+public class AuditAdminController {
+
+    private final AuditLogRepository repository;
+
+    public AuditAdminController(AuditLogRepository repository) {
+        this.repository = repository;
+    }
+
+    public record AuditEventResponse(
+            UUID id,
+            Instant timestamp,
+            String actor,
+            String action,
+            String target,
+            String ip,
+            String result) {}
+
+    @GetMapping
+    public List<AuditEventResponse> list() {
+        return repository.findRecent().stream().map(this::toResponse).toList();
+    }
+
+    private AuditEventResponse toResponse(AuditLog log) {
+        Map<String, Object> meta = log.getMetadata() != null ? log.getMetadata() : Map.of();
+        String actor = JsonMaps.stringVal(meta, "actorEmail", "system");
+        String target = JsonMaps.stringVal(meta, "targetLabel", log.getTargetType() != null ? log.getTargetType() : "—");
+        String result = JsonMaps.stringVal(meta, "result", "success");
+        return new AuditEventResponse(
+                log.getId(), log.getCreatedAt(), actor, log.getAction(), target, log.getIp(), result);
+    }
+}

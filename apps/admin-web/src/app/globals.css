@@ -1,26 +1,139 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f7f7f8;
-  --foreground: #171717;
+/* Dark mode follows Settings → Appearance (data-theme), not only OS preference */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+:root,
+[data-theme="light"] {
+  --ui-primary: #4f46e5;
+  --ui-accent: #06b6d4;
+  --ui-background: #f7f7f8;
+  --ui-surface: #ffffff;
+  --ui-text: #171717;
+  --ui-radius: 12px;
+  --ui-font-scale: 1;
+  --ui-notify-info-bg: #ffffff;
+  --ui-notify-info-text: #171717;
+  --ui-notify-info-border: #4f46e533;
+  --ui-notify-success-bg: #ecfdf5;
+  --ui-notify-success-text: #065f46;
+  --ui-notify-success-border: #10b98166;
+  --ui-notify-error-bg: #fef2f2;
+  --ui-notify-error-text: #991b1b;
+  --ui-notify-error-border: #ef444466;
+  --background: var(--ui-background);
+  --foreground: var(--ui-text);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ui-primary: var(--ui-primary);
+  --color-ui-accent: var(--ui-accent);
+  --color-ui-surface: var(--ui-surface);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --radius-ui: var(--ui-radius);
 }
 
 body {
-  background: var(--background);
+  background: var(--ui-page-fill, var(--background));
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-size: calc(1rem * var(--ui-font-scale, 1));
+  min-height: 100vh;
+}
+
+/* Semantic text — always contrasts with --ui-surface (no light/dark split classes) */
+@utility text-muted {
+  color: color-mix(in srgb, var(--ui-text) 58%, transparent);
+}
+
+@utility text-faint {
+  color: color-mix(in srgb, var(--ui-text) 42%, transparent);
+}
+
+@utility text-soft {
+  color: color-mix(in srgb, var(--ui-text) 72%, transparent);
+}
+
+/** Primary button / active nav background (pair with text-on-brand). */
+@utility bg-brand {
+  background: var(--ui-brand-fill, var(--ui-primary));
+}
+
+/** Label text on bg-brand elements — driven by Settings → Button label text. */
+@utility text-on-brand {
+  color: var(--ui-button-text, #ffffff);
+}
+
+@utility text-brand {
+  color: var(--ui-primary);
+}
+
+@utility text-accent {
+  color: var(--ui-accent);
+}
+
+@utility bg-brand-muted {
+  background-color: color-mix(in srgb, var(--ui-primary) 14%, transparent);
+}
+
+@utility bg-ui-surface {
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+@utility text-ui {
+  color: var(--ui-text);
+}
+
+@utility bg-ui-elevated {
+  background-color: color-mix(in srgb, var(--ui-text) 4%, var(--ui-surface));
+}
+
+@utility border-ui {
+  border-color: color-mix(in srgb, var(--ui-text) 12%, transparent);
+}
+
+@utility divide-ui {
+  --tw-divide-color: color-mix(in srgb, var(--ui-text) 10%, transparent);
+}
+
+@utility ring-brand {
+  --tw-ring-color: color-mix(in srgb, var(--ui-primary) 28%, transparent);
+}
+
+@utility link-brand {
+  @apply font-medium hover:text-brand;
+}
+
+@utility placeholder-ui {
+  &::placeholder {
+    color: color-mix(in srgb, var(--ui-text) 38%, transparent);
+  }
+}
+
+@utility toast-info {
+  border-color: var(--ui-notify-info-border);
+  background-color: color-mix(in srgb, var(--ui-notify-info-bg) 92%, transparent);
+  color: var(--ui-notify-info-text);
+}
+
+@utility toast-success {
+  border-color: var(--ui-notify-success-border);
+  background-color: color-mix(in srgb, var(--ui-notify-success-bg) 92%, transparent);
+  color: var(--ui-notify-success-text);
+}
+
+@utility toast-error {
+  border-color: var(--ui-notify-error-border);
+  background-color: color-mix(in srgb, var(--ui-notify-error-bg) 92%, transparent);
+  color: var(--ui-notify-error-text);
 }

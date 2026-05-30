@@ -1,9 +1,14 @@
 package com.secureone.auth.config;
 
+import com.secureone.auth.authn.DevAdminAuthenticationProvider;
+import com.secureone.auth.authn.LoginSuccessHandler;
+import com.secureone.auth.authn.TenantPasswordAuthenticationProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
@@ -49,16 +54,46 @@ public class SecurityConfig {
     }
 
     @Bean
+    AuthenticationManager authenticationManager(
+            DevAdminAuthenticationProvider devAdminProvider,
+            TenantPasswordAuthenticationProvider tenantPasswordProvider) {
+        return new ProviderManager(devAdminProvider, tenantPasswordProvider);
+    }
+
+    @Bean
     @Order(2)
-    SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain defaultSecurityFilterChain(
+            HttpSecurity http,
+            AuthenticationManager authenticationManager,
+            LoginSuccessHandler loginSuccessHandler)
+            throws Exception {
         http
                 .cors(Customizer.withDefaults())
+                .authenticationManager(authenticationManager)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**", "/actuator/info", "/api/info").permitAll()
+                        .requestMatchers(
+                                "/actuator/health/**",
+                                "/actuator/info",
+                                "/api/info",
+                                "/api/v1/account/**",
+                                "/api/v1/auth/**",
+                                "/account/**",
+                                "/login",
+                                "/login.html")
+                        .permitAll()
                         .requestMatchers("/api/admin/v1/**").authenticated()
                         .anyRequest().authenticated())
+                .csrf(csrf -> csrf.ignoringRequestMatchers(
+                        "/api/admin/v1/**",
+                        "/api/v1/account/**",
+                        "/api/v1/auth/**",
+                        "/login"))
                 .httpBasic(Customizer.withDefaults())
-                .formLogin(Customizer.withDefaults());
+                .formLogin(form -> form
+                        .loginPage("/login.html")
+                        .loginProcessingUrl("/login")
+                        .successHandler(loginSuccessHandler)
+                        .permitAll());
         return http.build();
     }
 }

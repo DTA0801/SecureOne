@@ -31,7 +31,12 @@ public class UserAdminController {
     }
 
     @GetMapping
-    public List<UserResponse> list(@RequestParam(required = false) UUID tenantId) {
+    public List<UserResponse> list(
+            @RequestParam(required = false) UUID tenantId,
+            @RequestParam(required = false) Boolean adminOnly) {
+        if (Boolean.TRUE.equals(adminOnly)) {
+            return service.listWithAdminRole(tenantId);
+        }
         if (tenantId != null) {
             return service.listByTenant(tenantId);
         }
@@ -63,5 +68,30 @@ public class UserAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
+    }
+
+    @PostMapping("/{id}/password/reset-email")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> sendPasswordResetEmail(@PathVariable UUID id) {
+        service.sendPasswordResetEmail(id);
+        return Map.of("status", "sent", "message", "Password reset email sent to the user.");
+    }
+
+    @PostMapping("/{id}/email/resend-verification")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> resendVerification(@PathVariable UUID id) {
+        service.resendVerificationEmail(id);
+        return Map.of("status", "sent", "message", "Verification email sent to the user.");
+    }
+
+    @PostMapping("/{id}/email/verify")
+    public UserResponse markEmailVerified(@PathVariable UUID id) {
+        return service.markEmailVerified(id);
+    }
+
+    @PostMapping("/{id}/mfa/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetMfa(@PathVariable UUID id) {
+        service.resetMfa(id);
     }
 }

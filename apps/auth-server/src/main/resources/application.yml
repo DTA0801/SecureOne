@@ -24,6 +24,16 @@ spring:
     redis:
       url: ${SECUREONE_REDIS_URL:redis://localhost:6379}
 
+  # SMTP — defaults to MailHog in docker-compose (localhost:1025). For production, set SECUREONE_SMTP_* env vars.
+  mail:
+    host: ${SECUREONE_SMTP_HOST:localhost}
+    port: ${SECUREONE_SMTP_PORT:1025}
+    username: ${SECUREONE_SMTP_USERNAME:}
+    password: ${SECUREONE_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SECUREONE_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SECUREONE_SMTP_STARTTLS:false}
+
   # Dev login user (replace with real user store in Phase 1)
   security:
     user:
@@ -54,6 +64,9 @@ spring:
 
 server:
   port: ${SECUREONE_PORT:9000}
+
+secureone:
+  public-base-url: ${SECUREONE_PUBLIC_BASE_URL:http://localhost:9000}
 
 management:
   endpoints:

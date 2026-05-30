@@ -1,0 +1,237 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { FieldRow, Input } from "@/components/ui/Field";
+import { Toggle } from "@/components/ui/Toggle";
+import { useToast } from "@/components/ui/Toast";
+import { AdminRecipientsPicker } from "@/components/settings/AdminRecipientsPicker";
+import {
+  loadAdminRecipientOptionsAction,
+  loadNotificationsAction,
+  saveNotificationsAction,
+  type AdminRecipientOption,
+  type RecipientUserOption,
+} from "@/lib/actions/settings";
+import type { EmailSettings, NotificationSettings } from "@/lib/api/settings";
+
+export function NotificationsSettings() {
+  const { toast } = useToast();
+  const [notifications, setNotifications] = useState<NotificationSettings>({});
+  const [email, setEmail] = useState<EmailSettings>({});
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
+  const [adminOptions, setAdminOptions] = useState<AdminRecipientOption[]>([]);
+  const [allUsers, setAllUsers] = useState<RecipientUserOption[]>([]);
+  const [testTo, setTestTo] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    Promise.all([loadNotificationsAction(), loadAdminRecipientOptionsAction()]).then(
+      ([{ notifications: n, email: e, error }, { adminOptions: admins, allUsers: users, error: optionsError }]) => {
+        setNotifications(n);
+        setEmail(e);
+        setSelectedEmails((n.adminRecipients ?? []).map((x) => x.trim().toLowerCase()));
+        setAdminOptions(admins);
+        setAllUsers(users);
+        if (error || optionsError) {
+          const msg = [error, optionsError].filter(Boolean).join(" ");
+          setMessage(msg);
+          toast(msg, "error");
+        } else {
+          toast("Notification settings loaded", "success");
+        }
+        setLoaded(true);
+      },
+    );
+  }, [toast]);
+
+  const persist = useCallback(async () => {
+    setSaving(true);
+    const result = await saveNotificationsAction({
+      notifications: { ...notifications, adminRecipients: selectedEmails },
+      email,
+    });
+    const msg = result.ok ? "Saved to database." : (result.error ?? "Save failed");
+    setMessage(msg);
+    toast(msg, result.ok ? "success" : "error");
+    setSaving(false);
+  }, [notifications, email, selectedEmails, toast]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      persist();
+    }, 800);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [notifications, email, selectedEmails, loaded, persist]);
+
+  async function sendTest() {
+    setMessage(null);
+    try {
+      const { sendTestEmailAction } = await import("@/lib/actions/settings");
+      const result = await sendTestEmailAction(testTo);
+      const msg = result.ok
+        ? `Test email sent to ${testTo}. Check MailHog at http://localhost:8025 if using dev SMTP.`
+        : (result.error ?? "Send failed");
+      setMessage(msg);
+      toast(msg, result.ok ? "success" : "error");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Send failed");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {message && (
+        <p className="rounded-lg bg-brand-muted px-3 py-2 text-sm text-brand">{message}</p>
+      )}
+
+      <Card padded={false}>
+        <CardHeader
+          title="Notification channels"
+          description={
+            notifications.smtpConfigured
+              ? "SMTP is configured. Changes auto-save to the database."
+              : "SMTP not detected — start MailHog (docker compose) or set SECUREONE_SMTP_HOST."
+          }
+        />
+        <ul className={`divide-y divide-ui ${!loaded ? "pointer-events-none opacity-60" : ""}`}>
+          <SettingRow
+            label="Email notifications (admin)"
+            hint="Platform alerts to admin recipients below"
+            checked={!!notifications.emailEnabled}
+            onChange={(v) => {
+              setNotifications({ ...notifications, emailEnabled: v });
+              toast(v ? "Admin email notifications enabled" : "Admin email notifications disabled", "info");
+            }}
+          />
+          <SettingRow
+            label="User email (transactional)"
+            hint="Verify email, password reset, and password-changed messages to end users"
+            checked={notifications.userEmailEnabled !== false}
+            onChange={(v) => {
+              setNotifications({ ...notifications, userEmailEnabled: v });
+              toast(v ? "User transactional email enabled" : "User transactional email disabled", "info");
+            }}
+          />
+          <SettingRow
+            label="Push notifications"
+            hint="Mobile / web push (coming soon)"
+            checked={!!notifications.pushEnabled}
+            onChange={(v) => {
+              setNotifications({ ...notifications, pushEnabled: v });
+              toast("Push notifications updated", "info");
+            }}
+          />
+          <SettingRow
+            label="Audit alerts"
+            hint="Email on high-risk admin actions"
+            checked={!!notifications.auditAlertsEnabled}
+            onChange={(v) => {
+              setNotifications({ ...notifications, auditAlertsEnabled: v });
+              toast("Audit alerts updated", "info");
+            }}
+          />
+          <SettingRow
+            label="Security alerts"
+            hint="Failed logins, lockouts, MFA changes"
+            checked={!!notifications.securityAlertsEnabled}
+            onChange={(v) => {
+              setNotifications({ ...notifications, securityAlertsEnabled: v });
+              toast("Security alerts updated", "info");
+            }}
+          />
+        </ul>
+        <div className="space-y-4 border-t border-ui p-5">
+          <FieldRow
+            label="Admin recipients"
+            hint="Expand to pick admin users or add any email"
+          >
+            <AdminRecipientsPicker
+              adminOptions={adminOptions}
+              allUsers={allUsers}
+              selectedEmails={selectedEmails}
+              onChange={(emails) => {
+                setSelectedEmails(emails);
+                toast(
+                  emails.length
+                    ? `${emails.length} recipient${emails.length === 1 ? "" : "s"} selected`
+                    : "Recipients cleared",
+                  "info",
+                );
+              }}
+              disabled={!loaded}
+            />
+          </FieldRow>
+        </div>
+      </Card>
+
+      <Card padded={false}>
+        <CardHeader title="Email sender" description="From address shown on outbound mail" />
+        <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+          <FieldRow label="From name">
+            <Input value={email.fromName ?? ""} onChange={(e) => setEmail({ ...email, fromName: e.target.value })} />
+          </FieldRow>
+          <FieldRow label="From address">
+            <Input
+              value={email.fromAddress ?? ""}
+              onChange={(e) => setEmail({ ...email, fromAddress: e.target.value })}
+            />
+          </FieldRow>
+          <FieldRow label="Reply-to">
+            <Input value={email.replyTo ?? ""} onChange={(e) => setEmail({ ...email, replyTo: e.target.value })} />
+          </FieldRow>
+        </div>
+      </Card>
+
+      <Card padded={false}>
+        <CardHeader title="Send test email" description="Verify SMTP (does not change saved settings)" />
+        <div className="flex flex-wrap items-end gap-3 p-5">
+          <div className="min-w-[240px] flex-1">
+            <FieldRow label="Recipient">
+              <Input
+                type="email"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </FieldRow>
+          </div>
+          <Button onClick={sendTest} disabled={!testTo}>
+            Send test
+          </Button>
+          {saving && <span className="text-xs text-muted">Saving…</span>}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SettingRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-4 px-5 py-4">
+      <div>
+        <p className="text-sm font-medium text-[var(--ui-text)]">{label}</p>
+        <p className="text-xs text-muted">{hint}</p>
+      </div>
+      <Toggle checked={checked} onChange={onChange} aria-label={label} />
+    </li>
+  );
+}

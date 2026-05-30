@@ -15,14 +15,14 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-black/10 bg-white/60 px-3 py-5 dark:border-white/10 dark:bg-white/5">
+    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-ui bg-ui-surface px-3 py-5">
       <Link href="/" className="mb-6 flex items-center gap-2.5 px-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-sm">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-on-brand text-sm font-bold shadow-sm">
           S1
         </div>
         <div>
-          <p className="text-sm font-semibold leading-tight">{APP_NAME}</p>
-          <p className="text-xs text-black/50 dark:text-white/50">{APP_TAGLINE}</p>
+          <p className="text-sm font-semibold leading-tight text-[var(--ui-text)]">{APP_NAME}</p>
+          <p className="text-xs text-muted">{APP_TAGLINE}</p>
         </div>
       </Link>
 
@@ -32,7 +32,7 @@ export function Sidebar() {
           if (items.length === 0) return null;
           return (
             <div key={group}>
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-black/35 dark:text-white/35">
+              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-faint">
                 {group}
               </p>
               <div className="flex flex-col gap-0.5">
@@ -45,8 +45,8 @@ export function Sidebar() {
                       className={cn(
                         "rounded-lg px-2.5 py-1.5 text-sm transition-colors",
                         active
-                          ? "bg-indigo-600 font-medium text-white"
-                          : "text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10",
+                          ? "bg-brand text-on-brand font-medium"
+                          : "text-soft hover:bg-ui-elevated",
                       )}
                     >
                       {item.label}
@@ -59,9 +59,9 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-4 rounded-lg border border-black/10 px-3 py-2 dark:border-white/10">
-        <p className="text-[11px] text-black/40 dark:text-white/40">SecureOne Admin</p>
-        <p className="text-[11px] text-black/40 dark:text-white/40">v0.0.1 · MVP</p>
+      <div className="mt-4 rounded-lg border border-ui px-3 py-2">
+        <p className="text-[11px] text-faint">SecureOne Admin</p>
+        <p className="text-[11px] text-faint">v0.0.1 · MVP</p>
       </div>
     </aside>
   );

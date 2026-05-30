@@ -97,11 +97,43 @@ SECUREONE_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 SECUREONE_BOOTSTRAP_ADMIN_PASSWORD=change-me-now
 ```
 
-## 8. Verify
+## 8. Email & notifications (dev)
+
+`deploy/docker-compose.yml` includes **MailHog** (SMTP `1025`, web UI `8025`). With the stack running, open **Settings → Notifications** in the admin UI, save recipients, and use **Send test** — messages appear in MailHog, not a real inbox.
+
+Two channels are enabled when SMTP is up:
+
+| Channel | Setting | Who receives |
+|--------|---------|----------------|
+| **Admin / operational** | Email notifications + Security alerts + Admin recipients | Platform operators |
+| **User transactional** | User email (transactional) | End users (verify email, password reset, password changed) |
+
+**Try user flows (dev):**
+
+| Flow | URL / API | Dev credentials |
+|------|-----------|-----------------|
+| Password login | http://localhost:9000/login.html | Tenant `acme`, email `sarah.chen@acme.com`, password `SecureOne123!` (username sent as `acme:sarah.chen@acme.com`) |
+| Magic link | http://localhost:9000/account/magic-link.html | Same tenant + email; link in MailHog |
+| Forgot password | http://localhost:9000/account/forgot-password.html | `POST /api/v1/account/password/forgot` |
+| Reset password | MailHog link → `/account/reset-password.html?token=…` | `POST /api/v1/account/password/reset` |
+| Set password (invite) | MailHog link → `/account/set-password.html?token=…` | New users without a credential |
+| Verify email | MailHog → `GET /api/v1/account/email/verify?token=…` | |
+| Enabled methods | `GET /api/v1/auth/methods` | Lists `available` (enabled + implemented) |
+| Admin triggers | **Users → user detail → Email & password** | Resend verification, send reset, mark verified, reset MFA |
+| Auth settings | **Settings → Authentication / MFA / Password / Flags** | Persisted in `platform_setting` (`auth_methods`, `password_policy`, `feature_flags`) |
+
+Passkeys, TOTP, SMS/email OTP, push, Google/GitHub/OIDC/SAML/LDAP, and self-registration are stored in settings with `implemented: false` until Phase 2/3.
+
+Set `SECUREONE_PUBLIC_BASE_URL` if links must point at a host other than `http://localhost:9000`.
+
+For production, point SMTP at your provider (e.g. SendGrid, SES) via `SECUREONE_SMTP_*` and set notification toggles in the same Settings tab (stored in `platform_setting` in Postgres).
+
+## 9. Verify
 
 - Discovery: `GET http://localhost:9000/.well-known/openid-configuration`
 - JWKS: `GET http://localhost:9000/oauth2/jwks`
 - Admin UI: `http://localhost:3000`
+- MailHog (dev): `http://localhost:8025`
 
 ## Production deployment (summary)
 
@@ -119,5 +151,6 @@ SECUREONE_BOOTSTRAP_ADMIN_PASSWORD=change-me-now
 | `SECUREONE_ISSUER_URL` | OIDC issuer / public base URL |
 | `SECUREONE_JWT_KEY_SOURCE` | `local` / `kms` / `vault` |
 | `SECUREONE_ENCRYPTION_KEY` | Key for encrypting MFA seeds / secrets |
-| `SECUREONE_MAIL_*` | Email provider config |
+| `SECUREONE_SMTP_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` | Outbound email (dev default: MailHog on `localhost:1025`, UI at `http://localhost:8025`) |
+| `SECUREONE_DEV_USER` / `SECUREONE_DEV_PASSWORD` | HTTP Basic for admin API (used by admin-web server actions) |
 | `SECUREONE_BOOTSTRAP_ADMIN_*` | First-run super-admin |

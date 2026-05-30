@@ -6,15 +6,15 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { UserFormModal } from "@/components/forms/UserFormModal";
 import { listUsers } from "@/lib/api/users";
 import { listTenants } from "@/lib/api/tenants";
-import { getRoles, roleName } from "@/lib/data";
+import { listRoles } from "@/lib/api/roles";
+import { roleName } from "@/lib/data";
 import { initials, timeAgo } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
-  const [users, tenants] = await Promise.all([listUsers(), listTenants()]);
-  const roles = getRoles();
+  const [users, tenants, roles] = await Promise.all([listUsers(), listTenants(), listRoles()]);
   const tenantMap = new Map(tenants.map((t) => [t.id, t.name]));
 
   return (
@@ -48,16 +48,16 @@ export default async function UsersPage() {
             <TR key={u.id}>
               <TD>
                 <Link href={`/users/${u.id}`} className="group flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-muted text-xs font-semibold text-brand">
                     {initials(`${u.firstName} ${u.lastName}`)}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-medium group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{u.firstName} {u.lastName}</p>
-                    <p className="truncate text-xs text-black/45 dark:text-white/45">{u.email}</p>
+                    <p className="font-medium group-hover:text-brand">{u.firstName} {u.lastName}</p>
+                    <p className="truncate text-xs text-faint">{u.email}</p>
                   </div>
                 </Link>
               </TD>
-              <TD className="text-black/55 dark:text-white/55">{tenantMap.get(u.tenantId) ?? u.tenantId}</TD>
+              <TD className="text-muted">{tenantMap.get(u.tenantId) ?? u.tenantId}</TD>
               <TD>
                 <div className="flex flex-wrap gap-1">
                   {u.roleIds.map((r) => (
@@ -67,7 +67,7 @@ export default async function UsersPage() {
               </TD>
               <TD>{u.mfaFactors.length > 0 ? <Badge tone="success" dot>{u.mfaFactors.length}</Badge> : <Badge tone="warning">none</Badge>}</TD>
               <TD><Badge tone={statusTone(u.status)} dot className="capitalize">{u.status}</Badge></TD>
-              <TD className="text-black/55 dark:text-white/55">{timeAgo(u.lastLoginAt)}</TD>
+              <TD className="text-muted">{timeAgo(u.lastLoginAt)}</TD>
             </TR>
           ))}
         </TBody>

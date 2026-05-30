@@ -11,7 +11,7 @@ import { TenantFormModal } from "@/components/forms/TenantFormModal";
 import { tenantDeleteAction } from "@/lib/actions";
 import { listUsers } from "@/lib/api/users";
 import { getTenant } from "@/lib/api/tenants";
-import { getAppsForTenant } from "@/lib/data";
+import { listApplications } from "@/lib/api/applications";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
 
@@ -24,7 +24,7 @@ export default async function TenantDetailPage({
   const tenant = await getTenant(id);
   if (!tenant) notFound();
 
-  const apps = getAppsForTenant(tenant.id);
+  const apps = await listApplications(tenant.id);
   const users = await listUsers(tenant.id);
 
   return (
@@ -68,7 +68,7 @@ export default async function TenantDetailPage({
               {apps.map((a) => (
                 <TR key={a.id}>
                   <TD>
-                    <Link href={`/applications/${a.id}`} className="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">{a.name}</Link>
+                    <Link href={`/applications/${a.id}`} className="link-brand">{a.name}</Link>
                     <p className="font-mono text-xs text-black/45 dark:text-white/45">{a.clientId}</p>
                   </TD>
                   <TD><Badge tone="neutral" className="uppercase">{a.type}</Badge></TD>
@@ -89,7 +89,7 @@ export default async function TenantDetailPage({
               {users.map((u) => (
                 <TR key={u.id}>
                   <TD>
-                    <Link href={`/users/${u.id}`} className="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">{u.firstName} {u.lastName}</Link>
+                    <Link href={`/users/${u.id}`} className="link-brand">{u.firstName} {u.lastName}</Link>
                     <p className="text-xs text-black/45 dark:text-white/45">{u.email}</p>
                   </TD>
                   <TD><Badge tone={statusTone(u.status)} dot className="capitalize">{u.status}</Badge></TD>

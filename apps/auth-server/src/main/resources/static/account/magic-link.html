@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Magic link · SecureOne</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 24rem; margin: 3rem auto; padding: 0 1rem; }
+      input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; box-sizing: border-box; }
+      button { width: 100%; padding: 0.6rem; background: #4f46e5; color: #fff; border: none; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Magic link sign-in</h1>
+    <form id="form">
+      <label>Tenant slug</label>
+      <input id="tenant" value="acme" required />
+      <label>Email</label>
+      <input id="email" type="email" required />
+      <button type="submit">Send sign-in link</button>
+    </form>
+    <p id="status"></p>
+    <script>
+      const params = new URLSearchParams(location.search);
+      if (params.get("token")) {
+        location.href = "/api/v1/account/magic-link/verify?token=" + encodeURIComponent(params.get("token"));
+      }
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const res = await fetch("/api/v1/account/magic-link/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantSlug: document.getElementById("tenant").value,
+            email: document.getElementById("email").value,
+          }),
+        });
+        const data = await res.json();
+        document.getElementById("status").textContent = data.message || "Check your email (MailHog in dev).";
+      });
+    </script>
+  </body>
+</html>

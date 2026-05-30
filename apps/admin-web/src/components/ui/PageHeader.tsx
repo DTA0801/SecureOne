@@ -11,12 +11,12 @@ export function PageHeader({
 }) {
   return (
     <header className="mb-6">
-      {breadcrumb && <div className="mb-2 text-xs text-black/40 dark:text-white/40">{breadcrumb}</div>}
+      {breadcrumb && <div className="mb-2 text-xs text-faint">{breadcrumb}</div>}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--ui-text)]">{title}</h1>
           {description && (
-            <p className="mt-1 text-sm text-black/50 dark:text-white/50">{description}</p>
+            <p className="mt-1 text-sm text-muted">{description}</p>
           )}
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}

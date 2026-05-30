@@ -12,6 +12,8 @@ public final class UserAdminDtos {
 
     private UserAdminDtos() {}
 
+    public record MfaFactorResponse(String id, String type, String label, boolean verified) {}
+
     public record UserResponse(
             UUID id,
             UUID tenantId,
@@ -22,6 +24,7 @@ public final class UserAdminDtos {
             String status,
             boolean emailVerified,
             List<String> roleIds,
+            List<MfaFactorResponse> mfaFactors,
             Instant lastLoginAt,
             Instant createdAt) {}
 
@@ -31,12 +34,14 @@ public final class UserAdminDtos {
             @Size(max = 150) String username,
             @Size(max = 150) String firstName,
             @Size(max = 150) String lastName,
-            @Size(max = 32) String status) {}
+            @Size(max = 32) String status,
+            List<UUID> roleIds) {}
 
     public record UserUpdateRequest(
             @NotBlank @Email String email,
             @Size(max = 150) String username,
             @Size(max = 150) String firstName,
             @Size(max = 150) String lastName,
-            @Size(max = 32) String status) {}
+            @Size(max = 32) String status,
+            List<UUID> roleIds) {}
 }

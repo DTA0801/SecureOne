@@ -8,4 +8,6 @@ public interface ApplicationRepository extends JpaRepository<Application, UUID> 
     long countByTenantId(UUID tenantId);
 
     List<Application> findByTenantIdOrderByCreatedAtDesc(UUID tenantId);
+
+    java.util.Optional<Application> findByTenantIdAndSlug(UUID tenantId, String slug);
 }

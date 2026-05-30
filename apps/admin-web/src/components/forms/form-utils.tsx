@@ -60,18 +60,18 @@ export function CheckboxGroup({
       {options.map((o) => (
         <label
           key={o.value}
-          className="flex cursor-pointer items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-sm hover:bg-black/[0.02] dark:border-white/10 dark:hover:bg-white/[0.03]"
+          className="flex cursor-pointer items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-sm hover:bg-ui-elevated dark:border-white/10 dark:hover:bg-white/[0.03]"
         >
           <input
             type="checkbox"
             name={name}
             value={o.value}
             defaultChecked={selected.includes(o.value)}
-            className="h-4 w-4 accent-indigo-600"
+            className="h-4 w-4 accent-[var(--ui-primary)]"
           />
           <span className="min-w-0">
             <span className="block truncate">{o.label}</span>
-            {o.hint && <span className="block truncate text-xs text-black/40 dark:text-white/40">{o.hint}</span>}
+            {o.hint && <span className="block truncate text-xs text-faint">{o.hint}</span>}
           </span>
         </label>
       ))}

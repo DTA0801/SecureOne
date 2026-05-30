@@ -14,12 +14,12 @@ export function StatCard({
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-black/10 bg-white/70 p-5 dark:border-white/10 dark:bg-white/5">
+    <div className="rounded-[var(--ui-radius)] border border-ui bg-ui-surface p-5 text-[var(--ui-text)]">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-black/45 dark:text-white/45">
+        <p className="text-xs font-medium uppercase tracking-wide text-faint">
           {label}
         </p>
-        {icon && <span className="text-black/30 dark:text-white/30">{icon}</span>}
+        {icon && <span className="text-faint">{icon}</span>}
       </div>
       <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
       <div className="mt-1 flex items-center gap-2 text-xs">
@@ -35,7 +35,7 @@ export function StatCard({
             {delta.positive ? "▲" : "▼"} {delta.value}
           </span>
         )}
-        {hint && <span className="text-black/40 dark:text-white/40">{hint}</span>}
+        {hint && <span className="text-faint">{hint}</span>}
       </div>
     </div>
   );

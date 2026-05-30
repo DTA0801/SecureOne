@@ -2,15 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { resetUserMfa } from "./data";
 import {
-  createApplication,
-  createRole,
-  deleteApplication,
-  deleteRole,
-  resetUserMfa,
-  updateApplication,
-  updateRole,
-} from "./data";
+  createApplicationApi,
+  deleteApplicationApi,
+  updateApplicationApi,
+} from "./api/applications";
+import { createRoleApi, deleteRoleApi, updateRoleApi } from "./api/roles";
 import {
   createTenantApi,
   deleteTenantApi,
@@ -21,9 +19,12 @@ import {
   deleteUserApi,
   setUserStatusApi,
   updateUserApi,
+  markUserEmailVerifiedApi,
+  resendUserVerificationEmailApi,
+  resetUserMfaApi,
+  sendUserPasswordResetEmailApi,
 } from "./api/users";
 import { ApiError } from "./api/client";
-import type { AppType, Status } from "./types";
 
 function actionError(e: unknown): FormState {
   if (e instanceof ApiError) return fail(e.message);
@@ -111,18 +112,24 @@ export async function applicationCreateAction(_prev: FormState, fd: FormData): P
   const tenantId = str(fd, "tenantId");
   if (!name) return fail("Name is required.");
   if (!tenantId) return fail("Tenant is required.");
-  createApplication({
-    name,
-    tenantId,
-    clientId: str(fd, "clientId"),
-    type: (str(fd, "type") || "web") as AppType,
-    status: (str(fd, "status") || "active") as Status,
-    grantTypes: list(fd, "grantTypes"),
-    scopes: list(fd, "scopes"),
-    redirectUris: list(fd, "redirectUris"),
-  });
-  revalidatePath("/applications");
-  return ok;
+  try {
+    await createApplicationApi({
+      name,
+      tenantId,
+      clientId: str(fd, "clientId"),
+      type: str(fd, "type") || "web",
+      status: str(fd, "status") || "active",
+      grantTypes: list(fd, "grantTypes"),
+      scopes: list(fd, "scopes"),
+      redirectUris: list(fd, "redirectUris"),
+    });
+    revalidatePath("/applications");
+    revalidatePath("/tenants");
+    revalidatePath("/audit");
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function applicationUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -130,23 +137,28 @@ export async function applicationUpdateAction(_prev: FormState, fd: FormData): P
   if (!id) return fail("Missing application id.");
   const name = str(fd, "name");
   if (!name) return fail("Name is required.");
-  updateApplication(id, {
-    name,
-    type: str(fd, "type") as AppType,
-    status: str(fd, "status") as Status,
-    grantTypes: list(fd, "grantTypes"),
-    scopes: list(fd, "scopes"),
-    redirectUris: list(fd, "redirectUris"),
-  });
-  revalidatePath("/applications");
-  revalidatePath(`/applications/${id}`);
-  return ok;
+  try {
+    await updateApplicationApi(id, {
+      name,
+      type: str(fd, "type") || "web",
+      status: str(fd, "status") || "active",
+      grantTypes: list(fd, "grantTypes"),
+      scopes: list(fd, "scopes"),
+      redirectUris: list(fd, "redirectUris"),
+    });
+    revalidatePath("/applications");
+    revalidatePath(`/applications/${id}`);
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function applicationDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) deleteApplication(id);
+  if (id) await deleteApplicationApi(id);
   revalidatePath("/applications");
+  revalidatePath("/audit");
   redirect("/applications");
 }
 
@@ -207,7 +219,7 @@ export async function userDeleteAction(fd: FormData): Promise<void> {
 
 export async function userResetMfaAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) resetUserMfa(id);
+  if (id) await resetUserMfaApi(id);
   revalidatePath(`/users/${id}`);
 }
 
@@ -220,24 +232,46 @@ export async function userSetStatusAction(fd: FormData): Promise<void> {
   revalidatePath("/tenants");
 }
 
+export async function userSendPasswordResetEmailAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  if (id) await sendUserPasswordResetEmailApi(id);
+  revalidatePath(`/users/${id}`);
+}
+
+export async function userResendVerificationEmailAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  if (id) await resendUserVerificationEmailApi(id);
+  revalidatePath(`/users/${id}`);
+}
+
+export async function userMarkEmailVerifiedAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  if (id) await markUserEmailVerifiedApi(id);
+  revalidatePath(`/users/${id}`);
+}
+
 // ---- Roles ----
 
 export async function roleCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const name = str(fd, "name");
   const tenantId = str(fd, "tenantId");
+  const applicationId = str(fd, "applicationId");
   if (!name) return fail("Name is required.");
   if (!tenantId) return fail("Tenant is required.");
-  const isComposite = str(fd, "isComposite") === "on";
-  createRole({
-    name,
-    tenantId,
-    description: str(fd, "description"),
-    isComposite,
-    permissionIds: isComposite ? [] : list(fd, "permissionIds"),
-    childRoleIds: isComposite ? list(fd, "childRoleIds") : [],
-  });
-  revalidatePath("/roles");
-  return ok;
+  if (!applicationId) return fail("Application is required.");
+  try {
+    await createRoleApi({
+      name,
+      tenantId,
+      applicationId,
+      description: str(fd, "description"),
+      isComposite: str(fd, "isComposite") === "on",
+    });
+    revalidatePath("/roles");
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function roleUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -245,21 +279,22 @@ export async function roleUpdateAction(_prev: FormState, fd: FormData): Promise<
   if (!id) return fail("Missing role id.");
   const name = str(fd, "name");
   if (!name) return fail("Name is required.");
-  const isComposite = str(fd, "isComposite") === "on";
-  updateRole(id, {
-    name,
-    description: str(fd, "description"),
-    isComposite,
-    permissionIds: isComposite ? [] : list(fd, "permissionIds"),
-    childRoleIds: isComposite ? list(fd, "childRoleIds") : [],
-  });
-  revalidatePath("/roles");
-  return ok;
+  try {
+    await updateRoleApi(id, {
+      name,
+      description: str(fd, "description"),
+      isComposite: str(fd, "isComposite") === "on",
+    });
+    revalidatePath("/roles");
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function roleDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) deleteRole(id);
+  if (id) await deleteRoleApi(id);
   revalidatePath("/roles");
   redirect("/roles");
 }

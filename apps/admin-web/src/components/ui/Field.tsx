@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 
 const inputBase =
-  "w-full rounded-lg border border-black/15 bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-black/30 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-white/15 dark:bg-white/5 dark:placeholder:text-white/30";
+  "w-full rounded-[var(--ui-radius)] border border-ui bg-ui-elevated px-3 py-2 text-sm text-[var(--ui-text)] outline-none transition-colors placeholder-ui focus:border-[var(--ui-primary)] focus:ring-2 focus:ring-brand";
 
 export function Label({
   children,
@@ -13,10 +13,10 @@ export function Label({
   hint?: string;
 }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium">
+    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-[var(--ui-text)]">
       {children}
       {hint && (
-        <span className="ml-2 font-normal text-black/40 dark:text-white/40">{hint}</span>
+        <span className="ml-2 font-normal text-faint">{hint}</span>
       )}
     </label>
   );

@@ -7,9 +7,13 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** A relying-party application registered under a tenant. */
 @Entity
@@ -36,6 +40,10 @@ public class Application {
 
     @Column(name = "status", nullable = false)
     private String status = "ACTIVE";
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "config", nullable = false, columnDefinition = "jsonb")
+    private Map<String, Object> config = new HashMap<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

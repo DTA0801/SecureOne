@@ -7,7 +7,8 @@ import { getDiscovery, getHealth, getInfo } from "@/lib/auth-server";
 import { AUTH_SERVER_URL } from "@/lib/config";
 import { listTenants } from "@/lib/api/tenants";
 import { listUsers } from "@/lib/api/users";
-import { getAuditEvents, getLoginEvents } from "@/lib/data";
+import { listAuditEvents } from "@/lib/api/audit";
+import { listLoginEvents } from "@/lib/api/sessions";
 import { timeAgo } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,12 @@ export default async function DashboardPage() {
     getDiscovery(),
   ]);
   const online = health.ok && discovery.ok;
-  const [tenants, users] = await Promise.all([listTenants(), listUsers()]);
+  const [tenants, users, auditEvents, loginEvents] = await Promise.all([
+    listTenants(),
+    listUsers(),
+    listAuditEvents(),
+    listLoginEvents(),
+  ]);
   const stats = {
     tenants: tenants.length,
     activeTenants: tenants.filter((t) => t.status === "active").length,
@@ -28,10 +34,10 @@ export default async function DashboardPage() {
     mfaCoverage: users.length
       ? Math.round((users.filter((u) => u.mfaFactors.length > 0).length / users.length) * 100)
       : 0,
-    failedLogins24h: getLoginEvents().filter((l) => l.result === "failure").length,
+    failedLogins24h: loginEvents.filter((l) => l.result === "failure").length,
   };
-  const recentAudit = getAuditEvents().slice(0, 6);
-  const recentLogins = getLoginEvents().slice(0, 5);
+  const recentAudit = auditEvents.slice(0, 6);
+  const recentLogins = loginEvents.slice(0, 5);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -60,20 +66,20 @@ export default async function DashboardPage() {
               description="Latest admin & security events"
               action={<ButtonLink href="/audit" variant="ghost" size="sm">View all</ButtonLink>}
             />
-            <ul className="divide-y divide-black/5 dark:divide-white/5">
+            <ul className="divide-y divide-ui">
               {recentAudit.map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm">
-                      <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{e.action}</span>
-                      <span className="mx-1.5 text-black/30 dark:text-white/30">·</span>
+                      <span className="font-mono text-xs text-accent">{e.action}</span>
+                      <span className="mx-1.5 text-faint">·</span>
                       {e.target}
                     </p>
-                    <p className="text-xs text-black/45 dark:text-white/45">{e.actor}</p>
+                    <p className="text-xs text-faint">{e.actor}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge tone={e.result === "success" ? "success" : "danger"}>{e.result}</Badge>
-                    <span className="w-16 text-right text-xs text-black/40 dark:text-white/40">{timeAgo(e.timestamp)}</span>
+                    <span className="w-16 text-right text-xs text-faint">{timeAgo(e.timestamp)}</span>
                   </div>
                 </li>
               ))}
@@ -85,12 +91,12 @@ export default async function DashboardPage() {
               title="Recent sign-ins"
               action={<ButtonLink href="/sessions" variant="ghost" size="sm">View all</ButtonLink>}
             />
-            <ul className="divide-y divide-black/5 dark:divide-white/5">
+            <ul className="divide-y divide-ui">
               {recentLogins.map((l) => (
                 <li key={l.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{l.userEmail}</p>
-                    <p className="text-xs text-black/45 dark:text-white/45">{l.location} · {l.device}</p>
+                    <p className="text-xs text-faint">{l.location} · {l.device}</p>
                   </div>
                   <Badge tone={l.result === "success" ? "success" : l.result === "failure" ? "danger" : "warning"}>
                     {l.method}
@@ -110,10 +116,10 @@ export default async function DashboardPage() {
               <Row label="OIDC discovery" value={<Badge tone={discovery.ok ? "success" : "danger"}>{discovery.ok ? "200 OK" : "error"}</Badge>} />
               {discovery.data?.grant_types_supported && (
                 <div className="pt-1">
-                  <p className="mb-1.5 text-xs text-black/45 dark:text-white/45">Grant types</p>
+                  <p className="mb-1.5 text-xs text-faint">Grant types</p>
                   <div className="flex flex-wrap gap-1.5">
                     {discovery.data.grant_types_supported.map((g) => (
-                      <span key={g} className="rounded bg-indigo-500/10 px-1.5 py-0.5 font-mono text-[10px] text-indigo-600 dark:text-indigo-400">
+                      <span key={g} className="rounded bg-brand-muted px-1.5 py-0.5 font-mono text-[10px] text-brand">
                         {g.replace("urn:ietf:params:oauth:grant-type:", "")}
                       </span>
                     ))}
@@ -125,11 +131,11 @@ export default async function DashboardPage() {
 
           <Card padded={false}>
             <CardHeader title="Tenants" action={<ButtonLink href="/tenants" variant="ghost" size="sm">Manage</ButtonLink>} />
-            <ul className="divide-y divide-black/5 dark:divide-white/5">
+            <ul className="divide-y divide-ui">
               {tenants.map((t) => (
                 <li key={t.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
                   <span className="font-medium">{t.name}</span>
-                  <span className="text-xs text-black/45 dark:text-white/45">{t.userCount.toLocaleString()} users</span>
+                  <span className="text-xs text-faint">{t.userCount.toLocaleString()} users</span>
                 </li>
               ))}
             </ul>
@@ -143,7 +149,7 @@ export default async function DashboardPage() {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-black/55 dark:text-white/55">{label}</span>
+      <span className="text-sm text-muted">{label}</span>
       {value}
     </div>
   );

@@ -1,10 +1,12 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
-import { getAuditEvents } from "@/lib/data";
+import { listAuditEvents } from "@/lib/api/audit";
 import { AuditTable } from "./AuditTable";
 
-export default function AuditPage() {
-  const events = getAuditEvents();
+export const dynamic = "force-dynamic";
+
+export default async function AuditPage() {
+  const events = await listAuditEvents();
 
   return (
     <div className="mx-auto max-w-6xl">

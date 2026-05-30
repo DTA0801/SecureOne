@@ -27,5 +27,13 @@ services:
       timeout: 5s
       retries: 10
 
+  # Catches outbound email in dev — web UI at http://localhost:8025
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: secureone-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   pgdata:

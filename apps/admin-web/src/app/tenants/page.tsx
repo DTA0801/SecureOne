@@ -48,12 +48,12 @@ export default async function TenantsPage() {
             <TR key={t.id}>
               <TD>
                 <Link href={`/tenants/${t.id}`} className="group flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-muted text-xs font-bold text-brand">
                     {t.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <p className="font-medium group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{t.name}</p>
-                    <p className="font-mono text-xs text-black/45 dark:text-white/45">{t.slug}</p>
+                    <p className="font-medium group-hover:text-brand">{t.name}</p>
+                    <p className="font-mono text-xs text-faint">{t.slug}</p>
                   </div>
                 </Link>
               </TD>
@@ -61,7 +61,7 @@ export default async function TenantsPage() {
               <TD><Badge tone={statusTone(t.status)} dot className="capitalize">{t.status}</Badge></TD>
               <TD className="text-right tabular-nums">{t.userCount.toLocaleString()}</TD>
               <TD className="text-right tabular-nums">{t.appCount}</TD>
-              <TD className="text-black/55 dark:text-white/55">{formatDate(t.createdAt)}</TD>
+              <TD className="text-muted">{formatDate(t.createdAt)}</TD>
               <TD>
                 <div className="flex items-center justify-end gap-1">
                   <TenantFormModal tenant={t} triggerLabel="Edit" triggerVariant="ghost" triggerSize="sm" />

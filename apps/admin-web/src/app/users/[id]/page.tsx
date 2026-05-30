@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { UserFormModal } from "@/components/forms/UserFormModal";
+import { UserEmailActions } from "@/components/users/UserEmailActions";
 import {
   userDeleteAction,
   userResetMfaAction,
@@ -13,7 +14,9 @@ import {
 } from "@/lib/actions";
 import { getUser } from "@/lib/api/users";
 import { listTenants } from "@/lib/api/tenants";
-import { getLoginEvents, getRole, getRoles, tenantName } from "@/lib/data";
+import { listRoles } from "@/lib/api/roles";
+import { listLoginEvents } from "@/lib/api/sessions";
+import { tenantName } from "@/lib/data";
 import { formatDate, formatDateTime, initials } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 import type { MfaFactorType } from "@/lib/types";
@@ -35,10 +38,13 @@ export default async function UserDetailPage({
   const user = await getUser(id);
   if (!user) notFound();
 
-  const logins = getLoginEvents().filter((l) => l.userId === user.id);
+  const [logins, tenants, roles] = await Promise.all([
+    listLoginEvents(user.id),
+    listTenants(),
+    listRoles(user.tenantId),
+  ]);
   const fullName = `${user.firstName} ${user.lastName}`;
-  const tenants = await listTenants();
-  const roles = getRoles();
+  const roleById = new Map(roles.map((r) => [r.id, r]));
   const tenantLabel =
     tenants.find((t) => t.id === user.tenantId)?.name ?? tenantName(user.tenantId);
 
@@ -80,7 +86,7 @@ export default async function UserDetailPage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-indigo-100 text-2xl font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-muted text-2xl font-semibold text-brand">
               {initials(fullName)}
             </div>
             <p className="mt-3 text-lg font-semibold">{fullName}</p>
@@ -99,10 +105,20 @@ export default async function UserDetailPage({
 
         <div className="space-y-6 lg:col-span-2">
           <Card padded={false}>
+            <CardHeader
+              title="Email & password"
+              description="Transactional emails via SMTP (MailHog in dev). Links are sent to the user's inbox."
+            />
+            <div className="border-t border-ui px-5 py-4">
+              <UserEmailActions userId={user.id} emailVerified={user.emailVerified} />
+            </div>
+          </Card>
+
+          <Card padded={false}>
             <CardHeader title="Roles" description="Assigned access via RBAC" action={<UserFormModal user={user} tenants={tenants} roles={roles} triggerLabel="Manage" triggerVariant="ghost" triggerSize="sm" />} />
             <ul className="divide-y divide-black/5 p-2 dark:divide-white/5">
               {user.roleIds.map((rid) => {
-                const role = getRole(rid);
+                const role = roleById.get(rid);
                 return (
                   <li key={rid} className="flex items-center justify-between px-3 py-2.5">
                     <div>

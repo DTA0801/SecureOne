@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { ApplicationFormModal } from "@/components/forms/ApplicationFormModal";
-import { getApplications, getTenants, tenantName } from "@/lib/data";
+import { listApplications } from "@/lib/api/applications";
+import { listTenants } from "@/lib/api/tenants";
 import { statusTone } from "@/lib/status";
 import type { AppType } from "@/lib/types";
 
@@ -17,9 +18,9 @@ const TYPE_LABEL: Record<AppType, string> = {
   m2m: "Machine-to-Machine",
 };
 
-export default function ApplicationsPage() {
-  const apps = getApplications();
-  const tenants = getTenants();
+export default async function ApplicationsPage() {
+  const [apps, tenants] = await Promise.all([listApplications(), listTenants()]);
+  const tenantMap = new Map(tenants.map((t) => [t.id, t.name]));
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -50,10 +51,10 @@ export default function ApplicationsPage() {
           {apps.map((a) => (
             <TR key={a.id}>
               <TD>
-                <Link href={`/applications/${a.id}`} className="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">{a.name}</Link>
-                <p className="font-mono text-xs text-black/45 dark:text-white/45">{a.clientId}</p>
+                <Link href={`/applications/${a.id}`} className="link-brand">{a.name}</Link>
+                <p className="font-mono text-xs text-faint">{a.clientId}</p>
               </TD>
-              <TD className="text-black/55 dark:text-white/55">{tenantName(a.tenantId)}</TD>
+              <TD className="text-muted">{tenantMap.get(a.tenantId) ?? a.tenantId}</TD>
               <TD><Badge tone="indigo">{TYPE_LABEL[a.type]}</Badge></TD>
               <TD>
                 <div className="flex flex-wrap gap-1">

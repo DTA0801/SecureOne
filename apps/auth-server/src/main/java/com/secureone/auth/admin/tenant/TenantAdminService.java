@@ -6,6 +6,8 @@ import com.secureone.auth.admin.tenant.TenantAdminDtos.TenantCreateRequest;
 import com.secureone.auth.admin.tenant.TenantAdminDtos.TenantResponse;
 import com.secureone.auth.admin.tenant.TenantAdminDtos.TenantUpdateRequest;
 import com.secureone.auth.application.ApplicationRepository;
+import com.secureone.auth.audit.AuditService;
+import com.secureone.auth.notify.EmailNotificationService;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.user.UserAccountRepository;
@@ -24,14 +26,20 @@ public class TenantAdminService {
     private final TenantRepository tenantRepository;
     private final UserAccountRepository userAccountRepository;
     private final ApplicationRepository applicationRepository;
+    private final AuditService auditService;
+    private final EmailNotificationService emailService;
 
     public TenantAdminService(
             TenantRepository tenantRepository,
             UserAccountRepository userAccountRepository,
-            ApplicationRepository applicationRepository) {
+            ApplicationRepository applicationRepository,
+            AuditService auditService,
+            EmailNotificationService emailService) {
         this.tenantRepository = tenantRepository;
         this.userAccountRepository = userAccountRepository;
         this.applicationRepository = applicationRepository;
+        this.auditService = auditService;
+        this.emailService = emailService;
     }
 
     @Transactional(readOnly = true)
@@ -55,6 +63,8 @@ public class TenantAdminService {
         tenant.setStatus(normalizeStatus(request.status(), "ACTIVE"));
         tenant.setSettings(planSettings(request.plan(), "free"));
         tenantRepository.save(tenant);
+        auditService.record(tenant.getId(), "admin", "tenant.created", "tenant", tenant.getId(), tenant.getName(), true);
+        emailService.sendAdminNotification("Tenant created", "New tenant: " + tenant.getName());
         return toResponse(tenant);
     }
 
@@ -72,14 +82,15 @@ public class TenantAdminService {
         Map<String, Object> settings = new HashMap<>(tenant.getSettings());
         settings.put("plan", request.plan() != null ? request.plan() : settings.getOrDefault("plan", "free"));
         tenant.setSettings(settings);
+        auditService.record(tenant.getId(), "admin", "tenant.updated", "tenant", tenant.getId(), tenant.getName(), true);
         return toResponse(tenant);
     }
 
     public void delete(UUID id) {
-        if (!tenantRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Tenant not found: " + id);
-        }
-        tenantRepository.deleteById(id);
+        Tenant tenant = require(id);
+        tenantRepository.delete(tenant);
+        auditService.record(tenant.getId(), "admin", "tenant.deleted", "tenant", id, tenant.getName(), true);
+        emailService.sendAdminNotification("Tenant deleted", "Removed tenant: " + tenant.getName());
     }
 
     private Tenant require(UUID id) {
