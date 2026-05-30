@@ -4,16 +4,18 @@ import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { UserFormModal } from "@/components/forms/UserFormModal";
-import { getRoles, getTenants, getUsers, roleName, tenantName } from "@/lib/data";
+import { listUsers } from "@/lib/api/users";
+import { listTenants } from "@/lib/api/tenants";
+import { getRoles, roleName } from "@/lib/data";
 import { initials, timeAgo } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
-export default function UsersPage() {
-  const users = getUsers();
-  const tenants = getTenants();
+export default async function UsersPage() {
+  const [users, tenants] = await Promise.all([listUsers(), listTenants()]);
   const roles = getRoles();
+  const tenantMap = new Map(tenants.map((t) => [t.id, t.name]));
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -55,7 +57,7 @@ export default function UsersPage() {
                   </div>
                 </Link>
               </TD>
-              <TD className="text-black/55 dark:text-white/55">{tenantName(u.tenantId)}</TD>
+              <TD className="text-black/55 dark:text-white/55">{tenantMap.get(u.tenantId) ?? u.tenantId}</TD>
               <TD>
                 <div className="flex flex-wrap gap-1">
                   {u.roleIds.map((r) => (

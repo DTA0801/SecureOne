@@ -52,9 +52,12 @@ public class SecurityConfig {
     @Order(2)
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health/**", "/actuator/info", "/api/info").permitAll()
+                        .requestMatchers("/api/admin/v1/**").authenticated()
                         .anyRequest().authenticated())
+                .httpBasic(Customizer.withDefaults())
                 .formLogin(Customizer.withDefaults());
         return http.build();
     }

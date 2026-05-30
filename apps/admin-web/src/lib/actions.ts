@@ -5,19 +5,31 @@ import { redirect } from "next/navigation";
 import {
   createApplication,
   createRole,
-  createTenant,
-  createUser,
   deleteApplication,
   deleteRole,
-  deleteTenant,
-  deleteUser,
   resetUserMfa,
   updateApplication,
   updateRole,
-  updateTenant,
-  updateUser,
 } from "./data";
+import {
+  createTenantApi,
+  deleteTenantApi,
+  updateTenantApi,
+} from "./api/tenants";
+import {
+  createUserApi,
+  deleteUserApi,
+  setUserStatusApi,
+  updateUserApi,
+} from "./api/users";
+import { ApiError } from "./api/client";
 import type { AppType, Status } from "./types";
+
+function actionError(e: unknown): FormState {
+  if (e instanceof ApiError) return fail(e.message);
+  if (e instanceof Error) return fail(e.message);
+  return fail("Request failed");
+}
 
 export type FormState = { ok: boolean; error?: string };
 
@@ -48,14 +60,19 @@ function slugify(s: string): string {
 export async function tenantCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const name = str(fd, "name");
   if (!name) return fail("Name is required.");
-  createTenant({
-    name,
-    slug: str(fd, "slug") || slugify(name),
-    plan: (str(fd, "plan") || "free") as "free" | "team" | "enterprise",
-    status: (str(fd, "status") || "active") as Status,
-  });
-  revalidatePath("/tenants");
-  return ok;
+  try {
+    await createTenantApi({
+      name,
+      slug: str(fd, "slug") || slugify(name),
+      plan: str(fd, "plan") || "free",
+      status: str(fd, "status") || "active",
+    });
+    revalidatePath("/tenants");
+    revalidatePath("/");
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function tenantUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -63,21 +80,27 @@ export async function tenantUpdateAction(_prev: FormState, fd: FormData): Promis
   const name = str(fd, "name");
   if (!id) return fail("Missing tenant id.");
   if (!name) return fail("Name is required.");
-  updateTenant(id, {
-    name,
-    slug: str(fd, "slug") || slugify(name),
-    plan: str(fd, "plan") as "free" | "team" | "enterprise",
-    status: str(fd, "status") as Status,
-  });
-  revalidatePath("/tenants");
-  revalidatePath(`/tenants/${id}`);
-  return ok;
+  try {
+    await updateTenantApi(id, {
+      name,
+      slug: str(fd, "slug") || slugify(name),
+      plan: str(fd, "plan") || "free",
+      status: str(fd, "status") || "active",
+    });
+    revalidatePath("/tenants");
+    revalidatePath(`/tenants/${id}`);
+    revalidatePath("/");
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function tenantDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) deleteTenant(id);
+  if (id) await deleteTenantApi(id);
   revalidatePath("/tenants");
+  revalidatePath("/");
   redirect("/tenants");
 }
 
@@ -134,17 +157,22 @@ export async function userCreateAction(_prev: FormState, fd: FormData): Promise<
   const tenantId = str(fd, "tenantId");
   if (!email) return fail("Email is required.");
   if (!tenantId) return fail("Tenant is required.");
-  createUser({
-    email,
-    tenantId,
-    username: str(fd, "username") || email.split("@")[0],
-    firstName: str(fd, "firstName"),
-    lastName: str(fd, "lastName"),
-    status: (str(fd, "status") || "invited") as Status,
-    roleIds: list(fd, "roleIds"),
-  });
-  revalidatePath("/users");
-  return ok;
+  try {
+    await createUserApi({
+      email,
+      tenantId,
+      username: str(fd, "username") || email.split("@")[0],
+      firstName: str(fd, "firstName"),
+      lastName: str(fd, "lastName"),
+      status: str(fd, "status") || "invited",
+      roleIds: list(fd, "roleIds"),
+    });
+    revalidatePath("/users");
+    revalidatePath("/tenants");
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function userUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -152,23 +180,28 @@ export async function userUpdateAction(_prev: FormState, fd: FormData): Promise<
   if (!id) return fail("Missing user id.");
   const email = str(fd, "email");
   if (!email) return fail("Email is required.");
-  updateUser(id, {
-    email,
-    username: str(fd, "username"),
-    firstName: str(fd, "firstName"),
-    lastName: str(fd, "lastName"),
-    status: str(fd, "status") as Status,
-    roleIds: list(fd, "roleIds"),
-  });
-  revalidatePath("/users");
-  revalidatePath(`/users/${id}`);
-  return ok;
+  try {
+    await updateUserApi(id, {
+      email,
+      username: str(fd, "username"),
+      firstName: str(fd, "firstName"),
+      lastName: str(fd, "lastName"),
+      status: str(fd, "status") || "active",
+      roleIds: list(fd, "roleIds"),
+    });
+    revalidatePath("/users");
+    revalidatePath(`/users/${id}`);
+    return ok;
+  } catch (e) {
+    return actionError(e);
+  }
 }
 
 export async function userDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) deleteUser(id);
+  if (id) await deleteUserApi(id);
   revalidatePath("/users");
+  revalidatePath("/tenants");
   redirect("/users");
 }
 
@@ -180,10 +213,11 @@ export async function userResetMfaAction(fd: FormData): Promise<void> {
 
 export async function userSetStatusAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  const status = str(fd, "status") as Status;
-  if (id && status) updateUser(id, { status });
+  const status = str(fd, "status");
+  if (id && status) await setUserStatusApi(id, status);
   revalidatePath("/users");
   revalidatePath(`/users/${id}`);
+  revalidatePath("/tenants");
 }
 
 // ---- Roles ----

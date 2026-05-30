@@ -1,0 +1,56 @@
+package com.secureone.auth.admin.tenant;
+
+import com.secureone.auth.admin.tenant.TenantAdminDtos.TenantCreateRequest;
+import com.secureone.auth.admin.tenant.TenantAdminDtos.TenantResponse;
+import com.secureone.auth.admin.tenant.TenantAdminDtos.TenantUpdateRequest;
+import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/admin/v1/tenants")
+public class TenantAdminController {
+
+    private final TenantAdminService service;
+
+    public TenantAdminController(TenantAdminService service) {
+        this.service = service;
+    }
+
+    @GetMapping
+    public List<TenantResponse> list() {
+        return service.list();
+    }
+
+    @GetMapping("/{id}")
+    public TenantResponse get(@PathVariable UUID id) {
+        return service.get(id);
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public TenantResponse create(@Valid @RequestBody TenantCreateRequest request) {
+        return service.create(request);
+    }
+
+    @PutMapping("/{id}")
+    public TenantResponse update(@PathVariable UUID id, @Valid @RequestBody TenantUpdateRequest request) {
+        return service.update(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        service.delete(id);
+    }
+}

@@ -5,15 +5,15 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TenantFormModal } from "@/components/forms/TenantFormModal";
-import { getTenants } from "@/lib/data";
+import { listTenants } from "@/lib/api/tenants";
 import { tenantDeleteAction } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
-export default function TenantsPage() {
-  const tenants = getTenants();
+export default async function TenantsPage() {
+  const tenants = await listTenants();
   const totalUsers = tenants.reduce((s, t) => s + t.userCount, 0);
 
   return (

@@ -9,7 +9,9 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TenantFormModal } from "@/components/forms/TenantFormModal";
 import { tenantDeleteAction } from "@/lib/actions";
-import { getAppsForTenant, getTenant, getUsersForTenant } from "@/lib/data";
+import { listUsers } from "@/lib/api/users";
+import { getTenant } from "@/lib/api/tenants";
+import { getAppsForTenant } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
 
@@ -19,11 +21,11 @@ export default async function TenantDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const tenant = getTenant(id);
+  const tenant = await getTenant(id);
   if (!tenant) notFound();
 
   const apps = getAppsForTenant(tenant.id);
-  const users = getUsersForTenant(tenant.id);
+  const users = await listUsers(tenant.id);
 
   return (
     <div className="mx-auto max-w-6xl">

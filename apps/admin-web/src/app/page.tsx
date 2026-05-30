@@ -5,12 +5,9 @@ import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { getDiscovery, getHealth, getInfo } from "@/lib/auth-server";
 import { AUTH_SERVER_URL } from "@/lib/config";
-import {
-  getAuditEvents,
-  getLoginEvents,
-  getTenants,
-  platformStats,
-} from "@/lib/data";
+import { listTenants } from "@/lib/api/tenants";
+import { listUsers } from "@/lib/api/users";
+import { getAuditEvents, getLoginEvents } from "@/lib/data";
 import { timeAgo } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +19,19 @@ export default async function DashboardPage() {
     getDiscovery(),
   ]);
   const online = health.ok && discovery.ok;
-  const stats = platformStats();
+  const [tenants, users] = await Promise.all([listTenants(), listUsers()]);
+  const stats = {
+    tenants: tenants.length,
+    activeTenants: tenants.filter((t) => t.status === "active").length,
+    users: users.length,
+    applications: tenants.reduce((s, t) => s + t.appCount, 0),
+    mfaCoverage: users.length
+      ? Math.round((users.filter((u) => u.mfaFactors.length > 0).length / users.length) * 100)
+      : 0,
+    failedLogins24h: getLoginEvents().filter((l) => l.result === "failure").length,
+  };
   const recentAudit = getAuditEvents().slice(0, 6);
   const recentLogins = getLoginEvents().slice(0, 5);
-  const tenants = getTenants();
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -41,7 +47,7 @@ export default async function DashboardPage() {
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Tenants" value={stats.tenants} hint={`${stats.activeTenants} active`} />
-        <StatCard label="Users" value={stats.users.toLocaleString()} delta={{ value: "4.2%", positive: true }} hint="vs last month" />
+        <StatCard label="Users" value={stats.users.toLocaleString()} hint="from database" />
         <StatCard label="Applications" value={stats.applications} hint="OAuth clients" />
         <StatCard label="MFA Coverage" value={`${stats.mfaCoverage}%`} delta={{ value: "1.8%", positive: true }} hint="of users" />
       </div>

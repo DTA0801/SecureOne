@@ -29,6 +29,9 @@ public class UserAccount {
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
 
+    @Column(name = "username")
+    private String username;
+
     @Column(name = "display_name")
     private String displayName;
 
@@ -38,9 +41,27 @@ public class UserAccount {
     @Column(name = "type", nullable = false)
     private String type = "USER";
 
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @jakarta.persistence.PrePersist
+    void onCreate() {
+        Instant now = Instant.now();
+        if (id == null) {
+            id = UUID.randomUUID();
+        }
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @jakarta.persistence.PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

@@ -11,7 +11,9 @@ import {
   userResetMfaAction,
   userSetStatusAction,
 } from "@/lib/actions";
-import { getLoginEvents, getRole, getRoles, getTenants, getUser, tenantName } from "@/lib/data";
+import { getUser } from "@/lib/api/users";
+import { listTenants } from "@/lib/api/tenants";
+import { getLoginEvents, getRole, getRoles, tenantName } from "@/lib/data";
 import { formatDate, formatDateTime, initials } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 import type { MfaFactorType } from "@/lib/types";
@@ -30,13 +32,15 @@ export default async function UserDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = getUser(id);
+  const user = await getUser(id);
   if (!user) notFound();
 
   const logins = getLoginEvents().filter((l) => l.userId === user.id);
   const fullName = `${user.firstName} ${user.lastName}`;
-  const tenants = getTenants();
+  const tenants = await listTenants();
   const roles = getRoles();
+  const tenantLabel =
+    tenants.find((t) => t.id === user.tenantId)?.name ?? tenantName(user.tenantId);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -86,7 +90,7 @@ export default async function UserDetailPage({
             </div>
           </div>
           <dl className="mt-5 space-y-3 border-t border-black/5 pt-5 text-sm dark:border-white/5">
-            <Row label="Tenant" value={tenantName(user.tenantId)} />
+            <Row label="Tenant" value={tenantLabel} />
             <Row label="User ID" value={<code className="font-mono text-xs">{user.id}</code>} />
             <Row label="Created" value={formatDate(user.createdAt)} />
             <Row label="Last login" value={user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "Never"} />

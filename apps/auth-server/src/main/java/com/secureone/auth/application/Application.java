@@ -1,4 +1,4 @@
-package com.secureone.auth.tenant;
+package com.secureone.auth.application;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -7,37 +7,35 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
-/** An organization / customer boundary. All tenant-scoped data references this. */
+/** A relying-party application registered under a tenant. */
 @Entity
-@Table(name = "tenant")
+@Table(name = "application")
 @Getter
 @Setter
-public class Tenant {
+public class Application {
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    @Column(name = "slug", nullable = false, unique = true)
-    private String slug;
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
 
     @Column(name = "name", nullable = false)
     private String name;
 
+    @Column(name = "slug", nullable = false)
+    private String slug;
+
+    @Column(name = "description")
+    private String description;
+
     @Column(name = "status", nullable = false)
     private String status = "ACTIVE";
-
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "settings", nullable = false, columnDefinition = "jsonb")
-    private Map<String, Object> settings = new HashMap<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -53,9 +51,6 @@ public class Tenant {
         }
         createdAt = now;
         updatedAt = now;
-        if (settings == null) {
-            settings = new HashMap<>();
-        }
     }
 
     @PreUpdate
