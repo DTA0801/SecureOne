@@ -1,21 +1,34 @@
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
-import { getPermission, getPermissions, getRoles, roleName } from "@/lib/data";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { RoleFormModal } from "@/components/forms/RoleFormModal";
+import { roleDeleteAction } from "@/lib/actions";
+import { getPermission, getPermissions, getRoles, getTenants, roleName } from "@/lib/data";
+
+export const dynamic = "force-dynamic";
 
 export default function RolesPage() {
   const roles = getRoles();
   const permissions = getPermissions();
+  const tenants = getTenants();
+  const defaultTenantId = tenants[0]?.id ?? "";
 
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Roles & Permissions"
         description="Role-based access control with composite (hierarchical) roles. Roles bundle permissions; composite roles inherit child roles."
-        actions={<Button>+ New role</Button>}
+        actions={
+          <RoleFormModal
+            roles={roles}
+            permissions={permissions}
+            tenantId={defaultTenantId}
+            triggerLabel="+ New role"
+          />
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -62,6 +75,26 @@ export default function RolesPage() {
                   </div>
                 </>
               )}
+            </div>
+            <div className="flex items-center justify-end gap-1 border-t border-black/5 px-4 py-2.5 dark:border-white/5">
+              <RoleFormModal
+                role={role}
+                roles={roles}
+                permissions={permissions}
+                tenantId={role.tenantId}
+                triggerLabel="Edit"
+                triggerVariant="ghost"
+                triggerSize="sm"
+              />
+              <ConfirmDialog
+                action={roleDeleteAction}
+                id={role.id}
+                triggerLabel="Delete"
+                triggerVariant="ghost"
+                triggerSize="sm"
+                title={`Delete ${role.name}?`}
+                message="Users with only this role will lose the associated access."
+              />
             </div>
           </Card>
         ))}

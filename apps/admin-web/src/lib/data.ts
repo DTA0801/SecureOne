@@ -152,6 +152,156 @@ export const getPasswordPolicy = () => passwordPolicy;
 export const tenantName = (id: string) => getTenant(id)?.name ?? id;
 export const roleName = (id: string) => getRole(id)?.name ?? id;
 
+// ---- Mutations (in-memory; swap for API writes later) ----
+
+function uid(prefix: string): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export type TenantInput = Pick<Tenant, "name" | "slug" | "plan" | "status">;
+
+export function createTenant(input: TenantInput): Tenant {
+  const tenant: Tenant = {
+    id: uid("t"),
+    ...input,
+    userCount: 0,
+    appCount: 0,
+    createdAt: nowIso(),
+  };
+  tenants.unshift(tenant);
+  return tenant;
+}
+
+export function updateTenant(id: string, patch: Partial<TenantInput>): Tenant | null {
+  const t = getTenant(id);
+  if (!t) return null;
+  Object.assign(t, patch);
+  return t;
+}
+
+export function deleteTenant(id: string): boolean {
+  const i = tenants.findIndex((t) => t.id === id);
+  if (i === -1) return false;
+  tenants.splice(i, 1);
+  return true;
+}
+
+export type ApplicationInput = Pick<
+  Application,
+  "tenantId" | "name" | "type" | "status" | "grantTypes" | "scopes" | "redirectUris"
+> & { clientId?: string };
+
+export function createApplication(input: ApplicationInput): Application {
+  const app: Application = {
+    id: uid("app"),
+    tenantId: input.tenantId,
+    name: input.name,
+    clientId: input.clientId?.trim() || uid("client"),
+    type: input.type,
+    status: input.status,
+    grantTypes: input.grantTypes,
+    scopes: input.scopes,
+    redirectUris: input.redirectUris,
+    createdAt: nowIso(),
+  };
+  applications.unshift(app);
+  const t = getTenant(input.tenantId);
+  if (t) t.appCount += 1;
+  return app;
+}
+
+export function updateApplication(id: string, patch: Partial<ApplicationInput>): Application | null {
+  const a = getApplication(id);
+  if (!a) return null;
+  Object.assign(a, patch);
+  return a;
+}
+
+export function deleteApplication(id: string): boolean {
+  const i = applications.findIndex((a) => a.id === id);
+  if (i === -1) return false;
+  const [removed] = applications.splice(i, 1);
+  const t = getTenant(removed.tenantId);
+  if (t && t.appCount > 0) t.appCount -= 1;
+  return true;
+}
+
+export type UserInput = Pick<
+  User,
+  "tenantId" | "email" | "username" | "firstName" | "lastName" | "status" | "roleIds"
+>;
+
+export function createUser(input: UserInput): User {
+  const user: User = {
+    id: uid("u"),
+    ...input,
+    emailVerified: false,
+    mfaFactors: [],
+    lastLoginAt: null,
+    createdAt: nowIso(),
+  };
+  users.unshift(user);
+  const t = getTenant(input.tenantId);
+  if (t) t.userCount += 1;
+  return user;
+}
+
+export function updateUser(id: string, patch: Partial<UserInput>): User | null {
+  const u = getUser(id);
+  if (!u) return null;
+  Object.assign(u, patch);
+  return u;
+}
+
+export function deleteUser(id: string): boolean {
+  const i = users.findIndex((u) => u.id === id);
+  if (i === -1) return false;
+  const [removed] = users.splice(i, 1);
+  const t = getTenant(removed.tenantId);
+  if (t && t.userCount > 0) t.userCount -= 1;
+  return true;
+}
+
+export function resetUserMfa(id: string): boolean {
+  const u = getUser(id);
+  if (!u) return false;
+  u.mfaFactors = [];
+  return true;
+}
+
+export type RoleInput = Pick<
+  Role,
+  "tenantId" | "name" | "description" | "isComposite" | "permissionIds" | "childRoleIds"
+>;
+
+export function createRole(input: RoleInput): Role {
+  const role: Role = {
+    id: uid("r"),
+    ...input,
+    userCount: 0,
+  };
+  roles.unshift(role);
+  return role;
+}
+
+export function updateRole(id: string, patch: Partial<RoleInput>): Role | null {
+  const r = getRole(id);
+  if (!r) return null;
+  Object.assign(r, patch);
+  return r;
+}
+
+export function deleteRole(id: string): boolean {
+  const i = roles.findIndex((r) => r.id === id);
+  if (i === -1) return false;
+  roles.splice(i, 1);
+  return true;
+}
+
 export const platformStats = () => ({
   tenants: tenants.length,
   activeTenants: tenants.filter((t) => t.status === "active").length,

@@ -4,7 +4,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { getApplication, tenantName } from "@/lib/data";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ApplicationFormModal } from "@/components/forms/ApplicationFormModal";
+import { applicationDeleteAction } from "@/lib/actions";
+import { getApplication, getTenants, tenantName } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 
@@ -16,6 +19,7 @@ export default async function ApplicationDetailPage({
   const { id } = await params;
   const app = getApplication(id);
   if (!app) notFound();
+  const tenants = getTenants();
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -26,7 +30,7 @@ export default async function ApplicationDetailPage({
         actions={
           <>
             <Badge tone={statusTone(app.status)} dot className="capitalize">{app.status}</Badge>
-            <Button variant="secondary">Edit</Button>
+            <ApplicationFormModal app={app} tenants={tenants} triggerLabel="Edit" triggerVariant="secondary" />
           </>
         }
       />
@@ -96,7 +100,14 @@ export default async function ApplicationDetailPage({
         <CardHeader title="Danger zone" description="Irreversible and destructive actions" />
         <div className="flex items-center justify-between p-5">
           <p className="text-sm text-black/55 dark:text-white/55">Delete this client and revoke all its tokens.</p>
-          <Button variant="danger">Delete client</Button>
+          <ConfirmDialog
+            action={applicationDeleteAction}
+            id={app.id}
+            triggerLabel="Delete client"
+            title={`Delete ${app.name}?`}
+            message="All tokens issued to this client will be revoked. This action cannot be undone."
+            confirmLabel="Delete client"
+          />
         </div>
       </Card>
     </div>

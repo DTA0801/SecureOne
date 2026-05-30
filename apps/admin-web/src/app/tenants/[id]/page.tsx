@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button, ButtonLink } from "@/components/ui/Button";
+import { ButtonLink } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { TenantFormModal } from "@/components/forms/TenantFormModal";
+import { tenantDeleteAction } from "@/lib/actions";
 import { getAppsForTenant, getTenant, getUsersForTenant } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
@@ -32,7 +35,15 @@ export default async function TenantDetailPage({
           <>
             <Badge tone={planTone(tenant.plan)} className="capitalize">{tenant.plan}</Badge>
             <Badge tone={statusTone(tenant.status)} dot className="capitalize">{tenant.status}</Badge>
-            <Button variant="secondary">Edit</Button>
+            <TenantFormModal tenant={tenant} triggerLabel="Edit" triggerVariant="secondary" />
+            <ConfirmDialog
+              action={tenantDeleteAction}
+              id={tenant.id}
+              triggerLabel="Delete"
+              triggerVariant="danger"
+              title={`Delete ${tenant.name}?`}
+              message="This removes the tenant and all associated configuration. This action cannot be undone."
+            />
           </>
         }
       />

@@ -4,7 +4,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { getLoginEvents, getRole, getUser, tenantName } from "@/lib/data";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { UserFormModal } from "@/components/forms/UserFormModal";
+import {
+  userDeleteAction,
+  userResetMfaAction,
+  userSetStatusAction,
+} from "@/lib/actions";
+import { getLoginEvents, getRole, getRoles, getTenants, getUser, tenantName } from "@/lib/data";
 import { formatDate, formatDateTime, initials } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 import type { MfaFactorType } from "@/lib/types";
@@ -28,6 +35,8 @@ export default async function UserDetailPage({
 
   const logins = getLoginEvents().filter((l) => l.userId === user.id);
   const fullName = `${user.firstName} ${user.lastName}`;
+  const tenants = getTenants();
+  const roles = getRoles();
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -38,12 +47,28 @@ export default async function UserDetailPage({
         actions={
           <>
             <Badge tone={statusTone(user.status)} dot className="capitalize">{user.status}</Badge>
-            <Button variant="secondary">Edit</Button>
+            <UserFormModal user={user} tenants={tenants} roles={roles} triggerLabel="Edit" triggerVariant="secondary" />
             {user.status === "active" ? (
-              <Button variant="danger">Suspend</Button>
+              <form action={userSetStatusAction}>
+                <input type="hidden" name="id" value={user.id} />
+                <input type="hidden" name="status" value="suspended" />
+                <Button type="submit" variant="danger">Suspend</Button>
+              </form>
             ) : (
-              <Button>Reactivate</Button>
+              <form action={userSetStatusAction}>
+                <input type="hidden" name="id" value={user.id} />
+                <input type="hidden" name="status" value="active" />
+                <Button type="submit">Reactivate</Button>
+              </form>
             )}
+            <ConfirmDialog
+              action={userDeleteAction}
+              id={user.id}
+              triggerLabel="Delete"
+              triggerVariant="ghost"
+              title={`Delete ${fullName}?`}
+              message="This permanently deletes the user account and revokes their sessions."
+            />
           </>
         }
       />
@@ -70,7 +95,7 @@ export default async function UserDetailPage({
 
         <div className="space-y-6 lg:col-span-2">
           <Card padded={false}>
-            <CardHeader title="Roles" description="Assigned access via RBAC" action={<Button variant="ghost" size="sm">Manage</Button>} />
+            <CardHeader title="Roles" description="Assigned access via RBAC" action={<UserFormModal user={user} tenants={tenants} roles={roles} triggerLabel="Manage" triggerVariant="ghost" triggerSize="sm" />} />
             <ul className="divide-y divide-black/5 p-2 dark:divide-white/5">
               {user.roleIds.map((rid) => {
                 const role = getRole(rid);
@@ -91,7 +116,14 @@ export default async function UserDetailPage({
             <CardHeader
               title="Multi-factor authentication"
               description={user.mfaFactors.length > 0 ? `${user.mfaFactors.length} factor(s) enrolled` : "No factors enrolled"}
-              action={<Button variant="ghost" size="sm">Reset MFA</Button>}
+              action={
+                user.mfaFactors.length > 0 ? (
+                  <form action={userResetMfaAction}>
+                    <input type="hidden" name="id" value={user.id} />
+                    <Button type="submit" variant="ghost" size="sm">Reset MFA</Button>
+                  </form>
+                ) : undefined
+              }
             />
             {user.mfaFactors.length > 0 ? (
               <ul className="divide-y divide-black/5 p-2 dark:divide-white/5">

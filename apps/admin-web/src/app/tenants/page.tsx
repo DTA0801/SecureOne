@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { TenantFormModal } from "@/components/forms/TenantFormModal";
 import { getTenants } from "@/lib/data";
+import { tenantDeleteAction } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
+
+export const dynamic = "force-dynamic";
 
 export default function TenantsPage() {
   const tenants = getTenants();
@@ -17,7 +21,7 @@ export default function TenantsPage() {
       <PageHeader
         title="Tenants"
         description="Organizations using the platform. Each tenant is isolated via PostgreSQL row-level security."
-        actions={<Button>+ New tenant</Button>}
+        actions={<TenantFormModal triggerLabel="+ New tenant" />}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -36,6 +40,7 @@ export default function TenantsPage() {
             <TH className="text-right">Users</TH>
             <TH className="text-right">Apps</TH>
             <TH>Created</TH>
+            <TH className="text-right">Actions</TH>
           </tr>
         </THead>
         <TBody>
@@ -57,6 +62,20 @@ export default function TenantsPage() {
               <TD className="text-right tabular-nums">{t.userCount.toLocaleString()}</TD>
               <TD className="text-right tabular-nums">{t.appCount}</TD>
               <TD className="text-black/55 dark:text-white/55">{formatDate(t.createdAt)}</TD>
+              <TD>
+                <div className="flex items-center justify-end gap-1">
+                  <TenantFormModal tenant={t} triggerLabel="Edit" triggerVariant="ghost" triggerSize="sm" />
+                  <ConfirmDialog
+                    action={tenantDeleteAction}
+                    id={t.id}
+                    triggerLabel="Delete"
+                    triggerVariant="ghost"
+                    triggerSize="sm"
+                    title={`Delete ${t.name}?`}
+                    message="This removes the tenant and all associated configuration. This action cannot be undone."
+                  />
+                </div>
+              </TD>
             </TR>
           ))}
         </TBody>

@@ -1,22 +1,26 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
-import { getUsers, roleName, tenantName } from "@/lib/data";
+import { UserFormModal } from "@/components/forms/UserFormModal";
+import { getRoles, getTenants, getUsers, roleName, tenantName } from "@/lib/data";
 import { initials, timeAgo } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 
+export const dynamic = "force-dynamic";
+
 export default function UsersPage() {
   const users = getUsers();
+  const tenants = getTenants();
+  const roles = getRoles();
 
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Users"
         description="Accounts across all tenants, with credentials, roles, and MFA enrollment."
-        actions={<Button>+ Invite user</Button>}
+        actions={<UserFormModal tenants={tenants} roles={roles} triggerLabel="+ Invite user" />}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">

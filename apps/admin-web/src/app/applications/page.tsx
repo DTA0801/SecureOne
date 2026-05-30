@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
-import { getApplications, tenantName } from "@/lib/data";
+import { ApplicationFormModal } from "@/components/forms/ApplicationFormModal";
+import { getApplications, getTenants, tenantName } from "@/lib/data";
 import { statusTone } from "@/lib/status";
 import type { AppType } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
 
 const TYPE_LABEL: Record<AppType, string> = {
   web: "Web App",
@@ -17,13 +19,14 @@ const TYPE_LABEL: Record<AppType, string> = {
 
 export default function ApplicationsPage() {
   const apps = getApplications();
+  const tenants = getTenants();
 
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Applications"
         description="OAuth 2.1 / OIDC clients and relying parties registered across tenants."
-        actions={<Button>+ Register client</Button>}
+        actions={<ApplicationFormModal tenants={tenants} triggerLabel="+ Register client" />}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
