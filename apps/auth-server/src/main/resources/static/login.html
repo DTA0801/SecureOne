@@ -26,10 +26,16 @@
       <button type="submit">Sign in with password</button>
     </form>
     <div class="links">
+      <p><a id="signup-link" href="/account/signup.html">Create an account</a></p>
       <p><a href="/account/forgot-password.html">Forgot password</a></p>
       <p><a href="/account/magic-link.html">Sign in with magic link</a></p>
     </div>
     <script>
+      const appId = new URLSearchParams(location.search).get("applicationId");
+      if (appId) {
+        document.getElementById("signup-link").href =
+          "/account/signup.html?applicationId=" + encodeURIComponent(appId);
+      }
       fetch("/api/v1/auth/methods")
         .then((r) => r.json())
         .then((methods) => {

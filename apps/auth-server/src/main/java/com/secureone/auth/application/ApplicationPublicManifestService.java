@@ -122,7 +122,22 @@ public class ApplicationPublicManifestService {
         if (Boolean.TRUE.equals(sections.get("appearance"))) {
             response.put("appearance", sanitizeAppearance(settings.resolveAppearance(applicationId)));
         }
+        response.put("signup", buildSignupBlock(applicationId, app));
         return response;
+    }
+
+    private Map<String, Object> buildSignupBlock(UUID applicationId, Application app) {
+        boolean enabled = settings.resolveFeatureFlags(applicationId).stream()
+                .filter(f -> "self_registration".equals(String.valueOf(f.get("key"))))
+                .findFirst()
+                .map(f -> Boolean.TRUE.equals(f.get("enabled")))
+                .orElse(false);
+        Map<String, Object> signup = new LinkedHashMap<>();
+        signup.put("enabled", enabled);
+        signup.put("endpoint", "/api/v1/applications/" + applicationId + "/signup");
+        signup.put("optionsEndpoint", "/api/v1/applications/" + applicationId + "/signup");
+        signup.put("hostedPagePath", "/account/signup.html?applicationId=" + applicationId);
+        return signup;
     }
 
     private Map<String, Object> configFor(UUID applicationId) {

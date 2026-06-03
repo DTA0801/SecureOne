@@ -80,6 +80,22 @@ Application appearance includes branding (`appName`, `logoUrl`), the same color/
 
 Tenant admins never see **Platform settings** in the sidebar. The `/settings` route returns 404 for them.
 
+## Self-registration (application end users)
+
+Integrated clients (e.g. an e-commerce app using SecureOne for identity) can let users create their own accounts when:
+
+1. **Platform → For applications → Feature flags** is exposed for the app.
+2. **Application → Settings → Feature flags** — enable **Self Registration** (`self_registration`).
+3. **Authentication** — password method enabled and implemented (`m_password`).
+4. **Public API** — manifest exposure on (optional; manifest includes a `signup` block with endpoints).
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/applications/{id}/signup` | Whether sign-up is open, password policy hints, hosted page URL |
+| `POST /api/v1/applications/{id}/signup` | Register (`email`, `password`, optional name fields) |
+
+Hosted UI: `/account/signup.html?applicationId={id}` (links from `/login.html?applicationId={id}`). New users get app membership, the app’s default role (if configured), and a verification email. Sign in with tenant username `slug:email@domain.com`.
+
 ## Operations
 
 - After new migrations (V10+), restart **auth-server** (`./gradlew bootRun` in `apps/auth-server`).
