@@ -28,7 +28,7 @@ export default async function TenantDetailPage({
   const users = await listUsers(tenant.id);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={<Link href="/tenants" className="hover:underline">Tenants</Link>}
         title={tenant.name}

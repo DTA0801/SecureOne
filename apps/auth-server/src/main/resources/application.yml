@@ -42,25 +42,7 @@ spring:
     oauth2:
       authorizationserver:
         issuer: ${SECUREONE_ISSUER_URL:http://localhost:9000}
-        client:
-          demo-client:
-            require-authorization-consent: true
-            registration:
-              client-id: demo-client
-              client-secret: "{noop}demo-secret"
-              client-authentication-methods:
-                - client_secret_basic
-              authorization-grant-types:
-                - authorization_code
-                - refresh_token
-                - client_credentials
-              redirect-uris:
-                - http://127.0.0.1:3000/login/oauth2/code/secureone
-              post-logout-redirect-uris:
-                - http://127.0.0.1:3000
-              scopes:
-                - openid
-                - profile
+        # demo-client is registered in OAuth2ServerConfig (BCrypt-encoded secret)
 
 server:
   port: ${SECUREONE_PORT:9000}

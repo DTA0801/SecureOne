@@ -9,6 +9,12 @@ import {
   savePasswordPolicy,
 } from "@/lib/api/auth-settings";
 import { ApiError } from "@/lib/api/client";
+import {
+  featureFlagsPayload,
+  normalizeFeatureFlags,
+  normalizePasswordPolicy,
+  passwordPolicyPayload,
+} from "@/lib/auth-settings-normalize";
 import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
 
 function formatError(e: unknown): string {
@@ -30,32 +36,32 @@ export async function loadAuthSettingsAction(applicationId?: string): Promise<{
         fetchApplicationFeatureFlags,
         fetchApplicationPasswordPolicy,
       } = await import("@/lib/api/application-settings");
-      const [authMethods, featureFlags, passwordPolicy] = await Promise.all([
+      const [authMethods, featureFlagsRaw, passwordPolicyRaw] = await Promise.all([
         fetchApplicationAuthMethods(applicationId),
         fetchApplicationFeatureFlags(applicationId),
         fetchApplicationPasswordPolicy(applicationId),
       ]);
-      return { authMethods, featureFlags, passwordPolicy };
+      return {
+        authMethods,
+        featureFlags: normalizeFeatureFlags(featureFlagsRaw),
+        passwordPolicy: normalizePasswordPolicy(passwordPolicyRaw),
+      };
     }
     const [authMethods, featureFlags, passwordPolicy] = await Promise.all([
       fetchAuthMethods(),
       fetchFeatureFlags(),
       fetchPasswordPolicy(),
     ]);
-    return { authMethods, featureFlags, passwordPolicy };
+    return {
+      authMethods,
+      featureFlags: normalizeFeatureFlags(featureFlags),
+      passwordPolicy: normalizePasswordPolicy(passwordPolicy),
+    };
   } catch (e) {
     return {
       authMethods: [],
       featureFlags: [],
-      passwordPolicy: {
-        minLength: 12,
-        requireUppercase: true,
-        requireNumber: true,
-        requireSymbol: true,
-        expiryDays: 0,
-        historyCount: 5,
-        hashAlgorithm: "bcrypt",
-      },
+      passwordPolicy: normalizePasswordPolicy({}),
       error: formatError(e),
     };
   }
@@ -81,17 +87,16 @@ export async function saveAuthMethodsAction(
 export async function savePasswordPolicyAction(
   policy: PasswordPolicy,
   applicationId?: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; passwordPolicy?: PasswordPolicy; error?: string }> {
   try {
+    const payload = passwordPolicyPayload(policy);
     if (applicationId) {
       const { saveApplicationPasswordPolicy } = await import("@/lib/api/application-settings");
-      const { scope: _s, inheritsPlatformDefaults: _i, ...body } = policy as PasswordPolicy &
-        Record<string, unknown>;
-      await saveApplicationPasswordPolicy(applicationId, body as PasswordPolicy);
-      return { ok: true };
+      const saved = await saveApplicationPasswordPolicy(applicationId, payload);
+      return { ok: true, passwordPolicy: normalizePasswordPolicy(saved) };
     }
-    await savePasswordPolicy(policy);
-    return { ok: true };
+    const saved = await savePasswordPolicy(payload);
+    return { ok: true, passwordPolicy: normalizePasswordPolicy(saved) };
   } catch (e) {
     return { ok: false, error: formatError(e) };
   }
@@ -100,15 +105,16 @@ export async function savePasswordPolicyAction(
 export async function saveFeatureFlagsAction(
   flags: FeatureFlag[],
   applicationId?: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; featureFlags?: FeatureFlag[]; error?: string }> {
   try {
+    const payload = featureFlagsPayload(flags);
     if (applicationId) {
       const { saveApplicationFeatureFlags } = await import("@/lib/api/application-settings");
-      await saveApplicationFeatureFlags(applicationId, flags);
-      return { ok: true };
+      const saved = await saveApplicationFeatureFlags(applicationId, payload);
+      return { ok: true, featureFlags: normalizeFeatureFlags(saved) };
     }
-    await saveFeatureFlags(flags);
-    return { ok: true };
+    const saved = await saveFeatureFlags(payload);
+    return { ok: true, featureFlags: normalizeFeatureFlags(saved) };
   } catch (e) {
     return { ok: false, error: formatError(e) };
   }

@@ -67,6 +67,8 @@ export type FormState = {
   createdRoleId?: string;
   createdPermissionId?: string;
   createdUserId?: string;
+  createdApplicationId?: string;
+  createdClientSecret?: string;
 };
 
 const ok = (extra?: Partial<FormState>): FormState => ({ ok: true, ...extra });
@@ -142,26 +144,40 @@ export async function tenantDeleteAction(fd: FormData): Promise<void> {
 
 // ---- Applications ----
 
+function applicationWritePayload(fd: FormData) {
+  return {
+    name: str(fd, "name"),
+    description: str(fd, "description"),
+    type: str(fd, "type") || "web",
+    status: str(fd, "status") || "active",
+    grantTypes: list(fd, "grantTypes"),
+    scopes: list(fd, "scopes"),
+    redirectUris: list(fd, "redirectUris"),
+    postLogoutRedirectUris: list(fd, "postLogoutRedirectUris"),
+    pkceRequired: fd.get("pkceRequired") === "on",
+    tokenEndpointAuthMethod: str(fd, "tokenEndpointAuthMethod"),
+  };
+}
+
 export async function applicationCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const name = str(fd, "name");
   const tenantId = str(fd, "tenantId");
   if (!name) return fail("Name is required.");
   if (!tenantId) return fail("Tenant is required.");
   try {
-    await createApplicationApi({
-      name,
+    const payload = applicationWritePayload(fd);
+    const { application, clientSecret } = await createApplicationApi({
+      ...payload,
       tenantId,
       clientId: str(fd, "clientId"),
-      type: str(fd, "type") || "web",
-      status: str(fd, "status") || "active",
-      grantTypes: list(fd, "grantTypes"),
-      scopes: list(fd, "scopes"),
-      redirectUris: list(fd, "redirectUris"),
     });
     revalidatePath("/applications");
     revalidatePath("/tenants");
     revalidatePath("/audit");
-    return ok();
+    return ok({
+      createdApplicationId: application.id,
+      createdClientSecret: clientSecret,
+    });
   } catch (e) {
     return actionError(e);
   }
@@ -173,14 +189,7 @@ export async function applicationUpdateAction(_prev: FormState, fd: FormData): P
   const name = str(fd, "name");
   if (!name) return fail("Name is required.");
   try {
-    await updateApplicationApi(id, {
-      name,
-      type: str(fd, "type") || "web",
-      status: str(fd, "status") || "active",
-      grantTypes: list(fd, "grantTypes"),
-      scopes: list(fd, "scopes"),
-      redirectUris: list(fd, "redirectUris"),
-    });
+    await updateApplicationApi(id, applicationWritePayload(fd));
     revalidatePath("/applications");
     revalidatePath(`/applications/${id}`);
     return ok();
@@ -335,7 +344,7 @@ export async function userAdminSetPasswordAction(
     return fail("Password must be at least 8 characters.");
   }
   try {
-    await adminSetUserPasswordApi(id, password);
+    await adminSetUserPasswordApi(id, password, applicationId || undefined);
     revalidateUserPaths(applicationId, id);
     return ok();
   } catch (e) {

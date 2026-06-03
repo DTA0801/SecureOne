@@ -16,7 +16,9 @@ public class SettingsExposureService {
             "password-policy",
             "feature-flags",
             "appearance",
-            "user-directory");
+            "user-directory",
+            "public-manifest",
+            "token-policy");
 
     private final PlatformSettingsService platformSettings;
 
@@ -29,15 +31,20 @@ public class SettingsExposureService {
         Map<String, Boolean> result = new LinkedHashMap<>();
         for (String key : SECTION_KEYS) {
             Object val = stored.get(key);
-            result.put(key, val instanceof Boolean b ? b : defaultExposure(key));
+            result.put(key, readBoolean(val, key));
         }
         return result;
     }
 
     public Map<String, Boolean> saveExposure(Map<String, Boolean> body) {
+        Map<String, Object> existing = platformSettings.get("app_settings_exposure");
         Map<String, Object> toSave = new LinkedHashMap<>();
         for (String key : SECTION_KEYS) {
-            toSave.put(key, Boolean.TRUE.equals(body.get(key)));
+            if (body != null && body.containsKey(key)) {
+                toSave.put(key, Boolean.TRUE.equals(body.get(key)));
+            } else {
+                toSave.put(key, readBoolean(existing.get(key), key));
+            }
         }
         platformSettings.save("app_settings_exposure", toSave);
         return getExposure();
@@ -49,5 +56,15 @@ public class SettingsExposureService {
 
     private static boolean defaultExposure(String key) {
         return !"appearance".equals(key);
+    }
+
+    private static boolean readBoolean(Object val, String key) {
+        if (val instanceof Boolean b) {
+            return b;
+        }
+        if (val instanceof String s) {
+            return Boolean.parseBoolean(s);
+        }
+        return defaultExposure(key);
     }
 }

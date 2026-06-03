@@ -36,10 +36,23 @@ public class AdminAccessService {
         this.platformAdminUsername = platformAdminUsername;
     }
 
+    /** Dev/platform operator account ({@code spring.security.user.name}, default {@code admin}). */
     public boolean isPlatformSuperAdmin(Authentication authentication) {
         return authentication != null
                 && authentication.isAuthenticated()
                 && platformAdminUsername.equals(authentication.getName());
+    }
+
+    /**
+     * Platform-wide settings (and exposure controls). Requires the platform operator principal and
+     * no {@code X-Act-As-Email} — tenant admins and other simulated users must not view or edit.
+     */
+    public boolean canAccessPlatformSettings(Authentication authentication, String actAsEmail) {
+        return isPlatformSuperAdmin(authentication) && !hasActAs(actAsEmail);
+    }
+
+    private static boolean hasActAs(String actAsEmail) {
+        return actAsEmail != null && !actAsEmail.isBlank();
     }
 
     public List<ApplicationSummary> accessibleApplications(Authentication authentication, String actAsEmail) {
@@ -73,6 +86,13 @@ public class AdminAccessService {
     public void requireSuperAdmin(Authentication authentication) {
         if (!isPlatformSuperAdmin(authentication)) {
             throw new AccessDeniedException("Platform super-admin required");
+        }
+    }
+
+    public void requirePlatformSettingsAccess(Authentication authentication, String actAsEmail) {
+        if (!canAccessPlatformSettings(authentication, actAsEmail)) {
+            throw new AccessDeniedException(
+                    "Platform settings require the platform operator account without X-Act-As-Email");
         }
     }
 

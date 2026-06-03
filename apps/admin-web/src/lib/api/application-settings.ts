@@ -1,6 +1,7 @@
 import { apiFetch, appScopeHeaders } from "./client";
 import type { EmailSettings, NotificationSettings } from "@/lib/api/settings";
 import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
+import type { TokenPolicy } from "./token-policy";
 import type { AppSettingsExposure } from "./app-exposure";
 
 const base = (appId: string) => `/api/admin/v1/applications/${appId}/settings`;
@@ -70,7 +71,25 @@ export async function saveApplicationAuthMethods(appId: string, body: AuthMethod
 }
 
 export async function resetApplicationAuthMethods(appId: string): Promise<void> {
-  await apiFetch<void>(`${base(appId)}/auth-methods`, { method: "DELETE" });
+  await apiFetch<void>(`${base(appId)}/auth-methods`, scoped(appId, { method: "DELETE" }));
+}
+
+export async function fetchApplicationAppearance(appId: string): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(`${base(appId)}/appearance`, scoped(appId));
+}
+
+export async function saveApplicationAppearance(
+  appId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(
+    `${base(appId)}/appearance`,
+    scoped(appId, { method: "PUT", body: JSON.stringify(body) }),
+  );
+}
+
+export async function resetApplicationAppearance(appId: string): Promise<void> {
+  await apiFetch<void>(`${base(appId)}/appearance`, scoped(appId, { method: "DELETE" }));
 }
 
 export async function fetchApplicationPasswordPolicy(appId: string): Promise<PasswordPolicy> {
@@ -107,6 +126,59 @@ export async function saveApplicationFeatureFlags(
 
 export async function resetApplicationFeatureFlags(appId: string): Promise<void> {
   await apiFetch<void>(`${base(appId)}/feature-flags`, scoped(appId, { method: "DELETE" }));
+}
+
+export type ApplicationTokenTabState = {
+  platformExposed: boolean;
+  tabEnabled: boolean;
+};
+
+export type ApplicationMfaTabState = {
+  platformExposed: boolean;
+  tabEnabled: boolean;
+};
+
+export async function fetchApplicationTokenTabState(appId: string): Promise<ApplicationTokenTabState> {
+  return apiFetch<ApplicationTokenTabState>(`${base(appId)}/token-policy/tab-state`, scoped(appId));
+}
+
+export async function setApplicationTokenTabEnabled(
+  appId: string,
+  enabled: boolean,
+): Promise<ApplicationTokenTabState> {
+  return apiFetch<ApplicationTokenTabState>(
+    `${base(appId)}/token-policy/tab-enabled`,
+    scoped(appId, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  );
+}
+
+export async function fetchApplicationMfaTabState(appId: string): Promise<ApplicationMfaTabState> {
+  return apiFetch<ApplicationMfaTabState>(`${base(appId)}/mfa-tab/tab-state`, scoped(appId));
+}
+
+export async function setApplicationMfaTabEnabled(
+  appId: string,
+  enabled: boolean,
+): Promise<ApplicationMfaTabState> {
+  return apiFetch<ApplicationMfaTabState>(
+    `${base(appId)}/mfa-tab/tab-enabled`,
+    scoped(appId, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  );
+}
+
+export async function fetchApplicationTokenPolicy(appId: string): Promise<TokenPolicy> {
+  return apiFetch<TokenPolicy>(`${base(appId)}/token-policy`, scoped(appId));
+}
+
+export async function saveApplicationTokenPolicy(appId: string, body: TokenPolicy): Promise<TokenPolicy> {
+  return apiFetch<TokenPolicy>(
+    `${base(appId)}/token-policy`,
+    scoped(appId, { method: "PUT", body: JSON.stringify(body) }),
+  );
+}
+
+export async function resetApplicationTokenPolicy(appId: string): Promise<void> {
+  await apiFetch<void>(`${base(appId)}/token-policy`, scoped(appId, { method: "DELETE" }));
 }
 
 export { listUsers as listApplicationUsers } from "./users";

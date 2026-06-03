@@ -27,40 +27,14 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function themeChangeLabel(prefs: UiPreferences, prev: UiPreferences | null): string {
-  if (!prev) return "Theme loaded";
-  const mode = resolveThemeMode(prefs);
-  if (prev.mode !== prefs.mode) return `Theme mode: ${mode}`;
-  if (prev.primaryColor !== prefs.primaryColor) return "Button & nav color updated";
-  if (prev.buttonTextColor !== prefs.buttonTextColor) return "Button label text updated";
-  if (prev.surfaceColor !== prefs.surfaceColor || prev.darkSurfaceColor !== prefs.darkSurfaceColor) {
-    return "Card color updated";
-  }
-  if (prev.textColor !== prefs.textColor || prev.darkTextColor !== prefs.darkTextColor) {
-    return "Text color updated";
-  }
-  if (prev.backgroundColor !== prefs.backgroundColor || prev.darkBackgroundColor !== prefs.darkBackgroundColor) {
-    return "Page background updated";
-  }
-  if (prev.gradientPreset !== prefs.gradientPreset) return "Gradient style updated";
-  if (prev.gradientScope !== prefs.gradientScope) return "Gradient placement updated";
-  if (prev.gradientAngle !== prefs.gradientAngle) return "Gradient angle updated";
-  const notifyKeys: (keyof UiPreferences)[] = [
-    "notifyInfoBackground",
-    "notifyInfoText",
-    "notifyInfoBorder",
-    "notifySuccessBackground",
-    "notifySuccessText",
-    "notifySuccessBorder",
-    "notifyErrorBackground",
-    "notifyErrorText",
-    "notifyErrorBorder",
-  ];
-  if (notifyKeys.some((k) => prev[k] !== prefs[k])) return "Notification toast colors updated";
-  return "Appearance updated";
-}
-
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+export function ThemeProvider({
+  children,
+  platformSettingsAccess = false,
+}: {
+  children: React.ReactNode;
+  /** When false, console theme uses browser storage only (no platform settings API). */
+  platformSettingsAccess?: boolean;
+}) {
   const { toast } = useToast();
   const [prefs, setPrefsState] = useState<UiPreferences>(DEFAULT_UI_PREFERENCES);
   const prevPrefs = useRef<UiPreferences | null>(null);
@@ -74,7 +48,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       const local = loadUiPreferences();
-      const { prefs: api, error } = await loadAppearanceAction();
+      let api: Partial<UiPreferences> = {};
+      let error: string | undefined;
+      if (platformSettingsAccess) {
+        const loaded = await loadAppearanceAction();
+        api = loaded.prefs;
+        error = loaded.error;
+      }
       const merged = mergeUiPreferences(api, local);
       if (!cancelled) {
         setPrefsState(merged);
@@ -88,7 +68,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         } else {
           setSaveStatus("saved");
           setSaveError(null);
-          toast("Theme loaded from database", "success");
         }
         setReady(true);
         skipNextSave.current = true;
@@ -97,7 +76,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [toast, platformSettingsAccess]);
 
   const setPrefs = useCallback(
     (next: UiPreferences | ((prev: UiPreferences) => UiPreferences)) => {
@@ -106,10 +85,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           typeof next === "function" ? next(prev) : next,
         );
         applyUiPreferences(resolved);
-        if (ready) {
-          toast(themeChangeLabel(resolved, prevPrefs.current), "info");
-          prevPrefs.current = resolved;
-        }
+        if (ready) prevPrefs.current = resolved;
         return resolved;
       });
     },
@@ -120,13 +96,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     async (next: UiPreferences) => {
       applyUiPreferences(next);
       saveUiPreferences(next);
+      if (!platformSettingsAccess) {
+        setSaveStatus("saved");
+        setSaveError(null);
+        return;
+      }
       setSaveStatus("saving");
       setSaveError(null);
       const result = await saveAppearanceAction(next);
       if (result.ok) {
         setSaveStatus("saved");
         setSaveError(null);
-        toast("Saved to database", "success");
+        toast("Settings saved", "success");
       } else {
         setSaveStatus("error");
         const msg = result.error
@@ -136,7 +117,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         toast("Save failed — using browser storage", "error");
       }
     },
-    [toast],
+    [toast, platformSettingsAccess],
   );
 
   useEffect(() => {
@@ -157,10 +138,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (prefs.mode !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      applyUiPreferences(prefs);
-      toast(`Theme mode: ${resolveThemeMode(prefs)}`, "info");
-    };
+    const handler = () => applyUiPreferences(prefs);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, [prefs, toast]);

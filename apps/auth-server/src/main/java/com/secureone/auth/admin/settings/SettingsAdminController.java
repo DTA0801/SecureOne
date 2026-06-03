@@ -1,5 +1,6 @@
 package com.secureone.auth.admin.settings;
 
+import com.secureone.auth.application.TokenPolicyDefaults;
 import com.secureone.auth.notify.EmailNotificationService;
 import com.secureone.auth.platform.AuthSettingsService;
 import com.secureone.auth.platform.PlatformSettingsService;
@@ -122,5 +123,19 @@ public class SettingsAdminController {
     @PutMapping("/feature-flags")
     public List<Map<String, Object>> updateFeatureFlags(@RequestBody List<Map<String, Object>> body) {
         return authSettings.saveFeatureFlags(body);
+    }
+
+    @GetMapping("/token-policy")
+    public Map<String, Object> getTokenPolicy() {
+        Map<String, Object> stored = platformSettings.get("token_policy");
+        if (stored == null || stored.isEmpty()) {
+            return TokenPolicyDefaults.platformDefaults();
+        }
+        return new HashMap<>(stored);
+    }
+
+    @PutMapping("/token-policy")
+    public Map<String, Object> updateTokenPolicy(@RequestBody Map<String, Object> body) {
+        return platformSettings.saveMap("token_policy", TokenPolicyDefaults.sanitizeForSave(body));
     }
 }

@@ -41,11 +41,9 @@ export default async function RootLayout({
       <body className="min-h-full">
         <ThemeInitScript />
         <ToastProvider>
-          <ThemeProvider>
-            <ConsoleProviders superAdmin={superAdmin} applications={applications}>
-              {children}
-            </ConsoleProviders>
-          </ThemeProvider>
+          <ConsoleProviders superAdmin={superAdmin} applications={applications}>
+            <ThemeProvider platformSettingsAccess={superAdmin}>{children}</ThemeProvider>
+          </ConsoleProviders>
         </ToastProvider>
       </body>
     </html>

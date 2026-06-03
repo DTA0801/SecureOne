@@ -20,17 +20,32 @@ export type Tenant = {
 
 export type AppType = "web" | "spa" | "native" | "m2m";
 
+export type OAuthEndpoints = {
+  issuer: string;
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  jwksUri: string;
+};
+
 export type Application = {
   id: string;
   tenantId: string;
   name: string;
+  description?: string | null;
   clientId: string;
   type: AppType;
   status: Status;
   grantTypes: string[];
   scopes: string[];
   redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  confidential: boolean;
+  pkceRequired: boolean;
+  tokenEndpointAuthMethod: string;
+  clientSecretConfigured: boolean;
   createdAt: string;
+  updatedAt: string;
+  oAuthEndpoints: OAuthEndpoints;
 };
 
 export type MfaFactorType = "passkey" | "totp" | "sms" | "email" | "push";
@@ -148,6 +163,8 @@ export type FeatureFlag = {
   description: string;
   enabled: boolean;
   rollout: number;
+  /** Grouping for admin UI: oauth, identity, provisioning */
+  category?: string;
 };
 
 export type PasswordPolicy = {

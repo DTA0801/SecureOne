@@ -7,7 +7,12 @@ export type NavItem = {
 
 /** Super-admin / platform operations (shown at bottom of sidebar). */
 export const SUPER_ADMIN_NAV: NavItem[] = [
-  { label: "Manage clients", href: "/applications", description: "Register OAuth clients", superAdminOnly: true },
+  {
+    label: "OAuth clients",
+    href: "/applications",
+    description: "Enterprise client registry",
+    superAdminOnly: true,
+  },
   { label: "Tenants", href: "/tenants", description: "Organizations", superAdminOnly: true },
   { label: "Platform settings", href: "/settings", description: "Global defaults", superAdminOnly: true },
 ];

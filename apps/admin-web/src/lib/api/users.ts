@@ -212,7 +212,22 @@ export async function unlockUserApi(id: string): Promise<User> {
   return mapUser(dto);
 }
 
-export async function adminSetUserPasswordApi(id: string, password: string): Promise<void> {
+export async function adminSetUserPasswordApi(
+  id: string,
+  password: string,
+  applicationId?: string,
+): Promise<void> {
+  if (applicationId) {
+    await apiFetch<void>(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/password/set`,
+      {
+        method: "POST",
+        body: JSON.stringify({ password }),
+        headers: { "X-Application-Id": applicationId },
+      },
+    );
+    return;
+  }
   await apiFetch<void>(`/api/admin/v1/users/${id}/password/set`, {
     method: "POST",
     body: JSON.stringify({ password }),

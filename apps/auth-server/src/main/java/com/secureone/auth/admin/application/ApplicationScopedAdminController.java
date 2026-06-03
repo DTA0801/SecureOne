@@ -4,6 +4,7 @@ import com.secureone.auth.admin.user.UserAdminDtos.UserAuthMethodsUpdateRequest;
 import com.secureone.auth.admin.user.UserAdminDtos.UserResponse;
 import com.secureone.auth.admin.user.UserAdminService;
 import com.secureone.auth.admin.user.UserImportExportService;
+import com.secureone.auth.application.ApplicationPublicManifestService;
 import com.secureone.auth.application.ApplicationSettingsService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -37,16 +38,19 @@ public class ApplicationScopedAdminController {
     private final ApplicationSettingsService settings;
     private final UserAdminService userAdmin;
     private final UserImportExportService userImportExport;
+    private final ApplicationPublicManifestService publicManifest;
 
     public ApplicationScopedAdminController(
             ApplicationUserAdminService users,
             ApplicationSettingsService settings,
             UserAdminService userAdmin,
-            UserImportExportService userImportExport) {
+            UserImportExportService userImportExport,
+            ApplicationPublicManifestService publicManifest) {
         this.users = users;
         this.settings = settings;
         this.userAdmin = userAdmin;
         this.userImportExport = userImportExport;
+        this.publicManifest = publicManifest;
     }
 
     @GetMapping("/users")
@@ -94,6 +98,15 @@ public class ApplicationScopedAdminController {
         return userAdmin.resetMfaForMethod(userId, applicationId, methodId);
     }
 
+    @PostMapping("/users/{userId}/password/set")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void adminSetPassword(
+            @PathVariable UUID applicationId,
+            @PathVariable UUID userId,
+            @Valid @RequestBody com.secureone.auth.admin.user.UserAdminDtos.AdminSetPasswordRequest request) {
+        userAdmin.adminSetPassword(userId, request.password(), applicationId);
+    }
+
     @GetMapping(value = "/users/export", produces = "text/csv")
     public ResponseEntity<byte[]> exportUsers(
             @PathVariable UUID applicationId, @RequestParam(defaultValue = "csv") String format) {
@@ -131,6 +144,27 @@ public class ApplicationScopedAdminController {
     @GetMapping("/settings/exposure")
     public Map<String, Boolean> getExposure(@PathVariable UUID applicationId) {
         return settings.getExposureForApplication(applicationId);
+    }
+
+    @GetMapping("/settings/policy-sources")
+    public Map<String, String> getPolicySources(@PathVariable UUID applicationId) {
+        return settings.getPolicySources(applicationId);
+    }
+
+    @GetMapping("/settings/policy-source/{exposureKey}")
+    public Map<String, String> getPolicySource(
+            @PathVariable UUID applicationId, @PathVariable String exposureKey) {
+        return Map.of("exposureKey", exposureKey, "policySource", settings.getPolicySource(applicationId, exposureKey));
+    }
+
+    @PutMapping("/settings/policy-source/{exposureKey}")
+    public Map<String, String> setPolicySource(
+            @PathVariable UUID applicationId,
+            @PathVariable String exposureKey,
+            @RequestBody Map<String, String> body) {
+        String source = body != null ? body.get("source") : null;
+        String policySource = settings.setPolicySource(applicationId, exposureKey, source);
+        return Map.of("exposureKey", exposureKey, "policySource", policySource);
     }
 
     @GetMapping("/settings/notifications")
@@ -184,6 +218,18 @@ public class ApplicationScopedAdminController {
         settings.clearOverride(applicationId, "auth_methods");
     }
 
+    @GetMapping("/settings/mfa-tab/tab-state")
+    public Map<String, Object> getMfaTabState(@PathVariable UUID applicationId) {
+        return settings.getMfaTabState(applicationId);
+    }
+
+    @PutMapping("/settings/mfa-tab/tab-enabled")
+    public Map<String, Object> setMfaTabEnabled(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Boolean> body) {
+        boolean enabled = Boolean.TRUE.equals(body != null ? body.get("enabled") : null);
+        return settings.saveMfaTabEnabled(applicationId, enabled);
+    }
+
     @GetMapping("/settings/password-policy")
     public Map<String, Object> getPasswordPolicy(@PathVariable UUID applicationId) {
         return settings.getPasswordPolicy(applicationId);
@@ -233,5 +279,68 @@ public class ApplicationScopedAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetUserDirectory(@PathVariable UUID applicationId) {
         settings.clearOverride(applicationId, "user_directory");
+    }
+
+    @GetMapping("/settings/appearance")
+    public Map<String, Object> getAppearance(@PathVariable UUID applicationId) {
+        return settings.getAppearance(applicationId);
+    }
+
+    @PutMapping("/settings/appearance")
+    public Map<String, Object> updateAppearance(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Object> body) {
+        return settings.saveAppearance(applicationId, body);
+    }
+
+    @DeleteMapping("/settings/appearance")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetAppearance(@PathVariable UUID applicationId) {
+        settings.clearOverride(applicationId, "appearance");
+    }
+
+    @GetMapping("/settings/public-manifest")
+    public Map<String, Object> getPublicManifestSettings(@PathVariable UUID applicationId) {
+        return publicManifest.getManifestConfig(applicationId);
+    }
+
+    @PutMapping("/settings/public-manifest")
+    public Map<String, Object> updatePublicManifestSettings(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Object> body) {
+        return publicManifest.saveManifestConfig(applicationId, body);
+    }
+
+    @DeleteMapping("/settings/public-manifest")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPublicManifestSettings(@PathVariable UUID applicationId) {
+        publicManifest.clearManifestConfig(applicationId);
+    }
+
+    @GetMapping("/settings/token-policy/tab-state")
+    public Map<String, Object> getTokenTabState(@PathVariable UUID applicationId) {
+        return settings.getTokenTabState(applicationId);
+    }
+
+    @PutMapping("/settings/token-policy/tab-enabled")
+    public Map<String, Object> setTokenTabEnabled(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Boolean> body) {
+        boolean enabled = Boolean.TRUE.equals(body != null ? body.get("enabled") : null);
+        return settings.saveTokenTabEnabled(applicationId, enabled);
+    }
+
+    @GetMapping("/settings/token-policy")
+    public Map<String, Object> getTokenPolicy(@PathVariable UUID applicationId) {
+        return settings.getTokenPolicy(applicationId);
+    }
+
+    @PutMapping("/settings/token-policy")
+    public Map<String, Object> updateTokenPolicy(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Object> body) {
+        return settings.saveTokenPolicy(applicationId, body);
+    }
+
+    @DeleteMapping("/settings/token-policy")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetTokenPolicy(@PathVariable UUID applicationId) {
+        settings.clearOverride(applicationId, "token_policy");
     }
 }

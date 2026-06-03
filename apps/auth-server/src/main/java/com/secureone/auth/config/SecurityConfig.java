@@ -12,6 +12,7 @@ import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
@@ -41,7 +42,10 @@ public class SecurityConfig {
         http
                 .securityMatcher(endpointsMatcher)
                 .with(authorizationServer, server -> server.oidc(Customizer.withDefaults()))
-                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST, "/oauth2/token", "/oauth2/revoke", "/oauth2/introspect")
+                        .permitAll()
+                        .anyRequest().authenticated())
                 .csrf(csrf -> csrf.ignoringRequestMatchers(endpointsMatcher))
                 // Redirect browser (text/html) requests to the login page when unauthenticated.
                 .exceptionHandling(ex -> ex
@@ -77,6 +81,7 @@ public class SecurityConfig {
                                 "/api/info",
                                 "/api/v1/account/**",
                                 "/api/v1/auth/**",
+                                "/api/v1/applications/**",
                                 "/account/**",
                                 "/login",
                                 "/login.html")
@@ -87,6 +92,7 @@ public class SecurityConfig {
                         "/api/admin/v1/**",
                         "/api/v1/account/**",
                         "/api/v1/auth/**",
+                        "/api/v1/applications/**",
                         "/login"))
                 .httpBasic(Customizer.withDefaults())
                 .formLogin(form -> form

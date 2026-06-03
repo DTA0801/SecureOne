@@ -51,16 +51,16 @@ export async function loadAdminContextSafe(): Promise<AdminContext> {
   } catch {
     try {
       return {
-        platformSuperAdmin: true,
-        principal: "admin",
-        actAsEmail: null,
+        platformSuperAdmin: false,
+        principal: "",
+        actAsEmail: process.env.SECUREONE_ACT_AS_EMAIL ?? null,
         applications: await applicationsFromListApi(),
       };
     } catch {
       return {
-        platformSuperAdmin: true,
-        principal: "admin",
-        actAsEmail: null,
+        platformSuperAdmin: false,
+        principal: "",
+        actAsEmail: process.env.SECUREONE_ACT_AS_EMAIL ?? null,
         applications: [],
       };
     }

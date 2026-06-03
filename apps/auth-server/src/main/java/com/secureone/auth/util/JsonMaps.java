@@ -25,4 +25,18 @@ public final class JsonMaps {
         }
         return map.get(key).toString();
     }
+
+    public static boolean boolVal(Map<String, Object> map, String key, boolean defaultValue) {
+        if (map == null || !map.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = map.get(key);
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof String s) {
+            return Boolean.parseBoolean(s);
+        }
+        return defaultValue;
+    }
 }

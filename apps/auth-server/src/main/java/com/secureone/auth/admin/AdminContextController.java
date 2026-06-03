@@ -48,7 +48,7 @@ public class AdminContextController {
     public AdminContextResponse context(
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail) {
-        boolean superAdmin = access.isPlatformSuperAdmin(authentication);
+        boolean superAdmin = access.canAccessPlatformSettings(authentication, actAsEmail);
         List<ApplicationSummary> apps = access.accessibleApplications(authentication, actAsEmail);
         List<ApplicationContextItem> items = new ArrayList<>();
         for (ApplicationSummary app : apps) {

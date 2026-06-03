@@ -2,7 +2,9 @@ package com.secureone.auth.admin.application;
 
 import com.secureone.auth.admin.AdminAccessService;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationCreateRequest;
+import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationCreateResult;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationResponse;
+import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationSecretResponse;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationUpdateRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -57,8 +59,13 @@ public class ApplicationAdminController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApplicationResponse create(@Valid @RequestBody ApplicationCreateRequest request) {
+    public ApplicationCreateResult create(@Valid @RequestBody ApplicationCreateRequest request) {
         return service.create(request);
+    }
+
+    @PostMapping("/{id}/rotate-secret")
+    public ApplicationSecretResponse rotateSecret(@PathVariable UUID id) {
+        return service.rotateClientSecret(id);
     }
 
     @PutMapping("/{id}")

@@ -14,6 +14,7 @@ import {
   type AdminRecipientOption,
   type RecipientUserOption,
 } from "@/lib/actions/settings";
+import { ensureApplicationPolicyScopes } from "@/lib/api/ensure-application-policy";
 import type { EmailSettings, NotificationSettings } from "@/lib/api/settings";
 
 export function NotificationsSettings({ applicationId }: { applicationId?: string }) {
@@ -28,32 +29,45 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipAutoSave = useRef(true);
 
   useEffect(() => {
-    const recipientsPromise = applicationId
-      ? Promise.resolve({
+    let cancelled = false;
+    async function load() {
+      if (applicationId) {
+        try {
+          await ensureApplicationPolicyScopes(applicationId, ["notifications", "email"]);
+        } catch (e) {
+          if (!cancelled) toast(e instanceof Error ? e.message : "Failed to prepare settings", "error");
+        }
+      }
+      const recipientsPromise = applicationId
+        ? Promise.resolve({
           adminOptions: [] as AdminRecipientOption[],
           allUsers: [] as RecipientUserOption[],
           error: undefined as string | undefined,
-        })
-      : loadAdminRecipientOptionsAction();
-    Promise.all([loadNotificationsAction(applicationId), recipientsPromise]).then(
-      ([{ notifications: n, email: e, error }, { adminOptions: admins, allUsers: users, error: optionsError }]) => {
-        setNotifications(n);
-        setEmail(e);
-        setSelectedEmails((n.adminRecipients ?? []).map((x) => x.trim().toLowerCase()));
-        setAdminOptions(admins);
-        setAllUsers(users);
-        if (error || optionsError) {
-          const msg = [error, optionsError].filter(Boolean).join(" ");
-          setMessage(msg);
-          toast(msg, "error");
-        } else {
-          toast("Notification settings loaded", "success");
-        }
-        setLoaded(true);
-      },
-    );
+          })
+        : loadAdminRecipientOptionsAction();
+      const [{ notifications: n, email: e, error }, { adminOptions: admins, allUsers: users, error: optionsError }] =
+        await Promise.all([loadNotificationsAction(applicationId), recipientsPromise]);
+      if (cancelled) return;
+      setNotifications(n);
+      setEmail(e);
+      setSelectedEmails((n.adminRecipients ?? []).map((x) => x.trim().toLowerCase()));
+      setAdminOptions(admins);
+      setAllUsers(users);
+      if (error || optionsError) {
+        const msg = [error, optionsError].filter(Boolean).join(" ");
+        setMessage(msg);
+        toast(msg, "error");
+      }
+      skipAutoSave.current = true;
+      setLoaded(true);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [toast, applicationId]);
 
   const persist = useCallback(async () => {
@@ -64,15 +78,24 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
         email,
       },
       applicationId,
+      applicationId ? { saveNotifications: true, saveEmail: true } : undefined,
     );
-    const msg = result.ok ? "Saved to database." : (result.error ?? "Save failed");
-    setMessage(msg);
-    toast(msg, result.ok ? "success" : "error");
+    if (result.ok) {
+      toast("Settings saved", "success");
+    } else {
+      const msg = result.error ?? "Save failed";
+      setMessage(msg);
+      toast(msg, "error");
+    }
     setSaving(false);
   }, [notifications, email, selectedEmails, toast, applicationId]);
 
   useEffect(() => {
     if (!loaded) return;
+    if (skipAutoSave.current) {
+      skipAutoSave.current = false;
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       persist();
@@ -117,46 +140,31 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
             label="Email notifications (admin)"
             hint="Platform alerts to admin recipients below"
             checked={!!notifications.emailEnabled}
-            onChange={(v) => {
-              setNotifications({ ...notifications, emailEnabled: v });
-              toast(v ? "Admin email notifications enabled" : "Admin email notifications disabled", "info");
-            }}
+            onChange={(v) => setNotifications({ ...notifications, emailEnabled: v })}
           />
           <SettingRow
             label="User email (transactional)"
             hint="Verify email, password reset, and password-changed messages to end users"
             checked={notifications.userEmailEnabled !== false}
-            onChange={(v) => {
-              setNotifications({ ...notifications, userEmailEnabled: v });
-              toast(v ? "User transactional email enabled" : "User transactional email disabled", "info");
-            }}
+            onChange={(v) => setNotifications({ ...notifications, userEmailEnabled: v })}
           />
           <SettingRow
             label="Push notifications"
             hint="Mobile / web push (coming soon)"
             checked={!!notifications.pushEnabled}
-            onChange={(v) => {
-              setNotifications({ ...notifications, pushEnabled: v });
-              toast("Push notifications updated", "info");
-            }}
+            onChange={(v) => setNotifications({ ...notifications, pushEnabled: v })}
           />
           <SettingRow
             label="Audit alerts"
             hint="Email on high-risk admin actions"
             checked={!!notifications.auditAlertsEnabled}
-            onChange={(v) => {
-              setNotifications({ ...notifications, auditAlertsEnabled: v });
-              toast("Audit alerts updated", "info");
-            }}
+            onChange={(v) => setNotifications({ ...notifications, auditAlertsEnabled: v })}
           />
           <SettingRow
             label="Security alerts"
             hint="Failed logins, lockouts, MFA changes"
             checked={!!notifications.securityAlertsEnabled}
-            onChange={(v) => {
-              setNotifications({ ...notifications, securityAlertsEnabled: v });
-              toast("Security alerts updated", "info");
-            }}
+            onChange={(v) => setNotifications({ ...notifications, securityAlertsEnabled: v })}
           />
         </ul>
         <div className="space-y-4 border-t border-ui p-5">
@@ -168,15 +176,7 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
               adminOptions={adminOptions}
               allUsers={allUsers}
               selectedEmails={selectedEmails}
-              onChange={(emails) => {
-                setSelectedEmails(emails);
-                toast(
-                  emails.length
-                    ? `${emails.length} recipient${emails.length === 1 ? "" : "s"} selected`
-                    : "Recipients cleared",
-                  "info",
-                );
-              }}
+              onChange={setSelectedEmails}
               disabled={!loaded}
             />
           </FieldRow>
@@ -187,7 +187,10 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
         <CardHeader title="Email sender" description="From address shown on outbound mail" />
         <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
           <FieldRow label="From name">
-            <Input value={email.fromName ?? ""} onChange={(e) => setEmail({ ...email, fromName: e.target.value })} />
+            <Input
+              value={email.fromName ?? ""}
+              onChange={(e) => setEmail({ ...email, fromName: e.target.value })}
+            />
           </FieldRow>
           <FieldRow label="From address">
             <Input
@@ -196,7 +199,10 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
             />
           </FieldRow>
           <FieldRow label="Reply-to">
-            <Input value={email.replyTo ?? ""} onChange={(e) => setEmail({ ...email, replyTo: e.target.value })} />
+            <Input
+              value={email.replyTo ?? ""}
+              onChange={(e) => setEmail({ ...email, replyTo: e.target.value })}
+            />
           </FieldRow>
         </div>
       </Card>
@@ -228,11 +234,13 @@ function SettingRow({
   label,
   hint,
   checked,
+  disabled,
   onChange,
 }: {
   label: string;
   hint: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
@@ -241,7 +249,7 @@ function SettingRow({
         <p className="text-sm font-medium text-[var(--ui-text)]">{label}</p>
         <p className="text-xs text-muted">{hint}</p>
       </div>
-      <Toggle checked={checked} onChange={onChange} aria-label={label} />
+      <Toggle checked={checked} disabled={disabled} onChange={onChange} aria-label={label} />
     </li>
   );
 }

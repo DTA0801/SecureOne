@@ -1,7 +1,9 @@
 package com.secureone.auth.account;
 
+import com.secureone.auth.application.ApplicationEffectiveSettingsService;
 import com.secureone.auth.platform.AuthSettingsService;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 
@@ -9,13 +11,22 @@ import org.springframework.stereotype.Service;
 public class PasswordPolicyService {
 
     private final AuthSettingsService authSettings;
+    private final ApplicationEffectiveSettingsService effectiveSettings;
 
-    public PasswordPolicyService(AuthSettingsService authSettings) {
+    public PasswordPolicyService(
+            AuthSettingsService authSettings, ApplicationEffectiveSettingsService effectiveSettings) {
         this.authSettings = authSettings;
+        this.effectiveSettings = effectiveSettings;
     }
 
     public void validate(String password) {
-        Map<String, Object> policy = authSettings.getPasswordPolicy();
+        validate(password, null);
+    }
+
+    public void validate(String password, UUID applicationId) {
+        Map<String, Object> policy = applicationId != null
+                ? effectiveSettings.passwordPolicy(applicationId)
+                : authSettings.getPasswordPolicy();
         int minLength = number(policy, "minLength", 8);
         if (password == null || password.length() < minLength) {
             throw new IllegalArgumentException("Password must be at least " + minLength + " characters.");

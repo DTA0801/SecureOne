@@ -8,16 +8,18 @@ import { TenantFormModal } from "@/components/forms/TenantFormModal";
 import { listTenants } from "@/lib/api/tenants";
 import { tenantDeleteAction } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
+import { requirePlatformAccess } from "@/lib/platform-access";
 import { planTone, statusTone } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
 export default async function TenantsPage() {
+  await requirePlatformAccess();
   const tenants = await listTenants();
   const totalUsers = tenants.reduce((s, t) => s + t.userCount, 0);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Tenants"
         description="Organizations using the platform. Each tenant is isolated via PostgreSQL row-level security."

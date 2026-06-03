@@ -16,9 +16,12 @@ type Tab = "overview" | "users" | "settings";
 export function ApplicationWorkspace({
   app,
   tenant,
+  platformSettingsAccess = false,
 }: {
   app: Application;
   tenant: Tenant | null;
+  /** Platform operator (not tenant admin / act-as). */
+  platformSettingsAccess?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
 
@@ -45,7 +48,9 @@ export function ApplicationWorkspace({
         ))}
       </div>
 
-      {tab === "overview" && <OverviewPanel app={app} tenant={tenant} />}
+      {tab === "overview" && (
+        <OverviewPanel app={app} tenant={tenant} platformSettingsAccess={platformSettingsAccess} />
+      )}
       {tab === "users" && (
         <UsersPanel
           applicationId={app.id}
@@ -59,7 +64,15 @@ export function ApplicationWorkspace({
   );
 }
 
-function OverviewPanel({ app, tenant }: { app: Application; tenant: Tenant | null }) {
+function OverviewPanel({
+  app,
+  tenant,
+  platformSettingsAccess,
+}: {
+  app: Application;
+  tenant: Tenant | null;
+  platformSettingsAccess: boolean;
+}) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card padded={false}>
@@ -73,13 +86,25 @@ function OverviewPanel({ app, tenant }: { app: Application; tenant: Tenant | nul
       <Card padded={false}>
         <CardHeader title="OAuth" />
         <div className="space-y-3 p-5 text-sm">
-          <Row label="Grant types" value={app.grantTypes.join(", ")} />
-          <Row label="Scopes" value={app.scopes.join(", ")} />
+          <Row label="Grant types" value={app.grantTypes.join(", ") || "—"} />
+          <Row label="Scopes" value={app.scopes.join(", ") || "—"} />
+          <Row label="PKCE" value={app.pkceRequired ? "Required" : "Optional"} />
+          {app.confidential && (
+            <Row label="Secret" value={app.clientSecretConfigured ? "Configured" : "Not set"} />
+          )}
         </div>
       </Card>
       <p className="text-sm text-muted lg:col-span-2">
-        Platform-wide defaults live under <Link href="/settings" className="text-brand hover:underline">Settings</Link>.
-        Use the <strong>Users</strong> and <strong>Settings</strong> tabs here to manage this client only.
+        {platformSettingsAccess ? (
+          <>
+            Platform-wide defaults live under{" "}
+            <Link href="/settings" className="text-brand hover:underline">
+              Platform settings
+            </Link>
+            .{" "}
+          </>
+        ) : null}
+        Use the <strong>Users</strong> and <strong>Settings</strong> tabs here to manage this application.
       </p>
     </div>
   );

@@ -56,6 +56,45 @@ export const GRADIENT_PRESETS: Record<
   violet: { label: "Violet dusk", from: "#7c3aed", to: "#2563eb", angle: 150 },
 };
 
+/** Client-app widgets (dialogs, inputs) — public API only, not admin console. */
+export type ClientWidgetColors = {
+  dialogBackground: string;
+  dialogText: string;
+  dialogBorder: string;
+  dialogOverlay: string;
+  inputBackground: string;
+  inputText: string;
+  inputBorder: string;
+  inputPlaceholder: string;
+  mutedText: string;
+  dividerColor: string;
+};
+
+export type ClientBranding = {
+  appName: string;
+  logoUrl: string;
+};
+
+export type ClientAppearance = UiPreferences & ClientWidgetColors & ClientBranding;
+
+export const DEFAULT_CLIENT_WIDGET_COLORS: ClientWidgetColors = {
+  dialogBackground: "#ffffff",
+  dialogText: "#171717",
+  dialogBorder: "#e5e7eb",
+  dialogOverlay: "#00000066",
+  inputBackground: "#ffffff",
+  inputText: "#171717",
+  inputBorder: "#d1d5db",
+  inputPlaceholder: "#9ca3af",
+  mutedText: "#6b7280",
+  dividerColor: "#e5e7eb",
+};
+
+export const DEFAULT_CLIENT_BRANDING: ClientBranding = {
+  appName: "",
+  logoUrl: "",
+};
+
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   mode: "system",
   primaryColor: "#4f46e5",
@@ -83,4 +122,10 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   notifyErrorBackground: "#fef2f2",
   notifyErrorText: "#991b1b",
   notifyErrorBorder: "#ef444466",
+};
+
+export const DEFAULT_CLIENT_APPEARANCE: ClientAppearance = {
+  ...DEFAULT_UI_PREFERENCES,
+  ...DEFAULT_CLIENT_WIDGET_COLORS,
+  ...DEFAULT_CLIENT_BRANDING,
 };

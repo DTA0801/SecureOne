@@ -11,6 +11,7 @@ export type ApplicationContextItem = {
 };
 
 export type AdminContext = {
+  /** True only for the platform operator account without SECUREONE_ACT_AS_EMAIL. */
   platformSuperAdmin: boolean;
   principal: string;
   actAsEmail: string | null;

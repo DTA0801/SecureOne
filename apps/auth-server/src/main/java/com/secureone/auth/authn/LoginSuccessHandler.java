@@ -39,6 +39,11 @@ public class LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
             HttpServletRequest request, HttpServletResponse response, Authentication authentication)
             throws IOException, ServletException {
         String username = authentication.getName();
+        if (username == null || !username.contains(":")) {
+            // Platform dev admin (no tenant) — skip tenant login history.
+            super.onAuthenticationSuccess(request, response, authentication);
+            return;
+        }
         int sep = username.indexOf(':');
         UserAccount account =
                 userDetailsService.resolveAccount(username.substring(0, sep), username.substring(sep + 1));

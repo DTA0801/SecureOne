@@ -29,7 +29,11 @@ public class UserPasswordService {
     }
 
     public void setPassword(UUID userId, String plainPassword) {
-        policy.validate(plainPassword);
+        setPassword(userId, plainPassword, null);
+    }
+
+    public void setPassword(UUID userId, String plainPassword, UUID applicationId) {
+        policy.validate(plainPassword, applicationId);
         credentials.clearCurrentForUser(userId);
         UserCredential cred = new UserCredential();
         cred.setUserId(userId);

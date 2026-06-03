@@ -38,7 +38,9 @@ public class AuthSettingsService {
     }
 
     public List<Map<String, Object>> getFeatureFlags() {
-        return readList("feature_flags", defaultFeatureFlags());
+        List<Map<String, Object>> stored = readList("feature_flags", List.of());
+        return FeatureFlagMerge.merge(
+                FeatureFlagDefaults.platformCatalog(), stored.isEmpty() ? null : stored);
     }
 
     public List<Map<String, Object>> saveFeatureFlags(List<Map<String, Object>> body) {
@@ -109,7 +111,4 @@ public class AuthSettingsService {
                 "hashAlgorithm", "bcrypt"));
     }
 
-    private static List<Map<String, Object>> defaultFeatureFlags() {
-        return List.of();
-    }
 }

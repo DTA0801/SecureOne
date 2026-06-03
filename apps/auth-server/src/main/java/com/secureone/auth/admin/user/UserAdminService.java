@@ -229,8 +229,12 @@ public class UserAdminService {
     }
 
     public void adminSetPassword(UUID id, String plainPassword) {
+        adminSetPassword(id, plainPassword, null);
+    }
+
+    public void adminSetPassword(UUID id, String plainPassword, UUID applicationId) {
         UserAccount user = require(id);
-        passwords.setPassword(user.getId(), plainPassword);
+        passwords.setPassword(user.getId(), plainPassword, applicationId);
         auditService.record(
                 user.getTenantId(), "admin", "user.password_set", "user_account", user.getId(), user.getEmail(), true);
         emailService.sendAdminSecurityAlert(

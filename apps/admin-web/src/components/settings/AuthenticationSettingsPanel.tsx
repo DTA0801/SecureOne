@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { FieldRow, Input } from "@/components/ui/Field";
 import { Toggle } from "@/components/ui/Toggle";
@@ -13,16 +12,44 @@ import {
   saveFeatureFlagsAction,
   savePasswordPolicyAction,
 } from "@/lib/actions/auth-settings";
+import { ensureApplicationPolicyScope } from "@/lib/api/ensure-application-policy";
+import type { SettingsExposureKey } from "@/lib/api/application-policy";
+import {
+  setApplicationMfaTabEnabled,
+  setApplicationTokenTabEnabled,
+} from "@/lib/api/application-settings";
+import { ApiError } from "@/lib/api/client";
 import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
 
 type Tab = "auth" | "mfa" | "password" | "flags";
 
+const TAB_EXPOSURE: Record<Tab, SettingsExposureKey> = {
+  auth: "auth-methods",
+  mfa: "auth-methods",
+  password: "password-policy",
+  flags: "feature-flags",
+};
+
 export function AuthenticationSettingsPanel({
   tab,
   applicationId,
+  platformExposesAuthMethods = false,
+  mfaTabEnabled = false,
+  onMfaTabEnabledChange,
+  platformExposesOAuthTokens = false,
+  oauthTokensTabEnabled = false,
+  onOAuthTokensTabEnabledChange,
 }: {
   tab: Tab;
   applicationId?: string;
+  /** Platform enabled Authentication & MFA under For applications. */
+  platformExposesAuthMethods?: boolean;
+  mfaTabEnabled?: boolean;
+  onMfaTabEnabledChange?: (enabled: boolean) => void;
+  /** Platform enabled OAuth tokens under For applications. */
+  platformExposesOAuthTokens?: boolean;
+  oauthTokensTabEnabled?: boolean;
+  onOAuthTokensTabEnabledChange?: (enabled: boolean) => void;
 }) {
   const { toast } = useToast();
   const [authMethods, setAuthMethods] = useState<AuthMethod[]>([]);
@@ -31,26 +58,59 @@ export function AuthenticationSettingsPanel({
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    loadAuthSettingsAction().then(({ authMethods: a, featureFlags: f, passwordPolicy: p, error }) => {
+  const exposureKey = TAB_EXPOSURE[tab];
+
+  const reload = useCallback(async () => {
+    setLoaded(false);
+    try {
+      const { authMethods: a, featureFlags: f, passwordPolicy: p, error } =
+        await loadAuthSettingsAction(applicationId);
       setAuthMethods(a);
       setFeatureFlags(f);
       setPasswordPolicy(p);
-      setLoaded(true);
       if (error) toast(error, "error");
-    });
-  }, [toast, applicationId]);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Failed to load settings", "error");
+    } finally {
+      setLoaded(true);
+    }
+  }, [applicationId, toast]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const scheduleSave = useCallback(
-    (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+    (
+      fn: () => Promise<{
+        ok: boolean;
+        error?: string;
+        passwordPolicy?: PasswordPolicy;
+        featureFlags?: FeatureFlag[];
+      }>,
+      exposure?: SettingsExposureKey,
+    ) => {
       if (!loaded) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
-        const result = await fn();
-        toast(result.ok ? "Saved to database" : (result.error ?? "Save failed"), result.ok ? "success" : "error");
+        try {
+          if (applicationId && exposure) {
+            await ensureApplicationPolicyScope(applicationId, exposure);
+          }
+          const result = await fn();
+          if (result.ok) {
+            if (result.passwordPolicy) setPasswordPolicy(result.passwordPolicy);
+            if (result.featureFlags) setFeatureFlags(result.featureFlags);
+            toast("Settings saved", "success");
+          } else {
+            toast(result.error ?? "Save failed", "error");
+          }
+        } catch (e) {
+          toast(e instanceof Error ? e.message : "Save failed", "error");
+        }
       }, 700);
     },
-    [loaded, toast],
+    [applicationId, loaded, toast],
   );
 
   const primary = authMethods.filter((m) => m.category === "primary");
@@ -59,15 +119,36 @@ export function AuthenticationSettingsPanel({
 
   return (
     <div className={!loaded ? "pointer-events-none opacity-60" : ""}>
+      {!applicationId && (
+        <p className="mb-4 text-sm text-muted">
+          Platform-wide policy. Enable sections under <strong>For applications</strong> so each app can
+          override them.
+        </p>
+      )}
+
       {tab === "auth" && (
         <div className="space-y-6">
+          {applicationId && platformExposesAuthMethods && (
+            <Card padded={false}>
+              <CardHeader
+                title="Multi-factor authentication"
+                description="When enabled, the MFA tab appears so you can configure multi-factor methods for this application."
+              />
+              <MfaTabToggle
+                applicationId={applicationId}
+                mfaTabEnabled={mfaTabEnabled}
+                onMfaTabEnabledChange={onMfaTabEnabledChange}
+              />
+            </Card>
+          )}
           <MethodSection
             title="Primary login"
             description="How users authenticate first"
             methods={primary}
             onToggle={(next) => {
-              setAuthMethods(next);
-              scheduleSave(() => saveAuthMethodsAction(next, applicationId));
+              const merged = [...next, ...mfa, ...federation];
+              setAuthMethods(merged);
+              scheduleSave(() => saveAuthMethodsAction(merged, applicationId));
             }}
           />
           <MethodSection
@@ -75,8 +156,9 @@ export function AuthenticationSettingsPanel({
             description="Social and enterprise SSO (stored for policy; full SSO in later phases)"
             methods={federation}
             onToggle={(next) => {
-              setAuthMethods(next);
-              scheduleSave(() => saveAuthMethodsAction(next, applicationId));
+              const merged = [...primary, ...mfa, ...next];
+              setAuthMethods(merged);
+              scheduleSave(() => saveAuthMethodsAction(merged, applicationId));
             }}
           />
         </div>
@@ -88,10 +170,18 @@ export function AuthenticationSettingsPanel({
           description="Enable factors for future enrollment. TOTP/passkey enrollment coming in Phase 2."
           methods={mfa}
           onToggle={(next) => {
-            setAuthMethods(next);
-            scheduleSave(() => saveAuthMethodsAction(next));
+            const merged = [...primary, ...next, ...federation];
+            setAuthMethods(merged);
+            scheduleSave(() => saveAuthMethodsAction(merged, applicationId));
           }}
         />
+      )}
+
+      {tab === "password" && applicationId && (
+        <p className="mb-4 rounded-lg border border-ui bg-surface px-4 py-3 text-sm text-muted">
+          These rules apply when users set or reset passwords for this application. They can also be
+          exposed on the public API when password policy is included in the manifest.
+        </p>
       )}
 
       {tab === "password" && passwordPolicy && (
@@ -105,7 +195,7 @@ export function AuthenticationSettingsPanel({
                 onChange={(e) => {
                   const next = { ...passwordPolicy, minLength: Number(e.target.value) };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId), "password-policy");
                 }}
               />
             </FieldRow>
@@ -116,7 +206,7 @@ export function AuthenticationSettingsPanel({
                 onChange={(e) => {
                   const next = { ...passwordPolicy, historyCount: Number(e.target.value) };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId), "password-policy");
                 }}
               />
             </FieldRow>
@@ -130,7 +220,7 @@ export function AuthenticationSettingsPanel({
                 onChange={(v) => {
                   const next = { ...passwordPolicy, requireUppercase: v };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId), "password-policy");
                 }}
               />
               <PolicyToggle
@@ -139,7 +229,7 @@ export function AuthenticationSettingsPanel({
                 onChange={(v) => {
                   const next = { ...passwordPolicy, requireNumber: v };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId), "password-policy");
                 }}
               />
               <PolicyToggle
@@ -148,7 +238,7 @@ export function AuthenticationSettingsPanel({
                 onChange={(v) => {
                   const next = { ...passwordPolicy, requireSymbol: v };
                   setPasswordPolicy(next);
-                  scheduleSave(() => savePasswordPolicyAction(next, applicationId));
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId), "password-policy");
                 }}
               />
             </div>
@@ -156,34 +246,221 @@ export function AuthenticationSettingsPanel({
         </Card>
       )}
 
-      {tab === "flags" && (
-        <Card padded={false}>
-          <CardHeader title="Feature flags" description="Platform capability toggles" />
-          <ul className="divide-y divide-ui">
-            {featureFlags.map((f, idx) => (
-              <li key={f.key} className="flex items-center justify-between gap-4 px-5 py-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-ui">{f.name}</p>
-                    <code className="font-mono text-[10px] text-faint">{f.key}</code>
-                  </div>
-                  <p className="text-xs text-muted">{f.description}</p>
-                </div>
-                <Toggle
-                  checked={f.enabled}
-                  onChange={(enabled) => {
-                    const next = featureFlags.map((x, i) => (i === idx ? { ...x, enabled } : x));
-                    setFeatureFlags(next);
-                    scheduleSave(() => saveFeatureFlagsAction(next, applicationId));
-                  }}
-                  aria-label={f.name}
-                />
-              </li>
-            ))}
-          </ul>
-        </Card>
+      {tab === "password" && !passwordPolicy && loaded && (
+        <p className="rounded-lg border border-ui bg-surface px-4 py-6 text-sm text-muted">
+          Could not load password policy. Ensure <strong>Password policy</strong> is enabled under Platform →
+          For applications and auth-server is running.
+        </p>
+      )}
+
+      {tab === "flags" && featureFlags.length === 0 && loaded && (
+        <p className="rounded-lg border border-ui bg-surface px-4 py-6 text-sm text-muted">
+          No feature flags loaded. Enable <strong>Feature flags</strong> under Platform → For applications
+          and restart auth-server if the list stays empty.
+        </p>
+      )}
+
+      {tab === "flags" && featureFlags.length > 0 && (
+        <FeatureFlagsPanel
+          flags={featureFlags}
+          applicationId={applicationId}
+          platformExposesOAuthTokens={platformExposesOAuthTokens}
+          oauthTokensTabEnabled={oauthTokensTabEnabled}
+          onOAuthTokensTabEnabledChange={onOAuthTokensTabEnabledChange}
+          onChange={(next) => {
+            setFeatureFlags(next);
+            scheduleSave(() => saveFeatureFlagsAction(next, applicationId), "feature-flags");
+          }}
+        />
       )}
     </div>
+  );
+}
+
+function MfaTabToggle({
+  applicationId,
+  mfaTabEnabled,
+  onMfaTabEnabledChange,
+}: {
+  applicationId: string;
+  mfaTabEnabled: boolean;
+  onMfaTabEnabledChange?: (enabled: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [pending, setPending] = useState(false);
+
+  async function toggle(enabled: boolean) {
+    setPending(true);
+    try {
+      const state = await setApplicationMfaTabEnabled(applicationId, enabled);
+      onMfaTabEnabledChange?.(state.tabEnabled);
+      toast("Settings saved", "success");
+    } catch (e) {
+      const msg =
+        e instanceof ApiError && e.status === 404
+          ? "MFA API not found — restart auth-server (port 9000) and try again."
+          : e instanceof Error
+            ? e.message
+            : "Update failed";
+      toast(msg, "error");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 px-5 py-4">
+      <div>
+        <p className="text-sm font-medium text-ui">Enable MFA</p>
+        <p className="text-xs text-muted">
+          Show the <strong>MFA</strong> settings tab to configure TOTP, passkeys, and other factors.
+        </p>
+      </div>
+      <Toggle
+        checked={mfaTabEnabled}
+        disabled={pending}
+        onChange={toggle}
+        aria-label="Enable MFA"
+      />
+    </div>
+  );
+}
+
+const FLAG_GROUPS: { title: string; categories: string[] }[] = [
+  { title: "OAuth & tokens", categories: ["oauth"] },
+  { title: "Identity & sign-in", categories: ["identity"] },
+  { title: "Provisioning", categories: ["provisioning"] },
+];
+
+function flagCategory(flag: FeatureFlag): string {
+  return flag.category ?? "identity";
+}
+
+function FeatureFlagsPanel({
+  flags,
+  onChange,
+  applicationId,
+  platformExposesOAuthTokens,
+  oauthTokensTabEnabled,
+  onOAuthTokensTabEnabledChange,
+}: {
+  flags: FeatureFlag[];
+  onChange: (next: FeatureFlag[]) => void;
+  applicationId?: string;
+  platformExposesOAuthTokens?: boolean;
+  oauthTokensTabEnabled?: boolean;
+  onOAuthTokensTabEnabledChange?: (enabled: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [tabTogglePending, setTabTogglePending] = useState(false);
+
+  async function toggleOAuthTokensTab(enabled: boolean) {
+    if (!applicationId) return;
+    setTabTogglePending(true);
+    try {
+      const state = await setApplicationTokenTabEnabled(applicationId, enabled);
+      onOAuthTokensTabEnabledChange?.(state.tabEnabled);
+      toast("Settings saved", "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Update failed", "error");
+    } finally {
+      setTabTogglePending(false);
+    }
+  }
+
+  const grouped = FLAG_GROUPS.map((group) => ({
+    ...group,
+    items: flags.filter((f) => group.categories.includes(flagCategory(f))),
+  })).filter((g) => g.items.length > 0);
+  const uncategorized = flags.filter(
+    (f) => !FLAG_GROUPS.some((g) => g.categories.includes(flagCategory(f))),
+  );
+
+  return (
+    <Card padded={false}>
+      <CardHeader
+        title="Feature flags"
+        description="Capability toggles and which settings tabs appear for this application"
+      />
+      {applicationId && platformExposesOAuthTokens && (
+        <section className="border-t border-ui">
+          <p className="px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">
+            Settings tabs
+          </p>
+          <ul className="divide-y divide-ui">
+            <li className="flex items-center justify-between gap-4 px-5 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-ui">OAuth tokens tab</p>
+                  <code className="font-mono text-[10px] text-faint">token-policy</code>
+                </div>
+                <p className="text-xs text-muted">
+                  Show the OAuth tokens settings tab for this application (requires platform to allow OAuth
+                  tokens under For applications).
+                </p>
+              </div>
+              <Toggle
+                checked={oauthTokensTabEnabled}
+                disabled={tabTogglePending}
+                onChange={toggleOAuthTokensTab}
+                aria-label="Show OAuth tokens tab"
+              />
+            </li>
+          </ul>
+        </section>
+      )}
+      {grouped.map((group) => (
+        <section key={group.title} className="border-t border-ui first:border-t-0">
+          <p className="px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">{group.title}</p>
+          <FlagList flags={flags} keys={group.items.map((f) => f.key)} onChange={onChange} />
+        </section>
+      ))}
+      {uncategorized.length > 0 && (
+        <section className="border-t border-ui">
+          <p className="px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-faint">Other</p>
+          <FlagList flags={flags} keys={uncategorized.map((f) => f.key)} onChange={onChange} />
+        </section>
+      )}
+    </Card>
+  );
+}
+
+function FlagList({
+  flags,
+  keys,
+  onChange,
+}: {
+  flags: FeatureFlag[];
+  keys: string[];
+  onChange: (next: FeatureFlag[]) => void;
+}) {
+  return (
+    <ul className="divide-y divide-ui">
+      {flags
+        .filter((f) => keys.includes(f.key))
+        .map((f) => {
+          const idx = flags.findIndex((x) => x.key === f.key);
+          return (
+            <li key={f.key} className="flex items-center justify-between gap-4 px-5 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-ui">{f.name}</p>
+                  <code className="font-mono text-[10px] text-faint">{f.key}</code>
+                </div>
+                <p className="text-xs text-muted">{f.description}</p>
+              </div>
+              <Toggle
+                checked={f.enabled}
+                onChange={(enabled) => {
+                  const next = flags.map((x, i) => (i === idx ? { ...x, enabled } : x));
+                  onChange(next);
+                }}
+                aria-label={f.name}
+              />
+            </li>
+          );
+        })}
+    </ul>
   );
 }
 
@@ -191,15 +468,17 @@ function MethodSection({
   title,
   description,
   methods,
+  readOnly,
   onToggle,
 }: {
   title: string;
   description: string;
   methods: AuthMethod[];
+  readOnly?: boolean;
   onToggle: (next: AuthMethod[]) => void;
 }) {
   return (
-    <Card padded={false}>
+    <Card padded={false} className={readOnly ? "opacity-90" : undefined}>
       <CardHeader title={title} description={description} />
       <ul className="divide-y divide-ui">
         {methods.map((m, idx) => {
@@ -216,6 +495,7 @@ function MethodSection({
               </div>
               <Toggle
                 checked={m.enabled}
+                disabled={readOnly}
                 onChange={(enabled) => {
                   const next = methods.map((x, i) => (i === idx ? { ...x, enabled } : x));
                   onToggle(next);
@@ -233,16 +513,18 @@ function MethodSection({
 function PolicyToggle({
   label,
   on,
+  disabled,
   onChange,
 }: {
   label: string;
   on: boolean;
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-ui px-4 py-2.5">
       <span className="text-sm text-ui">{label}</span>
-      <Toggle checked={on} onChange={onChange} aria-label={label} />
+      <Toggle checked={on} disabled={disabled} onChange={onChange} aria-label={label} />
     </div>
   );
 }

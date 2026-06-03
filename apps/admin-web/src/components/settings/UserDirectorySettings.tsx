@@ -5,6 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
+import { ensureApplicationPolicyScope } from "@/lib/api/ensure-application-policy";
 import {
   fetchUserDirectorySettings,
   saveUserDirectorySettings,
@@ -36,19 +37,27 @@ export function UserDirectorySettings({ applicationId }: { applicationId: string
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const reload = useCallback(async () => {
+    setLoaded(false);
+    try {
+      await ensureApplicationPolicyScope(applicationId, "user-directory");
+      const data = await fetchUserDirectorySettings(applicationId).catch(() => DEFAULTS);
+      setConfig({
+        ...DEFAULTS,
+        ...data,
+        sources: { ...DEFAULTS.sources, ...data.sources },
+        ldap: { ...DEFAULTS.ldap, ...data.ldap },
+      });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Failed to load user directory settings", "error");
+    } finally {
+      setLoaded(true);
+    }
+  }, [applicationId, toast]);
+
   useEffect(() => {
-    fetchUserDirectorySettings(applicationId)
-      .then((data) => {
-        setConfig({
-          ...DEFAULTS,
-          ...data,
-          sources: { ...DEFAULTS.sources, ...data.sources },
-          ldap: { ...DEFAULTS.ldap, ...data.ldap },
-        });
-      })
-      .catch(() => setConfig(DEFAULTS))
-      .finally(() => setLoaded(true));
-  }, [applicationId]);
+    reload();
+  }, [reload]);
 
   const scheduleSave = useCallback(
     (next: UserDirectorySettings) => {
@@ -63,7 +72,7 @@ export function UserDirectorySettings({ applicationId }: { applicationId: string
             sources: { ...DEFAULTS.sources, ...saved.sources },
             ldap: { ...DEFAULTS.ldap, ...saved.ldap },
           });
-          toast("User directory settings saved", "success");
+          toast("Settings saved", "success");
         } catch (e) {
           toast(e instanceof Error ? e.message : "Save failed", "error");
         }
@@ -115,7 +124,7 @@ export function UserDirectorySettings({ applicationId }: { applicationId: string
           <li className="flex items-center justify-between gap-4 px-5 py-4">
             <div>
               <p className="text-sm font-medium text-ui">Allow user export</p>
-              <p className="text-xs text-muted">Download members as CSV for backup or migration.</p>
+              <p className="text-xs text-muted">Download CSV of application members.</p>
             </div>
             <Toggle
               checked={config.exportEnabled}
@@ -127,109 +136,84 @@ export function UserDirectorySettings({ applicationId }: { applicationId: string
       </Card>
 
       <Card padded={false}>
-        <CardHeader
-          title="Import sources"
-          description="Enable only the connectors you want admins to see. Import must be turned on above."
-        />
+        <CardHeader title="Import sources" description="Which formats appear in the import menu." />
         <ul className="divide-y divide-ui">
-          {(
-            [
-              ["csv", "CSV file", "Comma-separated file with email, username, firstName, lastName, status."],
-              ["excel", "Excel / spreadsheet", "Upload a .csv export from Excel (Save As CSV UTF-8)."],
-              ["ldap", "LDAP / Active Directory", "Directory sync using the connection below (preview today)."],
-            ] as const
-          ).map(([key, label, desc]) => (
+          {(["csv", "excel", "ldap"] as const).map((key) => (
             <li key={key} className="flex items-center justify-between gap-4 px-5 py-4">
-              <div>
-                <p className="text-sm font-medium text-ui">{label}</p>
-                <p className="text-xs text-muted">{desc}</p>
-              </div>
+              <p className="text-sm font-medium uppercase text-ui">{key}</p>
               <Toggle
-                checked={Boolean(config.sources[key]?.enabled)}
+                checked={config.sources[key].enabled}
                 onChange={(v) => patchSource(key, v)}
-                aria-label={`Enable ${label}`}
+                aria-label={`Enable ${key} import`}
               />
             </li>
           ))}
         </ul>
       </Card>
 
-      {config.sources.ldap?.enabled && (
-        <Card padded={false}>
-          <CardHeader
-            title="LDAP connection"
-            description="Used for LDAP import preview and future live sync. Password is stored in application settings."
-          />
-          <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-muted">Host</span>
-              <Input
-                value={config.ldap.host}
-                onChange={(e) => patchLdap("host", e.target.value)}
-                placeholder="ldap.example.com"
-                className="mt-1"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-muted">Port</span>
-              <Input
-                type="number"
-                value={String(config.ldap.port)}
-                onChange={(e) => patchLdap("port", Number(e.target.value) || 389)}
-                className="mt-1"
-              />
-            </label>
-            <label className="flex items-end gap-2 pb-2">
-              <Toggle
-                checked={config.ldap.useTls}
-                onChange={(v) => patchLdap("useTls", v)}
-                aria-label="Use TLS"
-              />
-              <span className="text-sm text-muted">Use TLS (LDAPS)</span>
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-muted">Base DN</span>
-              <Input
-                value={config.ldap.baseDn}
-                onChange={(e) => patchLdap("baseDn", e.target.value)}
-                placeholder="ou=users,dc=example,dc=com"
-                className="mt-1"
-              />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-muted">Bind DN</span>
-              <Input
-                value={config.ldap.bindDn}
-                onChange={(e) => patchLdap("bindDn", e.target.value)}
-                placeholder="cn=admin,dc=example,dc=com"
-                className="mt-1"
-              />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-muted">Bind password</span>
-              <Input
-                type="password"
-                value={config.ldap.bindPassword}
-                onChange={(e) => patchLdap("bindPassword", e.target.value)}
-                className="mt-1"
-                autoComplete="off"
-              />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-muted">User filter</span>
-              <Input
-                value={config.ldap.userFilter}
-                onChange={(e) => patchLdap("userFilter", e.target.value)}
-                className="mt-1"
-              />
-            </label>
+      <Card padded={false}>
+        <CardHeader title="LDAP connection" description="Used when LDAP import is enabled." />
+        <div className="grid gap-4 p-5 md:grid-cols-2">
+          <label className="block text-sm">
+            <span className="text-muted">Host</span>
+            <Input
+              className="mt-1"
+              value={config.ldap.host}
+              onChange={(e) => patchLdap("host", e.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-muted">Port</span>
+            <Input
+              className="mt-1"
+              type="number"
+              value={config.ldap.port}
+              onChange={(e) => patchLdap("port", Number(e.target.value))}
+            />
+          </label>
+          <label className="block text-sm md:col-span-2">
+            <span className="text-muted">Base DN</span>
+            <Input
+              className="mt-1"
+              value={config.ldap.baseDn}
+              onChange={(e) => patchLdap("baseDn", e.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-muted">Bind DN</span>
+            <Input
+              className="mt-1"
+              value={config.ldap.bindDn}
+              onChange={(e) => patchLdap("bindDn", e.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-muted">Bind password</span>
+            <Input
+              className="mt-1"
+              type="password"
+              value={config.ldap.bindPassword}
+              onChange={(e) => patchLdap("bindPassword", e.target.value)}
+            />
+          </label>
+          <label className="block text-sm md:col-span-2">
+            <span className="text-muted">User filter</span>
+            <Input
+              className="mt-1"
+              value={config.ldap.userFilter}
+              onChange={(e) => patchLdap("userFilter", e.target.value)}
+            />
+          </label>
+          <div className="flex items-center justify-between md:col-span-2">
+            <span className="text-sm">Use TLS</span>
+            <Toggle
+              checked={config.ldap.useTls}
+              onChange={(v) => patchLdap("useTls", v)}
+              aria-label="LDAP TLS"
+            />
           </div>
-        </Card>
-      )}
-
-      {config.inheritsPlatformDefaults && (
-        <p className="text-xs text-faint">Inheriting platform defaults until you change a value here.</p>
-      )}
+        </div>
+      </Card>
     </div>
   );
 }

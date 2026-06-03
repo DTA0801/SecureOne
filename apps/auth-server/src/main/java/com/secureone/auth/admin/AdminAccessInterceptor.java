@@ -48,16 +48,21 @@ public class AdminAccessInterceptor implements HandlerInterceptor {
         }
 
         if (path.startsWith("/api/admin/v1/settings")) {
-            access.requireSuperAdmin(auth);
+            access.requirePlatformSettingsAccess(auth, actAs);
+            return true;
+        }
+
+        if (path.startsWith("/api/admin/v1/tenants")) {
+            access.requirePlatformSettingsAccess(auth, actAs);
             return true;
         }
 
         if (path.equals("/api/admin/v1/applications") && "POST".equalsIgnoreCase(request.getMethod())) {
-            access.requireSuperAdmin(auth);
+            access.requirePlatformSettingsAccess(auth, actAs);
         } else if (APP_PATH.matcher(path).find()
                 && ("PUT".equalsIgnoreCase(request.getMethod())
                         || "DELETE".equalsIgnoreCase(request.getMethod()))) {
-            access.requireSuperAdmin(auth);
+            access.requirePlatformSettingsAccess(auth, actAs);
         }
         return true;
     }

@@ -156,6 +156,7 @@ export async function saveNotificationsAction(
     email: EmailSettings;
   },
   applicationId?: string,
+  sections?: { saveNotifications?: boolean; saveEmail?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     if (applicationId) {
@@ -167,11 +168,17 @@ export async function saveNotificationsAction(
         input.notifications as NotificationSettings & Record<string, unknown>;
       const { scope: _es, inheritsPlatformDefaults: _ei, smtpConfigured: _em, ...email } =
         input.email as EmailSettings & Record<string, unknown>;
-      await saveApplicationNotifications(applicationId, notifications);
-      try {
-        await saveApplicationEmail(applicationId, email);
-      } catch (e) {
-        if (!(e instanceof ApiError) || e.status !== 404) throw e;
+      const saveNotif = sections?.saveNotifications !== false;
+      const saveMail = sections?.saveEmail !== false;
+      if (saveNotif) {
+        await saveApplicationNotifications(applicationId, notifications);
+      }
+      if (saveMail) {
+        try {
+          await saveApplicationEmail(applicationId, email);
+        } catch (e) {
+          if (!(e instanceof ApiError) || e.status !== 404) throw e;
+        }
       }
       return { ok: true };
     }
