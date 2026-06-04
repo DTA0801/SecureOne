@@ -60,6 +60,10 @@ Full rationale and the comparison of alternatives are in [docs/02-tech-stack.md]
 | — | [Diagrams](docs/diagrams/README.md) | Mermaid + editable `.drawio` sources for all diagrams |
 | — | [Decision Records](docs/decisions/README.md) | ADRs — why key choices were made |
 
+### Integration samples
+
+- [External Test Client](samples/external-test-client/README.md) — pre-seeded OAuth SPA (`external-test-client`) for apps built outside this repo.
+
 ---
 
 ## Repository layout (planned)
