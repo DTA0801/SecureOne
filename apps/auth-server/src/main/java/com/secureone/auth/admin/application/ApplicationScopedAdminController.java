@@ -24,12 +24,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Per-application admin: users and settings scoped to one OAuth client / relying party.
  * Unset app settings inherit platform defaults.
  */
+@Tag(name = "Admin — application scope", description = "Users, settings, import/export for one application")
+@SecurityRequirement(name = "adminHttpBasic")
 @RestController
 @RequestMapping("/api/admin/v1/applications/{applicationId}")
 public class ApplicationScopedAdminController {

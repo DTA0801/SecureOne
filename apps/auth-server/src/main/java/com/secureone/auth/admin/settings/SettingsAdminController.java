@@ -15,8 +15,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Admin — platform settings", description = "Platform defaults, exposure to applications, SMTP")
+@SecurityRequirement(name = "adminHttpBasic")
 @RestController
 @RequestMapping("/api/admin/v1/settings")
 public class SettingsAdminController {

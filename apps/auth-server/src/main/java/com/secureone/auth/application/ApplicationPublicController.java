@@ -8,12 +8,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Unauthenticated application manifest for client apps (login UI, mobile SDK, etc.).
  * Response contents are configured per application under Settings → Public API.
  */
+@Tag(name = "Application public API", description = "Manifest and self-service sign-up for integrated apps")
 @RestController
 @RequestMapping("/api/v1/applications")
 public class ApplicationPublicController {

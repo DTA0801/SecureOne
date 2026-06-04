@@ -15,8 +15,12 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Admin — tenants", description = "Multi-tenant organizations")
+@SecurityRequirement(name = "adminHttpBasic")
 @RestController
 @RequestMapping("/api/admin/v1/tenants")
 public class TenantAdminController {

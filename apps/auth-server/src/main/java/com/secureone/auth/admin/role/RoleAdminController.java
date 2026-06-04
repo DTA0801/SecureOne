@@ -13,8 +13,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Admin — platform RBAC", description = "Platform-wide roles and permissions")
+@SecurityRequirement(name = "adminHttpBasic")
 @RestController
 @RequestMapping("/api/admin/v1")
 public class RoleAdminController {

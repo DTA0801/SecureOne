@@ -5,8 +5,10 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Public auth", description = "Authentication method catalog for login UIs")
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthPublicController {

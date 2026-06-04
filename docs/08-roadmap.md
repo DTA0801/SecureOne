@@ -36,7 +36,8 @@ A phased plan from MVP to enterprise. The architecture is production-shaped from
 - [ ] Self-service account portal + per-tenant branding/i18n
 - [ ] Webhooks / event stream
 - [ ] Token introspection & revocation; **Token Exchange (RFC 8693)**
-- [ ] TypeScript SDK + OpenAPI spec + developer docs portal
+- [x] OpenAPI spec + Swagger UI on auth-server (see [12-api-documentation.md](12-api-documentation.md))
+- [ ] TypeScript SDK + developer docs portal
 
 ## Phase 3 — Enterprise
 **Goal: enterprise SSO/brokering, governance, advanced authz & protocol hardening.**

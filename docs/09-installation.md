@@ -86,6 +86,8 @@ pnpm --filter admin-web dev             # http://localhost:3000
 pnpm --filter docs dev                  # http://localhost:3001
 ```
 
+**API documentation:** with auth-server running, open [Swagger UI](http://localhost:9000/docs) or `GET /api/info` for OpenAPI links. See [API documentation](12-api-documentation.md).
+
 ## 7. First-run bootstrap
 
 On first boot the app creates:

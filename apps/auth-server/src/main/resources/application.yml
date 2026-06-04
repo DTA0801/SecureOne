@@ -65,3 +65,23 @@ info:
     name: SecureOne Auth Server
     description: Centralized IAM platform — authorization server
     version: 0.0.1-SNAPSHOT
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    # Load the full spec by default (not the small "public" slice).
+    urls-primary-name: All APIs
+    disable-swagger-default-url: true
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
+    persist-authorization: true
+    doc-expansion: list
+    groups-order: ASC
+  show-actuator: false
+  writer-with-order-by-keys: true

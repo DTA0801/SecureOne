@@ -16,9 +16,13 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Application-scoped RBAC: roles and permissions (mirrors `role` / `permission` tables). */
+@Tag(name = "Admin — application RBAC", description = "Roles and permissions for one application")
+@SecurityRequirement(name = "adminHttpBasic")
 @RestController
 @RequestMapping("/api/admin/v1/applications/{applicationId}")
 public class ApplicationRbacAdminController {

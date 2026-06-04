@@ -56,6 +56,7 @@ Full rationale and the comparison of alternatives are in [docs/02-tech-stack.md]
 | 09 | [Installation](docs/09-installation.md) | Local setup, configuration, install-time DB selection |
 | 10 | [Enterprise Capabilities](docs/10-enterprise.md) | Federation, IGA, adaptive auth, compliance, scale (phased) |
 | 11 | [Admin Control Plane](docs/11-admin-control.md) | Admin scopes, feature toggles, auth-method & MFA control, full user control |
+| 12 | [API documentation](docs/12-api-documentation.md) | OpenAPI spec, Swagger UI groups, auth in Try it out |
 | — | [Diagrams](docs/diagrams/README.md) | Mermaid + editable `.drawio` sources for all diagrams |
 | — | [Decision Records](docs/decisions/README.md) | ADRs — why key choices were made |
 
