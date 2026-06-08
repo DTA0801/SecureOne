@@ -49,7 +49,9 @@ public class OpenApiConfig {
                 .externalDocs(new ExternalDocumentation()
                         .description("Architecture & auth standards")
                         .url("https://github.com/secureone/secureone/blob/develop/docs/05-auth-standards.md"))
-                .servers(List.of(new Server().url(base).description("Auth server")))
+                .servers(List.of(
+                        new Server().url("/").description("Current host (use this in Swagger UI)"),
+                        new Server().url(base).description("Configured public base URL")))
                 .components(new Components()
                         .addSecuritySchemes("adminHttpBasic", adminBasicScheme())
                         .addSecuritySchemes("bearerAuth", OAuth2OpenApiDocumentation.bearerAuthScheme())

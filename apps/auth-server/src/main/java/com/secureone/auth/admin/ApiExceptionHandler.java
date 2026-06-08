@@ -37,9 +37,23 @@ public class ApiExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail dataConflict(DataIntegrityViolationException ex) {
         String detail = ex.getMostSpecificCause().getMessage();
-        if (detail != null && detail.toLowerCase().contains("unique")) {
+        if (detail == null) {
+            return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Database constraint violation.");
+        }
+        String lower = detail.toLowerCase();
+        if (lower.contains("unique") || lower.contains("duplicate key")) {
             return ProblemDetail.forStatusAndDetail(
                     HttpStatus.CONFLICT, "A record with the same unique key already exists.");
+        }
+        if (lower.contains("foreign key") && lower.contains("email_token")) {
+            return ProblemDetail.forStatusAndDetail(
+                    HttpStatus.CONFLICT,
+                    "Could not complete sign-up notification setup. Please try again.");
+        }
+        if (lower.contains("(tenant_id, email)")) {
+            return ProblemDetail.forStatusAndDetail(
+                    HttpStatus.CONFLICT,
+                    "An account with this email already exists. Try signing in or reset your password.");
         }
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Database constraint violation.");
     }

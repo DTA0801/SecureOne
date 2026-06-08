@@ -14,4 +14,14 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, java.util.UU
     List<AuditLog> findByApplicationIdOrderByCreatedAtDesc(UUID applicationId);
 
     List<AuditLog> findByApplicationIdAndTenantIdOrderByCreatedAtDesc(UUID applicationId, UUID tenantId);
+
+    @Query(
+            """
+            SELECT DISTINCT a.targetId FROM AuditLog a
+            WHERE a.applicationId = :applicationId
+              AND a.action = :action
+              AND a.targetId IS NOT NULL
+            """)
+    List<UUID> findDistinctTargetIdsByApplicationIdAndAction(
+            @Param("applicationId") UUID applicationId, @Param("action") String action);
 }

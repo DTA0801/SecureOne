@@ -40,6 +40,6 @@ public class UserPasswordService {
         cred.setPasswordHash(passwordEncoder.encode(plainPassword));
         cred.setAlgorithm("bcrypt");
         cred.setCurrent(true);
-        credentials.save(cred);
+        credentials.saveAndFlush(cred);
     }
 }

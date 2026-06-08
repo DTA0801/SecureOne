@@ -63,6 +63,7 @@ Full rationale and the comparison of alternatives are in [docs/02-tech-stack.md]
 ### Integration samples
 
 - [External Test Client](samples/external-test-client/README.md) — pre-seeded OAuth SPA (`external-test-client`) for apps built outside this repo.
+- [Nook Commerce](../secureone-ecommerce) — full demo e-commerce storefront (Vite + React) using SecureOne OIDC + PKCE.
 
 ---
 

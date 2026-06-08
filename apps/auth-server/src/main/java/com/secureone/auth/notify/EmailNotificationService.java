@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -14,21 +16,34 @@ import org.springframework.stereotype.Service;
 @Service
 public class EmailNotificationService {
 
+    private static final Logger log = LoggerFactory.getLogger(EmailNotificationService.class);
+
     private final JavaMailSender mailSender;
     private final PlatformSettingsService settings;
     private final boolean mailConfigured;
+    private final boolean logLinksWhenUnavailable;
 
     public EmailNotificationService(
             Optional<JavaMailSender> mailSender,
             PlatformSettingsService settings,
-            @Value("${spring.mail.host:}") String mailHost) {
+            @Value("${spring.mail.host:}") String mailHost,
+            @Value("${secureone.mail.log-links-when-smtp-unavailable:true}") boolean logLinksWhenUnavailable) {
         this.mailSender = mailSender.orElse(null);
         this.settings = settings;
         this.mailConfigured = mailSender.isPresent() && mailHost != null && !mailHost.isBlank();
+        this.logLinksWhenUnavailable = logLinksWhenUnavailable;
     }
 
     public boolean isMailConfigured() {
         return mailConfigured;
+    }
+
+    /** Whether transactional user emails (verify, reset, magic link) may be sent or logged to console. */
+    public boolean isUserTransactionalEmailEnabled() {
+        Map<String, Object> notifications = getNotificationSettings();
+        Object flag = notifications.get("userEmailEnabled");
+        boolean settingOn = flag == null || Boolean.TRUE.equals(flag);
+        return settingOn && (mailConfigured || logLinksWhenUnavailable);
     }
 
     public Map<String, Object> getNotificationSettings() {
@@ -49,7 +64,10 @@ public class EmailNotificationService {
 
     public void sendTestEmail(String to) {
         requireMail();
-        sendPlain(to, "SecureOne test notification", "This is a test email from SecureOne.\n\nIf you received this, SMTP/email notifications are working.");
+        sendPlainOrThrow(
+                to,
+                "SecureOne test notification",
+                "This is a test email from SecureOne.\n\nIf you received this, SMTP/email notifications are working.");
     }
 
     /** Platform admin alerts (Settings → Admin recipients). */
@@ -75,10 +93,7 @@ public class EmailNotificationService {
 
     /** End-user transactional email (verify, reset, password changed). */
     public void sendVerifyEmail(UserAccount user, String verifyLink) {
-        if (!userEmailEnabled()) {
-            return;
-        }
-        requireMail();
+        ensureUserTransactionalEmailEnabled();
         String name = displayName(user);
         sendPlain(
                 user.getEmail(),
@@ -91,10 +106,7 @@ public class EmailNotificationService {
     }
 
     public void sendPasswordReset(UserAccount user, String resetLink) {
-        if (!userEmailEnabled()) {
-            return;
-        }
-        requireMail();
+        ensureUserTransactionalEmailEnabled();
         String name = displayName(user);
         sendPlain(
                 user.getEmail(),
@@ -107,10 +119,7 @@ public class EmailNotificationService {
     }
 
     public void sendMagicLink(UserAccount user, String magicLink) {
-        if (!userEmailEnabled()) {
-            return;
-        }
-        requireMail();
+        ensureUserTransactionalEmailEnabled();
         sendPlain(
                 user.getEmail(),
                 "Your SecureOne sign-in link",
@@ -122,10 +131,7 @@ public class EmailNotificationService {
     }
 
     public void sendSetPasswordInvite(UserAccount user, String setPasswordLink) {
-        if (!userEmailEnabled()) {
-            return;
-        }
-        requireMail();
+        ensureUserTransactionalEmailEnabled();
         sendPlain(
                 user.getEmail(),
                 "Set your SecureOne password",
@@ -137,10 +143,7 @@ public class EmailNotificationService {
     }
 
     public void sendPasswordChanged(UserAccount user) {
-        if (!userEmailEnabled()) {
-            return;
-        }
-        requireMail();
+        ensureUserTransactionalEmailEnabled();
         String name = displayName(user);
         sendPlain(
                 user.getEmail(),
@@ -165,8 +168,51 @@ public class EmailNotificationService {
 
     private void sendPlain(String to, String subject, String text) {
         if (!mailConfigured) {
+            if (logLinksWhenUnavailable) {
+                log.warn(
+                        """
+                        SMTP unavailable — transactional email logged to console instead of sent.
+                        To: {}
+                        Subject: {}
+                        Body:
+                        {}
+                        """,
+                        to,
+                        subject,
+                        text);
+            }
             return;
         }
+        try {
+            deliverPlain(to, subject, text);
+        } catch (Exception ex) {
+            if (logLinksWhenUnavailable) {
+                log.warn(
+                        "SMTP send failed ({}). Email logged to console instead.\nTo: {}\nSubject: {}\nBody:\n{}",
+                        ex.getMessage(),
+                        to,
+                        subject,
+                        text);
+                return;
+            }
+            throw new IllegalStateException("Failed to send email via SMTP: " + ex.getMessage(), ex);
+        }
+    }
+
+    private void sendPlainOrThrow(String to, String subject, String text) {
+        requireMail();
+        try {
+            deliverPlain(to, subject, text);
+        } catch (Exception ex) {
+            throw new IllegalStateException(
+                    "Failed to send test email via SMTP: "
+                            + ex.getMessage()
+                            + ". For Gmail, use an App Password (not your normal login password) in SECUREONE_SMTP_PASSWORD.",
+                    ex);
+        }
+    }
+
+    private void deliverPlain(String to, String subject, String text) {
         Map<String, Object> email = getEmailSettings();
         String fromAddress = string(email, "fromAddress", "noreply@secureone.local");
         String fromName = string(email, "fromName", "SecureOne");
@@ -178,19 +224,24 @@ public class EmailNotificationService {
         mailSender.send(message);
     }
 
-    private boolean userEmailEnabled() {
-        if (!mailConfigured) {
-            return false;
-        }
+    private void ensureUserTransactionalEmailEnabled() {
         Map<String, Object> notifications = getNotificationSettings();
-        Object flag = notifications.get("userEmailEnabled");
-        return flag == null || Boolean.TRUE.equals(flag);
+        if (Boolean.FALSE.equals(notifications.get("userEmailEnabled"))) {
+            throw new IllegalStateException(
+                    "User transactional email is disabled in Platform settings → Notifications.");
+        }
+        if (!mailConfigured && !logLinksWhenUnavailable) {
+            requireMail();
+        }
     }
 
     private void requireMail() {
         if (!mailConfigured) {
             throw new IllegalStateException(
-                    "SMTP is not configured. Set SECUREONE_SMTP_HOST (use MailHog on localhost:1025 for dev).");
+                    "SMTP is not configured. For local dev, start MailHog: "
+                            + "docker compose -f deploy/docker-compose.yml up -d mailhog "
+                            + "(SMTP localhost:1025, inbox http://localhost:8025). "
+                            + "Or set SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE=true to print links in the server log.");
         }
     }
 

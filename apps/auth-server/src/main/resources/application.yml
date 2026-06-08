@@ -33,6 +33,9 @@ spring:
     properties:
       mail.smtp.auth: ${SECUREONE_SMTP_AUTH:false}
       mail.smtp.starttls.enable: ${SECUREONE_SMTP_STARTTLS:false}
+      mail.smtp.ssl.trust: ${SECUREONE_SMTP_SSL_TRUST:}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
 
   # Dev login user (replace with real user store in Phase 1)
   security:
@@ -49,6 +52,9 @@ server:
 
 secureone:
   public-base-url: ${SECUREONE_PUBLIC_BASE_URL:http://localhost:9000}
+  # When MailHog/SMTP is down, log verification/reset links to the auth-server console (dev only).
+  mail:
+    log-links-when-smtp-unavailable: ${SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE:true}
 
 management:
   endpoints:
@@ -73,8 +79,9 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
-    # Load the full spec by default (not the small "public" slice).
-    urls-primary-name: All APIs
+    # Required when disable-swagger-default-url is true — springdoc 3.x may omit urls[] from swagger-config.
+    url: /v3/api-docs/all
+    urls-primary-name: all
     disable-swagger-default-url: true
     operations-sorter: method
     tags-sorter: alpha
@@ -83,5 +90,6 @@ springdoc:
     persist-authorization: true
     doc-expansion: list
     groups-order: ASC
+    config-url: /v3/api-docs/swagger-config
   show-actuator: false
   writer-with-order-by-keys: true

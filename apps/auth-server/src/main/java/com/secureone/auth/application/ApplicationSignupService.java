@@ -101,16 +101,11 @@ public class ApplicationSignupService {
         user.setEmailVerified(false);
         user.setStatus("ACTIVE");
         user.setType("USER");
-        users.save(user);
+        users.saveAndFlush(user);
 
         passwords.setPassword(user.getId(), request.password(), applicationId);
 
-        if (!memberships.existsByUserIdAndApplicationId(user.getId(), applicationId)) {
-            UserApplication link = new UserApplication();
-            link.setUserId(user.getId());
-            link.setApplicationId(applicationId);
-            memberships.save(link);
-        }
+        linkUserToApplication(user.getId(), applicationId);
 
         assignDefaultRole(applicationId, user.getId());
 
@@ -128,10 +123,14 @@ public class ApplicationSignupService {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put(
                 "message",
-                "Account created. Verify your email, then sign in with your email and password.");
+                "Account created. Check your inbox for a verification link, then sign in with your email and password.");
         response.put("userId", user.getId().toString());
         response.put("loginUsername", loginUsername(app, email));
         response.put("emailVerificationRequired", true);
+        response.put("verificationEmailSent", true);
+        response.put(
+                "devMailInboxHint",
+                "Local dev: open http://localhost:8025 (MailHog) if the message is not in your real inbox.");
         return response;
     }
 
@@ -162,13 +161,30 @@ public class ApplicationSignupService {
         return app;
     }
 
+    private void linkUserToApplication(UUID userId, UUID applicationId) {
+        if (memberships.existsByUserIdAndApplicationId(userId, applicationId)) {
+            return;
+        }
+        UserApplication link = new UserApplication();
+        link.setUserId(userId);
+        link.setApplicationId(applicationId);
+        memberships.saveAndFlush(link);
+    }
+
     private void assignDefaultRole(UUID applicationId, UUID userId) {
-        roles.findFirstByApplicationIdAndDefaultRoleTrue(applicationId).ifPresent(role -> {
-            UserRole grant = new UserRole();
-            grant.setUserId(userId);
-            grant.setRoleId(role.getId());
-            userRoles.save(grant);
-        });
+        Role role = roles.findByApplicationIdOrderByNameAsc(applicationId).stream()
+                .filter(Role::isDefaultRole)
+                .filter(r -> "Member".equalsIgnoreCase(r.getName()))
+                .findFirst()
+                .or(() -> roles.findFirstByApplicationIdAndDefaultRoleTrue(applicationId))
+                .orElse(null);
+        if (role == null) {
+            return;
+        }
+        UserRole grant = new UserRole();
+        grant.setUserId(userId);
+        grant.setRoleId(role.getId());
+        userRoles.saveAndFlush(grant);
     }
 
     private static String resolveUsername(String email) {

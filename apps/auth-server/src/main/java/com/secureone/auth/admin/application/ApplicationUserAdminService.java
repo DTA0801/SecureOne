@@ -6,9 +6,12 @@ import com.secureone.auth.admin.user.UserAdminService;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.application.UserApplication;
 import com.secureone.auth.application.UserApplicationRepository;
+import com.secureone.auth.audit.AuditLogRepository;
 import com.secureone.auth.user.UserAccountRepository;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,26 +20,37 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class ApplicationUserAdminService {
 
+    private static final String SELF_REGISTERED_ACTION = "user.self_registered";
+
     private final ApplicationRepository applications;
     private final UserApplicationRepository memberships;
     private final UserAccountRepository users;
     private final UserAdminService userAdminService;
+    private final AuditLogRepository auditLogs;
 
     public ApplicationUserAdminService(
             ApplicationRepository applications,
             UserApplicationRepository memberships,
             UserAccountRepository users,
-            UserAdminService userAdminService) {
+            UserAdminService userAdminService,
+            AuditLogRepository auditLogs) {
         this.applications = applications;
         this.memberships = memberships;
         this.users = users;
         this.userAdminService = userAdminService;
+        this.auditLogs = auditLogs;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<UserResponse> listUsers(UUID applicationId) {
         requireApplication(applicationId);
-        List<UUID> userIds = memberships.findUserIdsByApplicationId(applicationId);
+        Set<UUID> userIds = new LinkedHashSet<>(memberships.findUserIdsByApplicationId(applicationId));
+        for (UUID userId : auditLogs.findDistinctTargetIdsByApplicationIdAndAction(applicationId, SELF_REGISTERED_ACTION)) {
+            if (!memberships.existsByUserIdAndApplicationId(userId, applicationId)) {
+                grantAccess(applicationId, userId);
+            }
+            userIds.add(userId);
+        }
         if (userIds.isEmpty()) {
             return List.of();
         }

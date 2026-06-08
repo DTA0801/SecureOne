@@ -9,6 +9,6 @@ public class DocsRedirectController {
 
     @GetMapping({"/docs", "/docs/"})
     public String swaggerUi() {
-        return "redirect:/swagger-ui/index.html?urls.primaryName=All%20APIs";
+        return "redirect:/swagger-ui/index.html?url=/v3/api-docs/all";
     }
 }

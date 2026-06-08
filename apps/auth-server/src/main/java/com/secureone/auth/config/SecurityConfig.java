@@ -75,6 +75,8 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .authenticationManager(authenticationManager)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**")
+                        .permitAll()
                         .requestMatchers(
                                 "/actuator/health/**",
                                 "/actuator/info",

@@ -54,6 +54,20 @@ Public flows do not require Swagger authorization:
 
 See [Settings governance — Self-registration](10-settings-governance.md#self-registration-application-end-users).
 
+## Swagger UI: "No API definition provided"
+
+Usually **`disable-swagger-default-url: true`** without a default spec URL. Fix: use **`http://localhost:9000/docs`** or **`/swagger-ui/index.html?url=/v3/api-docs/all`**, and ensure `springdoc.swagger-ui.url` is set to `/v3/api-docs/all` in `application.yml`. Restart auth-server after config changes.
+
+## Swagger UI: "Failed to fetch"
+
+This is almost always a **browser / URL** issue, not a broken signup API.
+
+1. Confirm auth-server is running: `GET http://localhost:9000/api/info` → `"status":"UP"`.
+2. Open Swagger from **http://localhost:9000/docs** (same host you use for the API).
+3. In **Servers**, select **Current host (use this in Swagger UI)** (`/`) — not a mismatched `localhost` vs `127.0.0.1` URL.
+4. For sign-up, leave **Authorize** empty (public endpoint).
+5. If it still fails, use curl or PowerShell (see below) — the API does not require CORS from the command line.
+
 ## Exporting the spec
 
 ```bash
