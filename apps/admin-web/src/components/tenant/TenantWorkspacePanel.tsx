@@ -8,10 +8,7 @@ import {
   groupConsoleAccessByUser,
   consoleRoleLabels,
 } from "@/components/tenants/console-access-utils";
-import {
-  CONSOLE_FEATURE_LABELS,
-  CONSOLE_ROLE_DEFAULT_FEATURES,
-} from "@/lib/api/admin-console-capabilities";
+import { CONSOLE_FEATURE_LABELS } from "@/lib/api/admin-console-capabilities";
 import type { ConsoleAccessAssignment } from "@/lib/api/admin-console-access";
 import { UserFormModal } from "@/components/forms/UserFormModal";
 import { UserImportExportMenu } from "@/components/users/UserImportExportMenu";
@@ -26,13 +23,17 @@ import {
   fetchTenantWorkspace,
   grantUserApplication,
   isInvitedAccount,
+  mergeTenantWorkspace,
+  patchTenantWorkspaceUser,
   removeUserFromTenantRoster,
+  resolveRosterConsoleFeatures,
   revokeUserApplication,
   rosterSourceLabel,
   userPermissionKeys,
   type TenantRosterSource,
   type TenantWorkspace,
   type TenantWorkspaceUser,
+  type TenantWorkspaceUserPatch,
 } from "@/lib/api/tenant-workspace";
 import { TenantRosterAccessDialog } from "@/components/tenant/TenantRosterAccessDialog";
 import { fetchUserDirectorySettings } from "@/lib/api/user-directory";
@@ -105,7 +106,7 @@ export function TenantWorkspacePanel({
   const [importOpen, setImportOpen] = useState(false);
   const [importable, setImportable] = useState<TenantWorkspaceUser[]>([]);
   const [importLoading, setImportLoading] = useState(false);
-  const [accessUser, setAccessUser] = useState<TenantWorkspaceUser | null>(null);
+  const [accessUserId, setAccessUserId] = useState<string | null>(null);
   const [accessInitialTab, setAccessInitialTab] = useState<"console" | "features" | "roles">(
     "console",
   );
@@ -113,7 +114,7 @@ export function TenantWorkspacePanel({
   const [removeTarget, setRemoveTarget] = useState<TenantWorkspaceUser | null>(null);
 
   useEffect(() => {
-    setData(workspace);
+    setData((prev) => mergeTenantWorkspace(workspace, prev));
   }, [workspace]);
 
   useEffect(() => {
@@ -126,6 +127,15 @@ export function TenantWorkspacePanel({
   );
 
   const tenantUsers = data.users ?? [];
+  const accessUser = accessUserId
+    ? (tenantUsers.find((u) => u.id === accessUserId) ?? null)
+    : null;
+
+  useEffect(() => {
+    if (accessUserId && !tenantUsers.some((u) => u.id === accessUserId)) {
+      setAccessUserId(null);
+    }
+  }, [accessUserId, tenantUsers]);
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -151,14 +161,33 @@ export function TenantWorkspacePanel({
     });
   }, [tenantUsers, query, statusFilter, sourceFilter, appFilter, consoleFilter, verifiedFilter, consoleByUser]);
 
-  async function refresh() {
+  function applyUserPatch(patch: TenantWorkspaceUserPatch) {
+    setData((prev) => ({
+      ...prev,
+      users: prev.users.map((u) => patchTenantWorkspaceUser(u, patch)),
+    }));
+  }
+
+  async function refresh(patch?: TenantWorkspaceUserPatch) {
+    if (patch) applyUserPatch(patch);
     if (onMutated) {
       await onMutated();
-      return;
     }
-    const next = await fetchTenantWorkspace(manageTenantId);
-    setData(next);
-    router.refresh();
+    if (manageTenantId) {
+      const next = await fetchTenantWorkspace(manageTenantId);
+      setData((prev) => {
+        const merged = mergeTenantWorkspace(next, prev);
+        if (!patch) return merged;
+        return {
+          ...merged,
+          users: merged.users.map((u) => patchTenantWorkspaceUser(u, patch)),
+        };
+      });
+    } else if (!onMutated) {
+      const next = await fetchTenantWorkspace(manageTenantId);
+      setData(next);
+      router.refresh();
+    }
   }
 
   async function loadDirectory(appId: string) {
@@ -227,6 +256,9 @@ export function TenantWorkspacePanel({
       toast("Removed from tenant roster", "success");
       setRemoveTarget(null);
       await refresh();
+      if (importOpen && importAppId) {
+        setImportable(await fetchImportableUsers(importAppId, manageTenantId));
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not remove user", "error");
     } finally {
@@ -458,16 +490,12 @@ export function TenantWorkspacePanel({
               );
               const allPermissions = userPermissionKeys(user);
               const consoleFeatureKeys = consoleGroup
-                ? [
-                    ...new Set(
-                      consoleGroup.entries.flatMap(
-                        (e) =>
-                          CONSOLE_ROLE_DEFAULT_FEATURES[e.roleType] ??
-                          CONSOLE_ROLE_DEFAULT_FEATURES.APPLICATION_ADMIN,
-                      ),
-                    ),
-                  ].sort()
+                ? resolveRosterConsoleFeatures(
+                    user,
+                    consoleGroup.entries.map((e) => e.roleType),
+                  )
                 : [];
+              const consoleOverrideCount = user.consoleFeatureOverrides?.length ?? 0;
               return (
                 <TR key={user.id}>
                   <TD>
@@ -533,18 +561,40 @@ export function TenantWorkspacePanel({
                             ))}
                           </div>
                           {consoleFeatureKeys.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {consoleFeatureKeys.slice(0, 6).map((f) => (
-                                <span
-                                  key={f}
-                                  className="rounded-md bg-ui-elevated px-1.5 py-0.5 text-[10px] text-soft"
-                                >
-                                  {CONSOLE_FEATURE_LABELS[f] ?? f}
-                                </span>
-                              ))}
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                              {consoleFeatureKeys.slice(0, 6).map((f) => {
+                                const override = user.consoleFeatureOverrides?.find(
+                                  (o) => o.featureKey === f,
+                                );
+                                return (
+                                  <span
+                                    key={f}
+                                    className={`rounded-md px-1.5 py-0.5 text-[10px] ${
+                                      override?.effect === "GRANT"
+                                        ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300"
+                                        : override?.effect === "DENY"
+                                          ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                                          : "bg-ui-elevated text-soft"
+                                    }`}
+                                    title={
+                                      override
+                                        ? `${override.effect === "GRANT" ? "Granted" : "Denied"} override`
+                                        : "Role default"
+                                    }
+                                  >
+                                    {CONSOLE_FEATURE_LABELS[f] ?? f}
+                                  </span>
+                                );
+                              })}
                               {consoleFeatureKeys.length > 6 && (
                                 <span className="text-[10px] text-faint">
                                   +{consoleFeatureKeys.length - 6}
+                                </span>
+                              )}
+                              {consoleOverrideCount > 0 && (
+                                <span className="text-[10px] text-faint">
+                                  · {consoleOverrideCount} override
+                                  {consoleOverrideCount === 1 ? "" : "s"}
                                 </span>
                               )}
                             </div>
@@ -596,7 +646,7 @@ export function TenantWorkspacePanel({
                             setAccessInitialTab(
                               consoleByUser.has(user.id) ? "features" : "console",
                             );
-                            setAccessUser(user);
+                            setAccessUserId(user.id);
                           }}
                           className="text-xs font-medium text-brand hover:underline"
                         >
@@ -631,23 +681,14 @@ export function TenantWorkspacePanel({
                   </TD>
                   <TD>
                     {manageTenantId && user.onRoster && (
-                      consoleByUser.has(user.id) ? (
-                        <span
-                          className="text-xs text-faint"
-                          title="Revoke admin console access before removing from roster"
-                        >
-                          Remove blocked
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={removeBusyId === user.id}
-                          onClick={() => setRemoveTarget(user)}
-                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-60"
-                        >
-                          {removeBusyId === user.id ? "Removing…" : "Remove"}
-                        </button>
-                      )
+                      <button
+                        type="button"
+                        disabled={removeBusyId === user.id}
+                        onClick={() => setRemoveTarget(user)}
+                        className="text-xs font-medium text-red-600 hover:underline disabled:opacity-60"
+                      >
+                        {removeBusyId === user.id ? "Removing…" : "Remove"}
+                      </button>
                     )}
                   </TD>
                 </TR>
@@ -676,7 +717,12 @@ export function TenantWorkspacePanel({
             <h2 className="text-base font-semibold text-ui">Remove from tenant roster?</h2>
             <p className="mt-2 text-sm text-muted">
               <span className="font-medium text-ui">{removeTarget.displayName}</span> will be
-              removed from the tenant roster. Application memberships and in-app roles are kept.
+              removed from the tenant roster
+              {consoleByUser.has(removeTarget.id)
+                ? " and their admin console access will be revoked"
+                : ""}
+              . Application memberships and in-app roles are kept. They can be imported again from
+              an application afterward.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button
@@ -712,15 +758,15 @@ export function TenantWorkspacePanel({
             onImported={reloadImportable}
           />
           <TenantRosterAccessDialog
-            open={accessUser !== null}
+            open={accessUserId !== null}
             user={accessUser}
             applications={data.applications.map((a) => ({ id: a.id, name: a.name }))}
             tenantId={manageTenantId}
             initialTab={accessInitialTab}
             consoleAssignments={consoleAssignments.filter(
-              (a) => a.userId === accessUser?.id,
+              (a) => a.userId === accessUserId,
             )}
-            onClose={() => setAccessUser(null)}
+            onClose={() => setAccessUserId(null)}
             onSaved={refresh}
           />
         </>

@@ -6,6 +6,8 @@ import com.secureone.auth.admin.console.AdminConsoleAccess;
 import com.secureone.auth.admin.console.AdminConsoleAccessRepository;
 import com.secureone.auth.admin.console.AdminConsoleAccessService;
 import com.secureone.auth.admin.console.AdminConsoleAccessService.ConsoleAccessAssignment;
+import com.secureone.auth.admin.console.AdminConsoleCapabilityService;
+import com.secureone.auth.admin.console.AdminConsoleCapabilityService.FeatureOverride;
 import com.secureone.auth.admin.console.AdminConsoleRoleType;
 import com.secureone.auth.admin.AdminAccessService.ApplicationSummary;
 import com.secureone.auth.admin.AdminOperatorService;
@@ -21,6 +23,7 @@ import com.secureone.auth.rbac.UserRole;
 import com.secureone.auth.rbac.UserRoleRepository;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
+import com.secureone.auth.tenant.TenantRosterSource;
 import com.secureone.auth.tenant.TenantUserRoster;
 import com.secureone.auth.tenant.TenantUserRosterRepository;
 import com.secureone.auth.tenant.TenantUserRosterService;
@@ -58,6 +61,7 @@ public class TenantWorkspaceService {
     private final JdbcTemplate jdbc;
     private final AdminConsoleAccessService consoleAccess;
     private final AdminConsoleAccessRepository consoleAccessRepo;
+    private final AdminConsoleCapabilityService consoleCapabilities;
     private final TenantUserRosterRepository tenantUserRoster;
     private final TenantUserRosterService tenantUserRosterService;
 
@@ -75,6 +79,7 @@ public class TenantWorkspaceService {
             JdbcTemplate jdbc,
             AdminConsoleAccessService consoleAccess,
             AdminConsoleAccessRepository consoleAccessRepo,
+            AdminConsoleCapabilityService consoleCapabilities,
             TenantUserRosterRepository tenantUserRoster,
             TenantUserRosterService tenantUserRosterService) {
         this.operators = operators;
@@ -90,6 +95,7 @@ public class TenantWorkspaceService {
         this.jdbc = jdbc;
         this.consoleAccess = consoleAccess;
         this.consoleAccessRepo = consoleAccessRepo;
+        this.consoleCapabilities = consoleCapabilities;
         this.tenantUserRoster = tenantUserRoster;
         this.tenantUserRosterService = tenantUserRosterService;
     }
@@ -119,6 +125,8 @@ public class TenantWorkspaceService {
             Instant rosterAddedAt,
             UUID rosterAddedById,
             String rosterAddedByLabel,
+            List<String> effectiveConsoleFeatures,
+            List<FeatureOverride> consoleFeatureOverrides,
             List<TenantWorkspaceApplicationAccess> applicationAccess) {}
 
     public record TenantAdminOperator(
@@ -249,6 +257,7 @@ public class TenantWorkspaceService {
                     "Platform super-admin required");
         }
         UUID addedBy = resolveOperatorUserId(authentication, actAsEmail);
+        applicationUsers.grantAccess(applicationId, userId);
         tenantUserRosterService.importFromApplication(tenantId, userId, applicationId, addedBy);
     }
 
@@ -269,6 +278,9 @@ public class TenantWorkspaceService {
                 .filter(a -> a.getTenantId().equals(tenantId))
                 .orElseThrow(() -> new IllegalArgumentException("Application not in tenant"));
         UUID addedBy = resolveOperatorUserId(authentication, actAsEmail);
+        for (UUID userId : userIds) {
+            applicationUsers.grantAccess(applicationId, userId);
+        }
         return tenantUserRosterService.bulkImportFromApplication(tenantId, userIds, applicationId, addedBy);
     }
 
@@ -280,6 +292,7 @@ public class TenantWorkspaceService {
                     "Platform super-admin required");
         }
         tenants.findById(tenantId).orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
+        consoleAccess.revokeAllForUserInTenant(tenantId, userId);
         tenantUserRosterService.removeFromRoster(tenantId, userId);
     }
 
@@ -510,6 +523,14 @@ public class TenantWorkspaceService {
                 applicationAccess.add(buildApplicationAccess(userId, appId, appNameById.get(appId)));
             }
 
+            List<String> effectiveConsoleFeatures = List.of();
+            List<FeatureOverride> consoleFeatureOverrides = List.of();
+            if (consoleCapabilities.hasConsoleAccess(userId)) {
+                var caps = consoleCapabilities.describeForUser(tenant.getId(), userId);
+                effectiveConsoleFeatures = caps.effectiveFeatures();
+                consoleFeatureOverrides = caps.overrides();
+            }
+
             userItems.add(new TenantWorkspaceUser(
                     user.getId(),
                     user.getEmail(),
@@ -525,6 +546,8 @@ public class TenantWorkspaceService {
                     rosterAddedAt,
                     rosterAddedById,
                     rosterAddedByLabel,
+                    effectiveConsoleFeatures,
+                    consoleFeatureOverrides,
                     applicationAccess));
         }
         userItems.sort(Comparator.comparing(TenantWorkspaceUser::email, String.CASE_INSENSITIVE_ORDER));
@@ -624,8 +647,8 @@ public class TenantWorkspaceService {
 
     private List<TenantWorkspaceUser> listImportableUsers(Tenant tenant, UUID applicationId) {
         List<TenantWorkspaceUser> importable = new ArrayList<>();
-        for (UUID userId : memberships.findUserIdsByApplicationId(applicationId)) {
-            if (tenantUserRoster.existsByTenantIdAndUserId(tenant.getId(), userId)) {
+        for (UUID userId : applicationUsers.resolveApplicationMemberUserIds(applicationId)) {
+            if (isOnRosterBlockingImport(tenant.getId(), userId)) {
                 continue;
             }
             UserAccount user = users.findById(userId).orElse(null);
@@ -657,6 +680,8 @@ public class TenantWorkspaceService {
                     null,
                     null,
                     null,
+                    List.of(),
+                    List.of(),
                     List.of(buildApplicationAccess(
                             userId,
                             applicationId,
@@ -667,6 +692,23 @@ public class TenantWorkspaceService {
         }
         importable.sort(Comparator.comparing(TenantWorkspaceUser::email, String.CASE_INSENSITIVE_ORDER));
         return importable;
+    }
+
+    private boolean isOnRosterBlockingImport(UUID tenantId, UUID userId) {
+        var rowOpt = tenantUserRoster.findByTenantIdAndUserId(tenantId, userId);
+        if (rowOpt.isEmpty()) {
+            return false;
+        }
+        TenantUserRoster row = rowOpt.get();
+        boolean orphanedConsole =
+                TenantRosterSource.CONSOLE_ACCESS.wireValue().equals(row.getSource())
+                        && consoleAccessRepo.findActiveByTenantId(tenantId).stream()
+                                .noneMatch(access -> access.getUserId().equals(userId));
+        if (orphanedConsole) {
+            tenantUserRoster.delete(row);
+            return false;
+        }
+        return true;
     }
 
     private void requireOnTenantRoster(UUID tenantId, UUID userId) {

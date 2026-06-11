@@ -8,6 +8,7 @@ import com.secureone.auth.application.UserApplication;
 import com.secureone.auth.application.UserApplicationRepository;
 import com.secureone.auth.audit.AuditLogRepository;
 import com.secureone.auth.user.UserAccountRepository;
+import com.secureone.auth.user.UserInviteContext;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,8 +46,9 @@ public class ApplicationUserAdminService {
         this.jdbc = jdbc;
     }
 
-    @Transactional
-    public List<UserResponse> listUsers(UUID applicationId) {
+    /** Same membership rules as {@link #listUsers(UUID)} — includes pending invites and self-registrations. */
+    @Transactional(readOnly = true)
+    public Set<UUID> resolveApplicationMemberUserIds(UUID applicationId) {
         var app = requireApplication(applicationId);
         Set<UUID> userIds = new LinkedHashSet<>();
         for (UUID userId : findPendingInviteUserIds(app.getTenantId(), applicationId)) {
@@ -55,16 +57,27 @@ public class ApplicationUserAdminService {
         for (UUID userId : memberships.findUserIdsByApplicationId(applicationId)) {
             if (users.findById(userId).isPresent()) {
                 userIds.add(userId);
-            } else {
-                memberships.deleteByUserIdAndApplicationId(userId, applicationId);
             }
         }
         for (UUID userId : auditLogs.findDistinctTargetIdsByApplicationIdAndAction(applicationId, SELF_REGISTERED_ACTION)) {
-            if (users.findById(userId).isEmpty()) {
-                continue;
+            if (users.findById(userId).isPresent()) {
+                userIds.add(userId);
             }
+        }
+        return userIds;
+    }
+
+    @Transactional
+    public List<UserResponse> listUsers(UUID applicationId) {
+        Set<UUID> userIds = new LinkedHashSet<>(resolveApplicationMemberUserIds(applicationId));
+        for (UUID userId : memberships.findUserIdsByApplicationId(applicationId)) {
+            if (users.findById(userId).isEmpty()) {
+                memberships.deleteByUserIdAndApplicationId(userId, applicationId);
+                userIds.remove(userId);
+            }
+        }
+        for (UUID userId : userIds) {
             linkAccessIfAbsent(applicationId, userId);
-            userIds.add(userId);
         }
         if (userIds.isEmpty()) {
             return List.of();
@@ -88,14 +101,20 @@ public class ApplicationUserAdminService {
     }
 
     private void linkAccessIfAbsent(UUID applicationId, UUID userId) {
-        if (!users.findById(userId).isPresent()) {
+        var userOpt = users.findById(userId);
+        if (userOpt.isEmpty()) {
             return;
         }
+        var user = userOpt.get();
         if (!memberships.existsByUserIdAndApplicationId(userId, applicationId)) {
             UserApplication link = new UserApplication();
             link.setUserId(userId);
             link.setApplicationId(applicationId);
             memberships.save(link);
+        }
+        if (applicationId.equals(UserInviteContext.pendingApplicationId(user).orElse(null))) {
+            UserInviteContext.clearPendingApplicationInvite(user);
+            users.save(user);
         }
     }
 

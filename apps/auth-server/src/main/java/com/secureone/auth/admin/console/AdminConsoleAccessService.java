@@ -231,6 +231,20 @@ public class AdminConsoleAccessService {
     public void revoke(UUID assignmentId) {
         AdminConsoleAccess row = access.findById(assignmentId).orElseThrow(() -> new ResourceNotFoundException("Assignment not found"));
         revokeRow(row);
+        syncRosterAfterConsoleRevoke(row.getTenantId(), row.getUserId());
+    }
+
+    /** Revokes every active console assignment for a user in a tenant (used when removing from roster). */
+    @Transactional
+    public void revokeAllForUserInTenant(UUID tenantId, UUID userId) {
+        List<AdminConsoleAccess> active =
+                access.findActiveByTenantId(tenantId).stream()
+                        .filter(row -> row.getUserId().equals(userId))
+                        .toList();
+        for (AdminConsoleAccess row : active) {
+            revokeRow(row);
+        }
+        syncRosterAfterConsoleRevoke(tenantId, userId);
     }
 
     @Transactional
@@ -238,14 +252,20 @@ public class AdminConsoleAccessService {
         if (roleType == AdminConsoleRoleType.TENANT_SUPER_ADMIN) {
             access.findByUserIdAndTenantIdAndRoleTypeAndApplicationIdIsNull(
                             userId, tenantId, AdminConsoleRoleType.TENANT_SUPER_ADMIN)
-                    .ifPresent(this::revokeRow);
+                    .ifPresent(row -> {
+                        revokeRow(row);
+                        syncRosterAfterConsoleRevoke(tenantId, userId);
+                    });
             return;
         }
         if (applicationId == null) {
             throw new IllegalArgumentException("applicationId required");
         }
         access.findByUserIdAndTenantIdAndApplicationIdAndRoleType(userId, tenantId, applicationId, roleType)
-                .ifPresent(this::revokeRow);
+                .ifPresent(row -> {
+                    revokeRow(row);
+                    syncRosterAfterConsoleRevoke(tenantId, userId);
+                });
     }
 
     private void revokeRow(AdminConsoleAccess row) {
@@ -265,6 +285,15 @@ public class AdminConsoleAccessService {
             applicationUsers.revokeAccess(applicationId, row.getUserId());
         }
         access.delete(row);
+    }
+
+    private void syncRosterAfterConsoleRevoke(UUID tenantId, UUID userId) {
+        boolean stillHasAccess =
+                access.findActiveByTenantId(tenantId).stream()
+                        .anyMatch(row -> row.getUserId().equals(userId));
+        if (!stillHasAccess) {
+            tenantUserRoster.removeConsoleAccessRosterEntry(tenantId, userId);
+        }
     }
 
     /** Console operators must be active with a verified email before they can sign in. */

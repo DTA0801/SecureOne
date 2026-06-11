@@ -53,6 +53,20 @@ export async function fetchUserConsoleCapabilities(
   );
 }
 
+/** Client-side preview of effective features after applying overrides on role defaults. */
+export function computeEffectiveFeatures(
+  roleDefaults: string[],
+  overrides: ConsoleFeatureOverride[],
+  catalogFeatures: string[] = Object.keys(CONSOLE_FEATURE_LABELS),
+): string[] {
+  const effective = new Set(roleDefaults);
+  for (const override of overrides) {
+    if (override.effect === "GRANT") effective.add(override.featureKey);
+    if (override.effect === "DENY") effective.delete(override.featureKey);
+  }
+  return catalogFeatures.filter((key) => effective.has(key));
+}
+
 export async function updateUserConsoleCapabilities(
   tenantId: string,
   userId: string,

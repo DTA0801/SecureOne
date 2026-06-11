@@ -108,14 +108,19 @@ public class TenantUserRosterService {
         if (!roster.existsByTenantIdAndUserId(tenantId, userId)) {
             return;
         }
-        boolean hasConsoleAccess =
-                consoleAccess.findActiveByTenantId(tenantId).stream()
-                        .anyMatch(row -> row.getUserId().equals(userId));
-        if (hasConsoleAccess) {
-            throw new IllegalArgumentException(
-                    "Remove admin console access before removing this user from the tenant roster");
-        }
         roster.deleteByTenantIdAndUserId(tenantId, userId);
+    }
+
+    /** Drops roster rows left behind when console access was revoked but roster was not cleaned up. */
+    public void removeConsoleAccessRosterEntry(UUID tenantId, UUID userId) {
+        roster.findByTenantIdAndUserId(tenantId, userId)
+                .filter(row -> TenantRosterSource.CONSOLE_ACCESS.wireValue().equals(row.getSource()))
+                .ifPresent(roster::delete);
+    }
+
+    public boolean hasActiveConsoleAccess(UUID tenantId, UUID userId) {
+        return consoleAccess.findActiveByTenantId(tenantId).stream()
+                .anyMatch(row -> row.getUserId().equals(userId));
     }
 
     private UserAccount requireTenantUser(UUID tenantId, UUID userId) {

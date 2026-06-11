@@ -1,5 +1,10 @@
 import { browserApiFetch as apiFetch } from "./browser-client";
 import type { ConsoleAccessAssignment } from "./admin-console-access";
+import {
+  CONSOLE_ROLE_DEFAULT_FEATURES,
+  computeEffectiveFeatures,
+  type ConsoleFeatureOverride,
+} from "./admin-console-capabilities";
 
 export type TenantRosterSource =
   | "direct"
@@ -38,6 +43,8 @@ export type TenantWorkspaceUser = {
   rosterAddedAt: string | null;
   rosterAddedById: string | null;
   rosterAddedByLabel: string | null;
+  effectiveConsoleFeatures: string[];
+  consoleFeatureOverrides: ConsoleFeatureOverride[];
   applicationAccess: TenantWorkspaceApplicationAccess[];
 };
 
@@ -90,6 +97,12 @@ export function normalizeTenantWorkspaceUser(
     rosterAddedAt: user.rosterAddedAt ?? null,
     rosterAddedById: user.rosterAddedById ?? null,
     rosterAddedByLabel: user.rosterAddedByLabel ?? null,
+    effectiveConsoleFeatures: Array.isArray(user.effectiveConsoleFeatures)
+      ? user.effectiveConsoleFeatures
+      : [],
+    consoleFeatureOverrides: Array.isArray(user.consoleFeatureOverrides)
+      ? user.consoleFeatureOverrides
+      : [],
     applicationAccess: access
       .map((row) => normalizeApplicationAccess(row))
       .filter((row): row is TenantWorkspaceApplicationAccess => row !== null),
@@ -221,6 +234,87 @@ export function userApplicationAccess(
 ): TenantWorkspaceApplicationAccess[] {
   if (!user) return [];
   return Array.isArray(user.applicationAccess) ? user.applicationAccess : [];
+}
+
+/** Patch roster user after console capability / role saves. */
+export type TenantWorkspaceUserPatch = {
+  userId: string;
+  effectiveConsoleFeatures?: string[];
+  consoleFeatureOverrides?: ConsoleFeatureOverride[];
+  applicationAccess?: TenantWorkspaceApplicationAccess[];
+  roleNames?: string[];
+};
+
+export function resolveRosterConsoleFeatures(
+  user: TenantWorkspaceUser,
+  consoleRoleTypes: string[],
+): string[] {
+  const roleDefaults = [
+    ...new Set(
+      consoleRoleTypes.flatMap(
+        (roleType) =>
+          CONSOLE_ROLE_DEFAULT_FEATURES[roleType] ??
+          CONSOLE_ROLE_DEFAULT_FEATURES.APPLICATION_ADMIN,
+      ),
+    ),
+  ];
+  if (user.consoleFeatureOverrides?.length) {
+    return computeEffectiveFeatures(roleDefaults, user.consoleFeatureOverrides);
+  }
+  if (user.effectiveConsoleFeatures?.length) {
+    return user.effectiveConsoleFeatures;
+  }
+  return [...roleDefaults].sort();
+}
+
+export function patchTenantWorkspaceUser(
+  user: TenantWorkspaceUser,
+  patch: TenantWorkspaceUserPatch,
+): TenantWorkspaceUser {
+  if (user.id !== patch.userId) return user;
+  return {
+    ...user,
+    ...(patch.effectiveConsoleFeatures
+      ? { effectiveConsoleFeatures: patch.effectiveConsoleFeatures }
+      : {}),
+    ...(patch.consoleFeatureOverrides
+      ? { consoleFeatureOverrides: patch.consoleFeatureOverrides }
+      : {}),
+    ...(patch.applicationAccess ? { applicationAccess: patch.applicationAccess } : {}),
+    ...(patch.roleNames ? { roleNames: patch.roleNames } : {}),
+  };
+}
+
+export function mergeTenantWorkspace(
+  incoming: TenantWorkspace,
+  prior?: TenantWorkspace,
+): TenantWorkspace {
+  const normalized = normalizeTenantWorkspace(incoming);
+  if (!prior) return normalized;
+  const priorUsers = new Map(prior.users.map((u) => [u.id, u]));
+  return {
+    ...normalized,
+    users: normalized.users.map((user) => {
+      const previous = priorUsers.get(user.id);
+      if (!previous) return user;
+      const keepCaps =
+        !user.effectiveConsoleFeatures?.length &&
+        Boolean(previous.effectiveConsoleFeatures?.length);
+      const keepOverrides =
+        !user.consoleFeatureOverrides?.length &&
+        Boolean(previous.consoleFeatureOverrides?.length);
+      if (!keepCaps && !keepOverrides) return user;
+      return {
+        ...user,
+        effectiveConsoleFeatures: keepCaps
+          ? previous.effectiveConsoleFeatures
+          : user.effectiveConsoleFeatures,
+        consoleFeatureOverrides: keepOverrides
+          ? previous.consoleFeatureOverrides
+          : user.consoleFeatureOverrides,
+      };
+    }),
+  };
 }
 
 export function userPermissionKeys(user: TenantWorkspaceUser | null | undefined): string[] {

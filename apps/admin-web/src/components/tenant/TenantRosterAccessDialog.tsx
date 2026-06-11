@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/Toast";
 import {
   CONSOLE_FEATURE_LABELS,
   CONSOLE_ROLE_DEFAULT_FEATURES,
+  computeEffectiveFeatures,
   fetchConsoleCapabilityCatalog,
   fetchUserConsoleCapabilities,
   updateUserConsoleCapabilities,
@@ -24,6 +25,7 @@ import {
   updateUserApplicationRoles,
   userApplicationAccess,
   type TenantWorkspaceUser,
+  type TenantWorkspaceUserPatch,
 } from "@/lib/api/tenant-workspace";
 import type { Role, RoleDetail } from "@/lib/types";
 
@@ -46,7 +48,7 @@ export function TenantRosterAccessDialog({
   consoleAssignments: ConsoleAccessAssignment[];
   initialTab?: Tab;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (patch?: TenantWorkspaceUserPatch) => Promise<void>;
 }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("console");
@@ -54,11 +56,12 @@ export function TenantRosterAccessDialog({
   const [roles, setRoles] = useState<Role[]>([]);
   const [roleDetails, setRoleDetails] = useState<Map<string, RoleDetail>>(new Map());
   const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [savedRoleIds, setSavedRoleIds] = useState<string[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [savingRoles, setSavingRoles] = useState(false);
   const [catalogFeatures, setCatalogFeatures] = useState<string[]>([]);
   const [roleDefaults, setRoleDefaults] = useState<string[]>([]);
-  const [effectiveFeatures, setEffectiveFeatures] = useState<string[]>([]);
+  const [savedOverrides, setSavedOverrides] = useState<ConsoleFeatureOverride[]>([]);
   const [overrides, setOverrides] = useState<ConsoleFeatureOverride[]>([]);
   const [loadingCaps, setLoadingCaps] = useState(false);
   const [savingCaps, setSavingCaps] = useState(false);
@@ -95,15 +98,15 @@ export function TenantRosterAccessDialog({
         if (cancelled) return;
         setCatalogFeatures(catalog.features);
         setRoleDefaults(caps.roleDefaults);
-        setEffectiveFeatures(caps.effectiveFeatures);
         setOverrides(caps.overrides);
+        setSavedOverrides(caps.overrides);
       })
       .catch(() => {
         if (!cancelled) {
           setCatalogFeatures([]);
           setRoleDefaults([]);
-          setEffectiveFeatures([]);
           setOverrides([]);
+          setSavedOverrides([]);
         }
       })
       .finally(() => {
@@ -112,7 +115,7 @@ export function TenantRosterAccessDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, user?.id, tenantId]);
+  }, [open, user?.id, tenantId, consoleAssignments.length]);
 
   useEffect(() => {
     if (!open || !appId) {
@@ -149,8 +152,27 @@ export function TenantRosterAccessDialog({
       return;
     }
     const access = userApplicationAccess(user).find((a) => a.applicationId === appId);
-    setRoleIds(access?.roleIds ?? []);
+    const ids = access?.roleIds ?? [];
+    setRoleIds(ids);
+    setSavedRoleIds(ids);
   }, [open, user, appId]);
+
+  const previewEffectiveFeatures = useMemo(
+    () => computeEffectiveFeatures(roleDefaults, overrides, catalogFeatures),
+    [roleDefaults, overrides, catalogFeatures],
+  );
+
+  const rolesDirty = useMemo(() => {
+    const saved = [...savedRoleIds].sort();
+    const current = [...roleIds].sort();
+    return JSON.stringify(saved) !== JSON.stringify(current);
+  }, [savedRoleIds, roleIds]);
+
+  const featuresDirty = useMemo(() => {
+    const saved = [...savedOverrides].sort((a, b) => a.featureKey.localeCompare(b.featureKey));
+    const current = [...overrides].sort((a, b) => a.featureKey.localeCompare(b.featureKey));
+    return JSON.stringify(saved) !== JSON.stringify(current);
+  }, [savedOverrides, overrides]);
 
   const effectivePermissions = useMemo(() => {
     const keys = new Set<string>();
@@ -186,8 +208,26 @@ export function TenantRosterAccessDialog({
     setSavingRoles(true);
     try {
       await updateUserApplicationRoles(user.id, appId, tenantId, roleIds);
+      setSavedRoleIds(roleIds);
       toast("In-app roles updated", "success");
-      await onSaved();
+      const access = userApplicationAccess(user).map((row) =>
+        row.applicationId === appId
+          ? {
+              ...row,
+              roleIds,
+              roleNames: roles.filter((r) => roleIds.includes(r.id)).map((r) => r.name),
+              permissionKeys: effectivePermissions,
+            }
+          : row,
+      );
+      const roleNames = [
+        ...new Set(access.flatMap((row) => row.roleNames)),
+      ].sort();
+      await onSaved({
+        userId: user.id,
+        applicationAccess: access,
+        roleNames,
+      });
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not update roles", "error");
     } finally {
@@ -200,10 +240,14 @@ export function TenantRosterAccessDialog({
     setSavingCaps(true);
     try {
       const updated = await updateUserConsoleCapabilities(tenantId, user.id, overrides);
-      setEffectiveFeatures(updated.effectiveFeatures);
       setOverrides(updated.overrides);
+      setSavedOverrides(updated.overrides);
       toast("Console features updated", "success");
-      await onSaved();
+      await onSaved({
+        userId: user.id,
+        effectiveConsoleFeatures: updated.effectiveFeatures,
+        consoleFeatureOverrides: updated.overrides,
+      });
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not update features", "error");
     } finally {
@@ -388,88 +432,94 @@ export function TenantRosterAccessDialog({
           {tab === "features" && consoleAssignments.length > 0 && (
             <div className="space-y-4">
               <p className="text-xs text-muted">
-                Feature matrix for this tenant operator. Role defaults apply first; per-user grant/deny
-                overrides adjust access. Only granted features appear in their app console sidebar.
+                Configure which admin console sections this operator can access. Role defaults apply
+                first; grant or deny overrides adjust the effective matrix shown in the tenant roster.
               </p>
-              <div className="overflow-x-auto rounded-lg border border-ui">
-                <table className="w-full text-left text-xs">
-                  <thead className="border-b border-ui bg-ui-elevated text-faint">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Feature</th>
-                      <th className="px-3 py-2 font-medium">Role default</th>
-                      <th className="px-3 py-2 font-medium">Effective</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catalogFeatures.map((featureKey) => {
-                      const inRole = roleDefaults.includes(featureKey);
-                      const inEffective = effectiveFeatures.includes(featureKey);
-                      return (
-                        <tr key={featureKey} className="border-b border-ui last:border-0">
-                          <td className="px-3 py-2 font-medium text-ui">
-                            {CONSOLE_FEATURE_LABELS[featureKey] ?? featureKey}
-                          </td>
-                          <td className="px-3 py-2 text-soft">{inRole ? "Yes" : "No"}</td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={
-                                inEffective ? "text-green-700 dark:text-green-400" : "text-faint"
-                              }
-                            >
-                              {inEffective ? "Allowed" : "Denied"}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
               {loadingCaps ? (
-                <p className="text-sm text-muted">Loading…</p>
+                <p className="text-sm text-muted">Loading feature matrix…</p>
               ) : (
-                <div className="space-y-2">
-                  {catalogFeatures.map((featureKey) => {
-                    const inRole = roleDefaults.includes(featureKey);
-                    const inEffective = effectiveFeatures.includes(featureKey);
-                    const effect = overrideEffect(featureKey);
-                    return (
-                      <div
-                        key={featureKey}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ui px-3 py-2"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-ui">
-                            {CONSOLE_FEATURE_LABELS[featureKey] ?? featureKey}
-                          </p>
-                          <p className="text-[10px] text-faint">
-                            {inRole ? "Included in role" : "Not in role default"}
-                            {inEffective ? " · effective" : " · denied"}
-                          </p>
-                        </div>
-                        <Select
-                          value={effect}
-                          onChange={(e) =>
-                            setOverride(
-                              featureKey,
-                              e.target.value as "default" | "GRANT" | "DENY",
-                            )
-                          }
-                          className="h-8 min-w-[8rem] text-xs"
-                        >
-                          <option value="default">Role default</option>
-                          <option value="GRANT">Force grant</option>
-                          <option value="DENY">Force deny</option>
-                        </Select>
-                      </div>
-                    );
-                  })}
-                </div>
+                <>
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-ui bg-ui-elevated px-3 py-2 text-xs">
+                    <span className="font-medium text-ui">
+                      {previewEffectiveFeatures.length} of {catalogFeatures.length} features allowed
+                    </span>
+                    {overrides.length > 0 && (
+                      <span className="text-faint">
+                        · {overrides.length} override{overrides.length === 1 ? "" : "s"}
+                      </span>
+                    )}
+                    {featuresDirty && (
+                      <Badge tone="warning">Unsaved changes</Badge>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-ui">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-ui bg-ui-elevated text-faint">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Feature</th>
+                          <th className="px-3 py-2 font-medium">Role default</th>
+                          <th className="px-3 py-2 font-medium">Override</th>
+                          <th className="px-3 py-2 font-medium">Effective</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {catalogFeatures.map((featureKey) => {
+                          const inRole = roleDefaults.includes(featureKey);
+                          const inEffective = previewEffectiveFeatures.includes(featureKey);
+                          const effect = overrideEffect(featureKey);
+                          return (
+                            <tr key={featureKey} className="border-b border-ui last:border-0">
+                              <td className="px-3 py-2 font-medium text-ui">
+                                {CONSOLE_FEATURE_LABELS[featureKey] ?? featureKey}
+                              </td>
+                              <td className="px-3 py-2 text-soft">{inRole ? "Yes" : "No"}</td>
+                              <td className="px-3 py-2">
+                                <Select
+                                  value={effect}
+                                  onChange={(e) =>
+                                    setOverride(
+                                      featureKey,
+                                      e.target.value as "default" | "GRANT" | "DENY",
+                                    )
+                                  }
+                                  className="h-8 min-w-[7.5rem] text-xs"
+                                >
+                                  <option value="default">Default</option>
+                                  <option value="GRANT">Grant</option>
+                                  <option value="DENY">Deny</option>
+                                </Select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={
+                                    inEffective
+                                      ? "font-medium text-green-700 dark:text-green-400"
+                                      : "text-faint"
+                                  }
+                                >
+                                  {inEffective ? "Allowed" : "Denied"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  disabled={savingCaps || loadingCaps}
+                  disabled={loadingCaps || savingCaps || !featuresDirty}
+                  onClick={() => setOverrides(savedOverrides)}
+                  className="text-xs font-medium text-muted hover:text-ui disabled:opacity-40"
+                >
+                  Reset changes
+                </button>
+                <button
+                  type="button"
+                  disabled={savingCaps || loadingCaps || !featuresDirty}
                   onClick={() => void saveFeatures()}
                   className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-60"
                 >
@@ -481,6 +531,11 @@ export function TenantRosterAccessDialog({
 
           {tab === "roles" && (
             <div className="space-y-4">
+              {rolesDirty && (
+                <div className="rounded-lg border border-ui bg-ui-elevated px-3 py-2">
+                  <Badge tone="warning">Unsaved role changes</Badge>
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted">Application</label>
                 <Select
@@ -541,10 +596,18 @@ export function TenantRosterAccessDialog({
                   Effective: {effectivePermissions.join(", ")}
                 </p>
               )}
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  disabled={savingRoles || !user.applicationIds.includes(appId)}
+                  disabled={savingRoles || !rolesDirty}
+                  onClick={() => setRoleIds(savedRoleIds)}
+                  className="text-xs font-medium text-muted hover:text-ui disabled:opacity-40"
+                >
+                  Reset changes
+                </button>
+                <button
+                  type="button"
+                  disabled={savingRoles || !rolesDirty || !user.applicationIds.includes(appId)}
                   onClick={() => void saveRoles()}
                   className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-60"
                 >
