@@ -36,6 +36,13 @@ import {
   type TenantWorkspaceUserPatch,
 } from "@/lib/api/tenant-workspace";
 import { TenantRosterAccessDialog } from "@/components/tenant/TenantRosterAccessDialog";
+import { useAdminContext } from "@/components/AdminContextProvider";
+import {
+  canViewUserInOperatorList,
+  filterUsersForOperatorList,
+  operatorListViewerFromContext,
+  userConsoleRoleTypes,
+} from "@/lib/operator-list-visibility";
 import { fetchUserDirectorySettings } from "@/lib/api/user-directory";
 import { buildAppPath } from "@/lib/app-routes";
 import { formatDate } from "@/lib/format";
@@ -89,6 +96,11 @@ export function TenantWorkspacePanel({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const adminContext = useAdminContext();
+  const listViewer = useMemo(
+    () => operatorListViewerFromContext(adminContext),
+    [adminContext],
+  );
   const [data, setData] = useState(workspace);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
@@ -121,12 +133,30 @@ export function TenantWorkspacePanel({
     if (importAppId) void loadDirectory(importAppId);
   }, [importAppId]);
 
-  const consoleByUser = useMemo(
-    () => new Map(groupConsoleAccessByUser(consoleAssignments).map((g) => [g.userId, g])),
-    [consoleAssignments],
+  const visibleConsoleAssignments = useMemo(
+    () =>
+      consoleAssignments.filter((assignment) =>
+        canViewUserInOperatorList(
+          listViewer,
+          assignment.userId,
+          userConsoleRoleTypes(assignment.userId, consoleAssignments),
+        ),
+      ),
+    [consoleAssignments, listViewer],
   );
 
-  const tenantUsers = data.users ?? [];
+  const consoleByUser = useMemo(
+    () =>
+      new Map(
+        groupConsoleAccessByUser(visibleConsoleAssignments).map((group) => [group.userId, group]),
+      ),
+    [visibleConsoleAssignments],
+  );
+
+  const tenantUsers = useMemo(
+    () => filterUsersForOperatorList(data.users ?? [], listViewer, consoleAssignments),
+    [data.users, listViewer, consoleAssignments],
+  );
   const accessUser = accessUserId
     ? (tenantUsers.find((u) => u.id === accessUserId) ?? null)
     : null;
@@ -763,7 +793,7 @@ export function TenantWorkspacePanel({
             applications={data.applications.map((a) => ({ id: a.id, name: a.name }))}
             tenantId={manageTenantId}
             initialTab={accessInitialTab}
-            consoleAssignments={consoleAssignments.filter(
+            consoleAssignments={visibleConsoleAssignments.filter(
               (a) => a.userId === accessUserId,
             )}
             onClose={() => setAccessUserId(null)}

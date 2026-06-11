@@ -11,6 +11,7 @@ import com.secureone.auth.admin.console.AdminConsoleCapabilityService.FeatureOve
 import com.secureone.auth.admin.console.AdminConsoleRoleType;
 import com.secureone.auth.admin.AdminAccessService.ApplicationSummary;
 import com.secureone.auth.admin.AdminOperatorService;
+import com.secureone.auth.admin.OperatorListVisibilityService;
 import com.secureone.auth.admin.application.ApplicationUserAdminService;
 import com.secureone.auth.admin.user.UserAdminDtos.UserResponse;
 import com.secureone.auth.admin.user.UserAdminService;
@@ -64,6 +65,7 @@ public class TenantWorkspaceService {
     private final AdminConsoleCapabilityService consoleCapabilities;
     private final TenantUserRosterRepository tenantUserRoster;
     private final TenantUserRosterService tenantUserRosterService;
+    private final OperatorListVisibilityService listVisibility;
 
     public TenantWorkspaceService(
             AdminOperatorService operators,
@@ -81,7 +83,8 @@ public class TenantWorkspaceService {
             AdminConsoleAccessRepository consoleAccessRepo,
             AdminConsoleCapabilityService consoleCapabilities,
             TenantUserRosterRepository tenantUserRoster,
-            TenantUserRosterService tenantUserRosterService) {
+            TenantUserRosterService tenantUserRosterService,
+            OperatorListVisibilityService listVisibility) {
         this.operators = operators;
         this.access = access;
         this.tenants = tenants;
@@ -98,6 +101,7 @@ public class TenantWorkspaceService {
         this.consoleCapabilities = consoleCapabilities;
         this.tenantUserRoster = tenantUserRoster;
         this.tenantUserRosterService = tenantUserRosterService;
+        this.listVisibility = listVisibility;
     }
 
     public record TenantWorkspaceApplication(
@@ -168,7 +172,10 @@ public class TenantWorkspaceService {
         }
 
         List<UUID> accessibleAppIds = accessible.stream().map(ApplicationSummary::id).toList();
-        List<TenantWorkspaceUser> userItems = buildWorkspaceUsers(tenant, accessibleAppIds);
+        List<TenantWorkspaceUser> userItems = filterVisibleWorkspaceUsers(
+                authentication, actAsEmail, buildWorkspaceUsers(tenant, accessibleAppIds));
+        List<ConsoleAccessAssignment> consoleAssignments = filterVisibleConsoleAccess(
+                authentication, actAsEmail, consoleAccess.listForTenant(tenant.getId()));
 
         String plan = "standard";
         if (tenant.getSettings() != null && tenant.getSettings().get("plan") != null) {
@@ -185,7 +192,7 @@ public class TenantWorkspaceService {
                 appItems.size(),
                 appItems,
                 userItems,
-                consoleAccess.listForTenant(tenant.getId()));
+                consoleAssignments);
     }
 
     /** Platform super-admin: full tenant workspace (all apps and users in the tenant). */
@@ -718,6 +725,21 @@ public class TenantWorkspaceService {
             throw new IllegalArgumentException(
                     "User is not on the tenant roster. Import from an application first.");
         }
+    }
+
+    private List<TenantWorkspaceUser> filterVisibleWorkspaceUsers(
+            Authentication authentication, String actAsEmail, List<TenantWorkspaceUser> users) {
+        return users.stream()
+                .filter(u -> listVisibility.canViewUserInOperatorList(authentication, actAsEmail, u.id()))
+                .toList();
+    }
+
+    private List<ConsoleAccessAssignment> filterVisibleConsoleAccess(
+            Authentication authentication, String actAsEmail, List<ConsoleAccessAssignment> assignments) {
+        return assignments.stream()
+                .filter(a -> listVisibility.canViewUserInOperatorList(
+                        authentication, actAsEmail, a.userId()))
+                .toList();
     }
 
     private void requireTenantOperator(Authentication authentication, String actAsEmail) {

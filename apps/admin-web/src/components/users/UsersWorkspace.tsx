@@ -17,6 +17,11 @@ import { UserFormModal } from "@/components/forms/UserFormModal";
 import Link from "next/link";
 import { fetchUserDirectorySettings, type UserDirectorySettings } from "@/lib/api/user-directory";
 import { listUsers } from "@/lib/api/users";
+import {
+  filterUsersForOperatorList,
+  operatorListViewerFromContext,
+} from "@/lib/operator-list-visibility";
+import { useAdminContext } from "@/components/AdminContextProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -105,6 +110,11 @@ export function UsersWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const adminContext = useAdminContext();
+  const listViewer = useMemo(
+    () => operatorListViewerFromContext(adminContext),
+    [adminContext],
+  );
   const registerRefreshHandler = useContext(UsersWorkspaceRegisterContext);
   const selectedId = searchParams.get("user");
   const [users, setUsers] = useState(initialUsers);
@@ -114,9 +124,10 @@ export function UsersWorkspace({
 
   const reloadUsers = useCallback(async () => {
     const rows = await listUsers(tenantId, applicationId);
-    setUsers(rows);
-    return rows;
-  }, [tenantId, applicationId]);
+    const visible = filterUsersForOperatorList(rows, listViewer);
+    setUsers(visible);
+    return visible;
+  }, [tenantId, applicationId, listViewer]);
 
   const openUser = useCallback(
     (id: string) => {
@@ -140,14 +151,14 @@ export function UsersWorkspace({
   );
 
   useEffect(() => {
-    setUsers(initialUsers);
-  }, [initialUsers]);
+    setUsers(filterUsersForOperatorList(initialUsers, listViewer));
+  }, [initialUsers, listViewer]);
 
   useEffect(() => {
     let cancelled = false;
     void listUsers(tenantId, applicationId)
       .then((rows) => {
-        if (!cancelled) setUsers(rows);
+        if (!cancelled) setUsers(filterUsersForOperatorList(rows, listViewer));
       })
       .catch(() => {
         /* keep server-provided list */
@@ -155,7 +166,7 @@ export function UsersWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [tenantId, applicationId]);
+  }, [tenantId, applicationId, listViewer]);
 
   useEffect(() => {
     registerRefreshHandler?.(handleUserCreated);

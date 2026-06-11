@@ -2,6 +2,7 @@ package com.secureone.auth.admin.user;
 
 import com.secureone.auth.admin.AdminAccessService;
 import com.secureone.auth.admin.AdminOperatorService;
+import com.secureone.auth.admin.OperatorListVisibilityService;
 import com.secureone.auth.admin.application.ApplicationUserAdminService;
 import com.secureone.auth.admin.user.UserAdminDtos.UserCreateRequest;
 import com.secureone.auth.admin.user.UserAdminDtos.UserResponse;
@@ -38,16 +39,19 @@ public class UserAdminController {
     private final ApplicationUserAdminService applicationUsers;
     private final AdminAccessService access;
     private final AdminOperatorService operators;
+    private final OperatorListVisibilityService listVisibility;
 
     public UserAdminController(
             UserAdminService service,
             ApplicationUserAdminService applicationUsers,
             AdminAccessService access,
-            AdminOperatorService operators) {
+            AdminOperatorService operators,
+            OperatorListVisibilityService listVisibility) {
         this.service = service;
         this.applicationUsers = applicationUsers;
         this.access = access;
         this.operators = operators;
+        this.listVisibility = listVisibility;
     }
 
     @GetMapping
@@ -60,7 +64,10 @@ public class UserAdminController {
         boolean platform = access.canAccessPlatformSettings(authentication, actAsEmail);
         if (applicationId != null) {
             access.requireApplicationAccess(authentication, actAsEmail, applicationId);
-            return applicationUsers.listUsers(applicationId);
+            return applicationUsers.listUsers(applicationId).stream()
+                    .filter(u -> listVisibility.canViewUserInOperatorList(
+                            authentication, actAsEmail, u.id()))
+                    .toList();
         }
         if (!platform) {
             UUID operatorTenantId = operators.requireOperatorTenant(authentication, actAsEmail).getId();

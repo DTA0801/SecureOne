@@ -19,6 +19,13 @@ import {
   type ConsoleAccessAssignment,
 } from "@/lib/api/admin-console-access";
 import { listUsers } from "@/lib/api/users";
+import { useAdminContext } from "@/components/AdminContextProvider";
+import {
+  canViewUserInOperatorList,
+  filterUsersForOperatorList,
+  operatorListViewerFromContext,
+  userConsoleRoleTypes,
+} from "@/lib/operator-list-visibility";
 import type { Application } from "@/lib/types";
 
 export function AdminConsoleAccessPanel({
@@ -33,6 +40,11 @@ export function AdminConsoleAccessPanel({
   onMutated: () => Promise<void>;
 }) {
   const { toast } = useToast();
+  const adminContext = useAdminContext();
+  const listViewer = useMemo(
+    () => operatorListViewerFromContext(adminContext),
+    [adminContext],
+  );
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [roleType, setRoleType] = useState<AdminConsoleRoleType>("APPLICATION_ADMIN");
@@ -60,7 +72,10 @@ export function AdminConsoleAccessPanel({
             }
           }
         }
-        if (!cancelled) setGrantableUsers([...byId.values()].sort((a, b) => a.label.localeCompare(b.label)));
+        if (!cancelled) {
+          const visible = filterUsersForOperatorList([...byId.values()], listViewer, assignments);
+          setGrantableUsers(visible.sort((a, b) => a.label.localeCompare(b.label)));
+        }
         return;
       }
       if (!applicationId) {
@@ -69,13 +84,14 @@ export function AdminConsoleAccessPanel({
       }
       const rows = await listUsers(tenantId, applicationId);
       if (!cancelled) {
+        const mapped = rows.map((u) => {
+          const name = `${u.firstName} ${u.lastName}`.trim();
+          return { id: u.id, email: u.email, label: name || u.email };
+        });
         setGrantableUsers(
-          rows
-            .map((u) => {
-              const name = `${u.firstName} ${u.lastName}`.trim();
-              return { id: u.id, email: u.email, label: name || u.email };
-            })
-            .sort((a, b) => a.label.localeCompare(b.label)),
+          filterUsersForOperatorList(mapped, listViewer, assignments).sort((a, b) =>
+            a.label.localeCompare(b.label),
+          ),
         );
       }
     }
@@ -85,9 +101,18 @@ export function AdminConsoleAccessPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, roleType, applicationId, tenantId, applications]);
+  }, [open, roleType, applicationId, tenantId, applications, assignments, listViewer]);
 
-  const grouped = useMemo(() => groupConsoleAccessByUser(assignments), [assignments]);
+  const grouped = useMemo(() => {
+    const rows = groupConsoleAccessByUser(assignments);
+    return rows.filter((group) =>
+      canViewUserInOperatorList(
+        listViewer,
+        group.userId,
+        userConsoleRoleTypes(group.userId, assignments),
+      ),
+    );
+  }, [assignments, listViewer]);
 
   function scopeLabel(entries: ConsoleAccessAssignment[]) {
     if (entries.some((e) => e.roleType === "TENANT_SUPER_ADMIN")) {
