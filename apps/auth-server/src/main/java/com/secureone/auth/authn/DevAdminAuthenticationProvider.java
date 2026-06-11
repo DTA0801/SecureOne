@@ -46,7 +46,7 @@ public class DevAdminAuthenticationProvider implements AuthenticationProvider {
         return new UsernamePasswordAuthenticationToken(
                 username,
                 presented,
-                AuthorityUtils.createAuthorityList("ROLE_ADMIN"));
+                AuthenticationAuthorities.withPasswordFactor(AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
     }
 
     @Override

@@ -37,14 +37,21 @@ function New-Pkce {
 }
 
 function Form-Login([Microsoft.PowerShell.Commands.WebRequestSession]$sess, [string]$user, [string]$pass) {
+  $cookie = Join-Path $env:TEMP "secureone-e2e-$([Guid]::NewGuid().ToString('N')).txt"
   try {
-    Invoke-WebRequest -Uri "$Base/login" -Method POST -Body @{ username = $user; password = $pass } `
-      -WebSession $sess -MaximumRedirection 0 -TimeoutSec 15 -ErrorAction Stop | Out-Null
-    return 200
-  } catch {
-    $code = $_.Exception.Response.StatusCode.value__
-    if ($code -eq 302) { return 302 }
-    return $code
+    $code = curl.exe -s -o NUL -w "%{http_code}" -c $cookie -b $cookie -X POST "$Base/login" `
+      -d "username=$([uri]::EscapeDataString($user))&password=$([uri]::EscapeDataString($pass))" --max-time 15
+    if ($code -eq "302") {
+      foreach ($c in Get-Content $cookie -ErrorAction SilentlyContinue) {
+        if ($c -match '^\S+\s+(\S+)\s+(\S+)') {
+          $sess.Cookies.Add((New-Object System.Net.Cookie($Matches[2], "", "/", "localhost")))
+        }
+      }
+      return 302
+    }
+    return [int]$code
+  } finally {
+    Remove-Item $cookie -Force -ErrorAction SilentlyContinue
   }
 }
 

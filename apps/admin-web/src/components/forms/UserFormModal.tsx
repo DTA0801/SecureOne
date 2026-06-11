@@ -1,11 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { FieldRow, Input, Select } from "@/components/ui/Field";
 import { FormSection, FormFieldGrid } from "@/components/forms/FormSection";
 import { userCreateAction, userUpdateAction, type FormState } from "@/lib/actions";
-import { CheckboxGroup, FormActions, FormError, useCloseOnSuccess } from "./form-utils";
+import { BooleanCheckbox, CheckboxGroup, FormActions, FormError, useCloseOnSuccess } from "./form-utils";
 import type { Role, Tenant, User } from "@/lib/types";
 
 const initial: FormState = { ok: false };
@@ -17,7 +17,9 @@ export function UserFormModal({
   tenantId,
   applicationId,
   lockToApp = false,
+  defaultStatus = "invited",
   onCreated,
+  onUserUpdated,
   triggerLabel,
   triggerVariant = "primary",
   triggerSize = "md",
@@ -28,7 +30,9 @@ export function UserFormModal({
   tenantId?: string;
   applicationId?: string;
   lockToApp?: boolean;
+  defaultStatus?: "invited" | "active" | "suspended" | "disabled";
   onCreated?: (userId: string) => void;
+  onUserUpdated?: () => void | Promise<void>;
   triggerLabel: React.ReactNode;
   triggerVariant?: "primary" | "secondary" | "ghost" | "danger";
   triggerSize?: "sm" | "md";
@@ -58,6 +62,7 @@ export function UserFormModal({
           applicationId={applicationId}
           lockToApp={lockToApp}
           onCreated={onCreated}
+          onUserUpdated={onUserUpdated}
           close={close}
         />
       )}
@@ -72,7 +77,9 @@ function UserForm({
   tenantId,
   applicationId,
   lockToApp,
+  defaultStatus,
   onCreated,
+  onUserUpdated,
   close,
 }: {
   user?: User;
@@ -81,14 +88,21 @@ function UserForm({
   tenantId?: string;
   applicationId?: string;
   lockToApp: boolean;
+  defaultStatus: "invited" | "active" | "suspended" | "disabled";
   onCreated?: (userId: string) => void;
+  onUserUpdated?: () => void | Promise<void>;
   close: () => void;
 }) {
   const action = user ? userUpdateAction : userCreateAction;
   const [state, formAction, pending] = useActionState(action, initial);
+  const [emailVerified, setEmailVerified] = useState(user?.emailVerified ?? false);
   const effectiveTenantId = lockToApp && tenantId ? tenantId : user?.tenantId ?? tenantId ?? "";
 
-  useCloseOnSuccess(state, close, (s) => {
+  useEffect(() => {
+    if (user) setEmailVerified(user.emailVerified);
+  }, [user?.id, user?.emailVerified]);
+
+  useCloseOnSuccess(state, close, async (s) => {
     if (s.createdUserId) {
       onCreated?.(s.createdUserId);
       try {
@@ -96,6 +110,8 @@ function UserForm({
       } catch {
         /* ignore */
       }
+    } else if (user) {
+      await onUserUpdated?.();
     }
   });
 
@@ -131,7 +147,7 @@ function UserForm({
             name="email"
             type="email"
             defaultValue={user?.email}
-            placeholder="sarah.chen@acme.com"
+            placeholder="you@company.com"
             required
             disabled={pending}
           />
@@ -165,18 +181,32 @@ function UserForm({
 
       <FormSection title="Account status">
         <FieldRow label="Status">
-          <Select name="status" defaultValue={user?.status ?? "invited"} disabled={pending}>
+          <Select name="status" defaultValue={user?.status ?? defaultStatus} disabled={pending}>
             <option value="invited">Invited (pending password)</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
             <option value="disabled">Disabled</option>
           </Select>
         </FieldRow>
+        {user && (
+          <>
+            <input type="hidden" name="emailVerified" value={emailVerified ? "true" : "false"} />
+            <BooleanCheckbox
+              label="Email verified"
+              hint="Marks the address verified immediately. Users can also verify via the link sent from Security → Resend verification email; uncheck to require that flow again."
+              checked={emailVerified}
+              onCheckedChange={setEmailVerified}
+              disabled={pending}
+            />
+          </>
+        )}
       </FormSection>
 
-      <FormSection title="Roles" description="RBAC roles for this tenant/application.">
-        <CheckboxGroup name="roleIds" options={roleOptions} selected={user?.roleIds ?? []} />
-      </FormSection>
+      {applicationId && (
+        <FormSection title="Roles" description="RBAC roles for this tenant/application.">
+          <CheckboxGroup name="roleIds" options={roleOptions} selected={user?.roleIds ?? []} />
+        </FormSection>
+      )}
 
       <FormActions
         pending={pending}

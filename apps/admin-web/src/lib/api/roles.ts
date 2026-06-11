@@ -1,4 +1,5 @@
-import { apiFetch, appScopeHeaders } from "./client";
+import { appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { Permission, Role, RoleAssignedUser, RoleDetail, RoleLabel } from "@/lib/types";
 
 type RoleSummaryDto = {

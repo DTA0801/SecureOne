@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { Tenant } from "@/lib/types";
 
 type TenantDto = {

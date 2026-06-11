@@ -7,6 +7,8 @@ import com.secureone.auth.admin.user.UserImportExportService;
 import com.secureone.auth.application.ApplicationPublicManifestService;
 import com.secureone.auth.application.ApplicationSettingsService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -111,6 +114,50 @@ public class ApplicationScopedAdminController {
         userAdmin.adminSetPassword(userId, request.password(), applicationId);
     }
 
+    @PostMapping("/users/{userId}/password/remove")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void adminRemovePassword(@PathVariable UUID applicationId, @PathVariable UUID userId) {
+        userAdmin.adminRemovePassword(userId, applicationId);
+    }
+
+    @PostMapping("/users/{userId}/password/set-password-email")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> sendSetPasswordInviteEmail(
+            @PathVariable UUID applicationId, @PathVariable UUID userId) {
+        userAdmin.sendSetPasswordInviteEmail(userId, applicationId);
+        return Map.of("status", "sent", "message", "Set-password email sent to the user.");
+    }
+
+    @PostMapping("/users/{userId}/password/reset-email")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> sendPasswordResetEmail(
+            @PathVariable UUID applicationId, @PathVariable UUID userId) {
+        userAdmin.sendPasswordResetEmail(userId, applicationId);
+        return Map.of("status", "sent", "message", "Password reset email sent to the user.");
+    }
+
+    @PostMapping("/users/{userId}/email/resend-verification")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> resendVerification(
+            @PathVariable UUID applicationId, @PathVariable UUID userId) {
+        userAdmin.resendVerificationEmail(userId, applicationId);
+        return Map.of("status", "sent", "message", "Verification email sent to the user.");
+    }
+
+    @PostMapping("/users/{userId}/email/verify")
+    public UserResponse markEmailVerified(@PathVariable UUID applicationId, @PathVariable UUID userId) {
+        return userAdmin.markEmailVerified(userId, applicationId);
+    }
+
+    @PatchMapping("/users/{userId}/email-verification")
+    public UserResponse updateEmailVerification(
+            @PathVariable UUID applicationId,
+            @PathVariable UUID userId,
+            @RequestBody Map<String, Boolean> body) {
+        boolean verified = body != null && Boolean.TRUE.equals(body.get("verified"));
+        return userAdmin.setEmailVerified(userId, verified, applicationId);
+    }
+
     @GetMapping(value = "/users/export", produces = "text/csv")
     public ResponseEntity<byte[]> exportUsers(
             @PathVariable UUID applicationId, @RequestParam(defaultValue = "csv") String format) {
@@ -203,6 +250,59 @@ public class ApplicationScopedAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetEmail(@PathVariable UUID applicationId) {
         settings.clearOverride(applicationId, "email");
+    }
+
+    @GetMapping("/settings/smtp")
+    public Map<String, Object> getSmtp(@PathVariable UUID applicationId) {
+        return settings.getSmtp(applicationId);
+    }
+
+    @PutMapping("/settings/smtp")
+    public Map<String, Object> updateSmtp(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Object> body) {
+        return settings.saveSmtp(applicationId, body);
+    }
+
+    @GetMapping("/settings/email-templates")
+    public Map<String, Object> getEmailTemplates(@PathVariable UUID applicationId) {
+        return settings.getEmailTemplates(applicationId);
+    }
+
+    @PutMapping("/settings/email-templates")
+    public Map<String, Object> updateEmailTemplates(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Object> body) {
+        return settings.saveEmailTemplates(applicationId, body);
+    }
+
+    @GetMapping("/settings/email-templates/defaults")
+    public Map<String, Object> getEmailTemplateDefaults(@PathVariable UUID applicationId) {
+        return settings.getEmailTemplateDefaults();
+    }
+
+    @DeleteMapping("/settings/email-templates/{templateKey}")
+    public Map<String, Object> resetEmailTemplate(
+            @PathVariable UUID applicationId, @PathVariable String templateKey) {
+        return settings.resetEmailTemplate(applicationId, templateKey);
+    }
+
+    public record TestEmailRequest(
+            @NotBlank @Email String to,
+            List<String> cc,
+            List<String> bcc,
+            String templateKey,
+            Map<String, String> customData) {}
+
+    @PostMapping("/settings/email/test")
+    public Map<String, String> sendTestEmail(
+            @PathVariable UUID applicationId, @RequestBody TestEmailRequest request) {
+        settings.sendTestEmail(
+                applicationId,
+                request.to(),
+                request.cc(),
+                request.bcc(),
+                request.templateKey(),
+                request.customData());
+        return Map.of("status", "sent", "to", request.to());
     }
 
     @GetMapping("/settings/auth-methods")
@@ -346,5 +446,16 @@ public class ApplicationScopedAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetTokenPolicy(@PathVariable UUID applicationId) {
         settings.clearOverride(applicationId, "token_policy");
+    }
+
+    @GetMapping("/settings/client-integration")
+    public Map<String, Object> getClientIntegration(@PathVariable UUID applicationId) {
+        return settings.getClientIntegration(applicationId);
+    }
+
+    @PutMapping("/settings/client-integration")
+    public Map<String, Object> updateClientIntegration(
+            @PathVariable UUID applicationId, @RequestBody Map<String, Object> body) {
+        return settings.saveClientIntegration(applicationId, body);
     }
 }

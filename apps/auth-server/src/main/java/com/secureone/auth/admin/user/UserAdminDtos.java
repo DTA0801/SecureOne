@@ -1,5 +1,6 @@
 package com.secureone.auth.admin.user;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -36,7 +37,7 @@ public final class UserAdminDtos {
     public record UserAuthMethodsUpdateRequest(Map<String, Boolean> methods) {}
 
     public record UserCreateRequest(
-            @NotNull UUID tenantId,
+            UUID tenantId,
             @NotBlank @Email String email,
             @Size(max = 150) String username,
             @Size(max = 150) String firstName,
@@ -53,5 +54,6 @@ public final class UserAdminDtos {
             @Size(max = 150) String firstName,
             @Size(max = 150) String lastName,
             @Size(max = 32) String status,
+            @JsonProperty("emailVerified") Boolean emailVerified,
             List<UUID> roleIds) {}
 }

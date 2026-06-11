@@ -37,7 +37,8 @@ public class SessionAdminController {
             String location,
             String device,
             String method,
-            String result) {}
+            String result,
+            String sessionId) {}
 
     @GetMapping
     public List<LoginEventResponse> list(
@@ -76,6 +77,7 @@ public class SessionAdminController {
                 JsonMaps.stringVal(geo, "location", "Unknown"),
                 row.getDevice() != null ? row.getDevice() : "—",
                 JsonMaps.stringVal(geo, "method", "password"),
-                result);
+                result,
+                row.getSessionId());
     }
 }

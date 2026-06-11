@@ -6,7 +6,7 @@ import {
   saveAppExposure,
   type AppSettingsExposure,
 } from "@/lib/api/app-exposure";
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/http";
 import {
   coerceAppSettingsExposure,
   DEFAULT_APP_SETTINGS_EXPOSURE,

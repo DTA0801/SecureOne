@@ -8,9 +8,12 @@ public final class AccountDtos {
 
     private AccountDtos() {}
 
-    public record TenantEmailRequest(
-            @NotBlank String tenantSlug, @NotBlank @Email String email) {}
+    /** @deprecated Prefer application-scoped {@code POST /api/v1/applications/{applicationId}/account/...}. */
+    @Deprecated
+    public record TenantEmailRequest(String tenantSlug, java.util.UUID applicationId, @NotBlank @Email String email) {}
 
     public record ResetPasswordRequest(
-            @NotBlank String token, @NotBlank @Size(min = 8, max = 128) String password) {}
+            @NotBlank String token,
+            @NotBlank @Size(min = 8, max = 128) String password,
+            java.util.UUID applicationId) {}
 }

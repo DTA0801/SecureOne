@@ -22,18 +22,21 @@ public class ApplicationPublicManifestService {
     private final ApplicationSettingsService settings;
     private final com.secureone.auth.platform.PlatformSettingsService platformSettings;
     private final SettingsExposureService exposure;
+    private final ApplicationTenantResolver tenantResolver;
 
     public ApplicationPublicManifestService(
             ApplicationRepository applications,
             ApplicationSettingRepository appSettings,
             ApplicationSettingsService settings,
             com.secureone.auth.platform.PlatformSettingsService platformSettings,
-            SettingsExposureService exposure) {
+            SettingsExposureService exposure,
+            ApplicationTenantResolver tenantResolver) {
         this.applications = applications;
         this.appSettings = appSettings;
         this.settings = settings;
         this.platformSettings = platformSettings;
         this.exposure = exposure;
+        this.tenantResolver = tenantResolver;
     }
 
     @Transactional(readOnly = true)
@@ -117,12 +120,18 @@ public class ApplicationPublicManifestService {
             response.put("featureFlags", sanitizeFeatureFlags(settings.resolveFeatureFlags(applicationId)));
         }
         if (Boolean.TRUE.equals(sections.get("passwordPolicy"))) {
-            response.put("passwordPolicy", sanitizePasswordPolicy(settings.resolvePasswordPolicy(applicationId)));
+            response.put(
+                    "passwordPolicy",
+                    com.secureone.auth.account.PasswordPolicyRules.publicPolicy(
+                            settings.resolvePasswordPolicy(applicationId)));
         }
         if (Boolean.TRUE.equals(sections.get("appearance"))) {
             response.put("appearance", sanitizeAppearance(settings.resolveAppearance(applicationId)));
         }
         response.put("signup", buildSignupBlock(applicationId, app));
+        response.put(
+                "account",
+                ApplicationAccountEndpoints.manifestBlock(applicationId, tenantResolver.requireTenantSlug(applicationId)));
         return response;
     }
 
@@ -215,17 +224,6 @@ public class ApplicationPublicManifestService {
             }
             out.add(row);
         }
-        return out;
-    }
-
-    private static Map<String, Object> sanitizePasswordPolicy(Map<String, Object> policy) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("minLength", policy.getOrDefault("minLength", 12));
-        out.put("requireUppercase", policy.getOrDefault("requireUppercase", true));
-        out.put("requireNumber", policy.getOrDefault("requireNumber", true));
-        out.put("requireSymbol", policy.getOrDefault("requireSymbol", true));
-        out.put("expiryDays", policy.getOrDefault("expiryDays", 0));
-        out.put("historyCount", policy.getOrDefault("historyCount", 0));
         return out;
     }
 

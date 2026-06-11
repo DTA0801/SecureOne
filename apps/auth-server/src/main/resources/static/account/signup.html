@@ -58,6 +58,7 @@
         color: #4f46e5;
       }
     </style>
+    <script src="/account/password-policy-ui.js"></script>
   </head>
   <body>
     <h1>Create account</h1>
@@ -71,6 +72,7 @@
       <input id="last" autocomplete="family-name" />
       <label for="password">Password</label>
       <input id="password" type="password" required autocomplete="new-password" />
+      <div id="checklist"></div>
       <p id="policy" class="hint"></p>
       <button type="submit">Create account</button>
     </form>
@@ -82,7 +84,10 @@
       const intro = document.getElementById("intro");
       const form = document.getElementById("form");
       const status = document.getElementById("status");
-      const policy = document.getElementById("policy");
+      const policyHint = document.getElementById("policy");
+      const checklist = document.getElementById("checklist");
+      const passwordInput = document.getElementById("password");
+      let passwordPolicy = null;
 
       if (!applicationId) {
         intro.textContent = "Missing applicationId in the URL.";
@@ -97,18 +102,11 @@
             }
             intro.textContent = "Register for " + (opts.applicationName || "this application");
             if (opts.passwordPolicy) {
-              const p = opts.passwordPolicy;
-              policy.textContent =
-                "Password: min " +
-                p.minLength +
-                " chars" +
-                (p.requireUppercase ? ", uppercase" : "") +
-                (p.requireNumber ? ", number" : "") +
-                (p.requireSymbol ? ", symbol" : "");
+              passwordPolicy = opts.passwordPolicy;
+              SecureOnePasswordPolicy.bindPasswordField(passwordInput, checklist, passwordPolicy);
             }
             if (opts.loginUsernameHint) {
-              policy.textContent +=
-                (policy.textContent ? " · " : "") + "Sign in as: " + opts.loginUsernameHint;
+              policyHint.textContent = "Sign in as: " + opts.loginUsernameHint;
             }
             form.hidden = false;
           })
@@ -119,6 +117,12 @@
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        const pwd = passwordInput.value;
+        if (passwordPolicy && !SecureOnePasswordPolicy.meetsPolicy(pwd, passwordPolicy)) {
+          status.className = "msg err";
+          status.textContent = "Password does not meet all requirements.";
+          return;
+        }
         status.className = "msg";
         status.textContent = "Creating account…";
         const res = await fetch(

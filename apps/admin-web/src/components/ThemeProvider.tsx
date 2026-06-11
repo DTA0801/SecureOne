@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { loadAppearanceAction, saveAppearanceAction } from "@/lib/actions/settings";
 import {
@@ -36,6 +36,8 @@ export function ThemeProvider({
   platformSettingsAccess?: boolean;
 }) {
   const { toast } = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [prefs, setPrefsState] = useState<UiPreferences>(DEFAULT_UI_PREFERENCES);
   const prevPrefs = useRef<UiPreferences | null>(null);
   const [ready, setReady] = useState(false);
@@ -64,7 +66,7 @@ export function ThemeProvider({
         if (error) {
           setSaveStatus("error");
           setSaveError(`${error} Using this browser only until the server is available.`);
-          toast("Could not load theme from server", "error");
+          toastRef.current("Could not load theme from server", "error");
         } else {
           setSaveStatus("saved");
           setSaveError(null);
@@ -76,7 +78,7 @@ export function ThemeProvider({
     return () => {
       cancelled = true;
     };
-  }, [toast, platformSettingsAccess]);
+  }, [platformSettingsAccess]);
 
   const setPrefs = useCallback(
     (next: UiPreferences | ((prev: UiPreferences) => UiPreferences)) => {
@@ -89,7 +91,7 @@ export function ThemeProvider({
         return resolved;
       });
     },
-    [ready, toast],
+    [ready],
   );
 
   const persistPrefs = useCallback(
@@ -107,17 +109,17 @@ export function ThemeProvider({
       if (result.ok) {
         setSaveStatus("saved");
         setSaveError(null);
-        toast("Settings saved", "success");
+        toastRef.current("Settings saved", "success");
       } else {
         setSaveStatus("error");
         const msg = result.error
           ? `${result.error} Changes kept in this browser only.`
           : "Failed to save appearance to database.";
         setSaveError(msg);
-        toast("Save failed — using browser storage", "error");
+        toastRef.current("Save failed — using browser storage", "error");
       }
     },
-    [toast, platformSettingsAccess],
+    [platformSettingsAccess],
   );
 
   useEffect(() => {
@@ -138,20 +140,28 @@ export function ThemeProvider({
   useEffect(() => {
     if (prefs.mode !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => applyUiPreferences(prefs);
+    const handler = () => {
+      applyUiPreferences(prefs);
+      saveUiPreferences(prefs);
+    };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [prefs, toast]);
+  }, [prefs]);
 
-  const value: ThemeContextValue = {
-    prefs,
-    setPrefs,
-    resetPrefs: () => setPrefs(DEFAULT_UI_PREFERENCES),
-    ready,
-    saveStatus,
-    saveError,
-    activeMode: resolveThemeMode(prefs),
-  };
+  const resetPrefs = useCallback(() => setPrefs(DEFAULT_UI_PREFERENCES), [setPrefs]);
+  const activeMode = resolveThemeMode(prefs);
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      prefs,
+      setPrefs,
+      resetPrefs,
+      ready,
+      saveStatus,
+      saveError,
+      activeMode,
+    }),
+    [prefs, setPrefs, resetPrefs, ready, saveStatus, saveError, activeMode],
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

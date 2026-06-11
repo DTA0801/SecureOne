@@ -38,6 +38,7 @@ export default async function AppSessionsPage({
             <TH>User</TH>
             <TH>Method</TH>
             <TH>Result</TH>
+            <TH>Session</TH>
             <TH>When</TH>
           </TR>
         </THead>
@@ -48,6 +49,19 @@ export default async function AppSessionsPage({
               <TD>{s.method}</TD>
               <TD>
                 <Badge tone={s.result === "success" ? "success" : "danger"}>{s.result}</Badge>
+              </TD>
+              <TD className="font-mono text-xs">
+                {s.sessionId ? (
+                  <Link
+                    href={`/app/${applicationId}/logs?sessionId=${encodeURIComponent(s.sessionId)}`}
+                    className="text-brand hover:underline"
+                    title={s.sessionId}
+                  >
+                    {s.sessionId.slice(0, 12)}…
+                  </Link>
+                ) : (
+                  "—"
+                )}
               </TD>
               <TD className="text-sm text-muted">{formatDateTime(s.timestamp)}</TD>
             </TR>

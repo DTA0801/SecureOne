@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %clr(%-5level){faint} %clr([req:%X{requestId:-—} sess:%X{sessionId:-—} user:%X{principal:-—}]){cyan} %clr(%logger{40}){faint} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="DATABASE" class="com.secureone.auth.logging.DatabaseLogAppender"/>
+
+    <appender name="ASYNC_DATABASE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="DATABASE"/>
+    </appender>
+
+    <logger name="com.secureone" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_DATABASE"/>
+    </logger>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_DATABASE"/>
+    </root>
+</configuration>

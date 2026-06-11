@@ -18,6 +18,9 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 
+# ---- Local dev runtime (start-all.ps1) ----
+.local/
+
 # ---- Environment & secrets (NEVER commit) ----
 .env
 .env.*

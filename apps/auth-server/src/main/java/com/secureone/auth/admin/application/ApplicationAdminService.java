@@ -105,10 +105,10 @@ public class ApplicationAdminService {
         }
         app.setConfig(config);
         applicationRepository.save(app);
-        rbacBootstrap.seedDefaultPermissions(app.getId());
+        rbacBootstrap.seedDefaultRoles(request.tenantId(), app.getId());
         auditService.record(
                 request.tenantId(), "admin", "application.created", "application", app.getId(), app.getName(), true);
-        emailService.sendAdminNotification("Application registered", "New OAuth client: " + app.getName());
+        emailService.sendAdminNotification(app.getId(), "Application registered", "New OAuth client: " + app.getName());
         return new ApplicationCreateResult(toResponse(app), plainSecret);
     }
 
@@ -154,7 +154,7 @@ public class ApplicationAdminService {
                 app.getId(),
                 app.getName(),
                 true);
-        emailService.sendAdminNotification("Client secret rotated", "OAuth client: " + app.getName());
+        emailService.sendAdminNotification(id, "Client secret rotated", "OAuth client: " + app.getName());
         return new ApplicationSecretResponse(plainSecret);
     }
 
@@ -163,7 +163,7 @@ public class ApplicationAdminService {
         applicationRepository.delete(app);
         auditService.record(
                 app.getTenantId(), "admin", "application.deleted", "application", id, app.getName(), true);
-        emailService.sendAdminNotification("Application deleted", "Removed application: " + app.getName());
+        emailService.sendAdminNotification(id, "Application deleted", "Removed application: " + app.getName());
     }
 
     private Application require(UUID id) {

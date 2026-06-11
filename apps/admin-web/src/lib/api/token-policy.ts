@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { browserApiFetch as apiFetch } from "./browser-client";
 
 export type TokenPolicy = {
   tabEnabled?: boolean;

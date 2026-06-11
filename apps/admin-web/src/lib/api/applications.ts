@@ -1,4 +1,5 @@
-import { apiFetch } from "./client";
+import { ApiError } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import { AUTH_SERVER_URL } from "@/lib/config";
 import type { Application, AppType, OAuthEndpoints, Status } from "@/lib/types";
 
@@ -66,7 +67,7 @@ export async function getApplication(id: string): Promise<Application | null> {
   try {
     return mapApp(await apiFetch<AppDto>(`/api/admin/v1/applications/${id}`));
   } catch (e) {
-    if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) return null;
+    if (e instanceof ApiError && e.status === 404) return null;
     throw e;
   }
 }

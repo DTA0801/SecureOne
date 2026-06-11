@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { UiPreferences } from "@/lib/theme/types";
 
 export async function fetchAppearancePrefs(): Promise<Partial<UiPreferences>> {
@@ -13,6 +13,8 @@ export async function saveAppearancePrefs(prefs: UiPreferences): Promise<void> {
   });
 }
 
+export type RecipientGroups = Record<string, string[]>;
+
 export type NotificationSettings = {
   emailEnabled?: boolean;
   /** End-user mail: verify email, password reset, password changed */
@@ -21,6 +23,7 @@ export type NotificationSettings = {
   auditAlertsEnabled?: boolean;
   securityAlertsEnabled?: boolean;
   adminRecipients?: string[];
+  recipientGroups?: RecipientGroups;
   smtpConfigured?: boolean;
 };
 
@@ -29,6 +32,41 @@ export type EmailSettings = {
   fromAddress?: string;
   replyTo?: string;
   smtpConfigured?: boolean;
+};
+
+export type SmtpSecurity = "ssl" | "starttls" | "none";
+
+export type SmtpSettings = {
+  host?: string;
+  port?: number;
+  security?: SmtpSecurity;
+  username?: string;
+  password?: string;
+  authEnabled?: boolean;
+  passwordConfigured?: boolean;
+  smtpConfigured?: boolean;
+};
+
+export type EmailTemplate = {
+  name?: string;
+  description?: string;
+  subject?: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  cc?: string[];
+  bcc?: string[];
+  enabled?: boolean;
+  variables?: string[];
+};
+
+export type EmailTemplatesMap = Record<string, EmailTemplate>;
+
+export type TestEmailRequest = {
+  to: string;
+  cc?: string[];
+  bcc?: string[];
+  templateKey?: string;
+  customData?: Record<string, string>;
 };
 
 export async function fetchNotificationSettings(): Promise<NotificationSettings> {
@@ -54,3 +92,4 @@ export async function saveEmailSettings(body: EmailSettings): Promise<void> {
     body: JSON.stringify(body),
   });
 }
+

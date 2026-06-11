@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UserDetailPanel } from "@/components/users/UserDetailPanel";
 import { UserImportExportMenu } from "@/components/users/UserImportExportMenu";
 import { UserFormModal } from "@/components/forms/UserFormModal";
 import Link from "next/link";
 import { fetchUserDirectorySettings, type UserDirectorySettings } from "@/lib/api/user-directory";
+import { listUsers } from "@/lib/api/users";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -14,6 +24,31 @@ import { Input } from "@/components/ui/Field";
 import { initials, timeAgo } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 import type { Role, Tenant, User } from "@/lib/types";
+
+type UsersRefreshHandler = (userId?: string) => void;
+
+const UsersWorkspaceRefreshContext = createContext<UsersRefreshHandler | null>(null);
+const UsersWorkspaceRegisterContext = createContext<((fn: UsersRefreshHandler) => void) | null>(
+  null,
+);
+
+export function UsersWorkspaceProvider({ children }: { children: ReactNode }) {
+  const handlerRef = useRef<UsersRefreshHandler>(() => {});
+  const refreshUsers = useCallback((userId?: string) => {
+    handlerRef.current(userId);
+  }, []);
+  const registerRefreshHandler = useCallback((fn: UsersRefreshHandler) => {
+    handlerRef.current = fn;
+  }, []);
+
+  return (
+    <UsersWorkspaceRegisterContext.Provider value={registerRefreshHandler}>
+      <UsersWorkspaceRefreshContext.Provider value={refreshUsers}>
+        {children}
+      </UsersWorkspaceRefreshContext.Provider>
+    </UsersWorkspaceRegisterContext.Provider>
+  );
+}
 
 export function UsersWorkspaceHeaderActions({
   tenants,
@@ -28,6 +63,12 @@ export function UsersWorkspaceHeaderActions({
   applicationId: string;
   directory?: UserDirectorySettings | null;
 }) {
+  const refreshUsers = useContext(UsersWorkspaceRefreshContext);
+
+  function onUserCreated(userId: string) {
+    refreshUsers?.(userId);
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <UserImportExportMenu applicationId={applicationId} directory={directory ?? null} />
@@ -38,13 +79,14 @@ export function UsersWorkspaceHeaderActions({
         applicationId={applicationId}
         lockToApp
         triggerLabel="+ Invite user"
+        onCreated={onUserCreated}
       />
     </div>
   );
 }
 
 export function UsersWorkspace({
-  users,
+  users: initialUsers,
   roles,
   tenants,
   tenantId,
@@ -61,10 +103,64 @@ export function UsersWorkspace({
   tenantName: string;
 }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const registerRefreshHandler = useContext(UsersWorkspaceRegisterContext);
+  const selectedId = searchParams.get("user");
+  const [users, setUsers] = useState(initialUsers);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [directory, setDirectory] = useState<UserDirectorySettings | null>(null);
+
+  const reloadUsers = useCallback(async () => {
+    const rows = await listUsers(tenantId, applicationId);
+    setUsers(rows);
+    return rows;
+  }, [tenantId, applicationId]);
+
+  const openUser = useCallback(
+    (id: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("user", id);
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const handleUserCreated = useCallback(
+    (userId?: string) => {
+      void reloadUsers().then((rows) => {
+        if (userId && rows.some((u) => u.id === userId)) {
+          openUser(userId);
+        }
+      });
+      router.refresh();
+    },
+    [reloadUsers, openUser, router],
+  );
+
+  useEffect(() => {
+    setUsers(initialUsers);
+  }, [initialUsers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listUsers(tenantId, applicationId)
+      .then((rows) => {
+        if (!cancelled) setUsers(rows);
+      })
+      .catch(() => {
+        /* keep server-provided list */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, applicationId]);
+
+  useEffect(() => {
+    registerRefreshHandler?.(handleUserCreated);
+    return () => registerRefreshHandler?.(() => {});
+  }, [registerRefreshHandler, handleUserCreated]);
 
   useEffect(() => {
     fetchUserDirectorySettings(applicationId)
@@ -75,14 +171,32 @@ export function UsersWorkspace({
   useEffect(() => {
     try {
       const created = sessionStorage.getItem("users:lastCreated");
-      if (created && users.some((u) => u.id === created)) {
-        setSelectedId(created);
+      if (created && users.some((u) => u.id === created) && selectedId !== created) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("user", created);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         sessionStorage.removeItem("users:lastCreated");
       }
     } catch {
       /* ignore */
     }
-  }, [users]);
+  }, [users, selectedId, searchParams, pathname, router]);
+
+  useEffect(() => {
+    if (selectedId && !users.some((u) => u.id === selectedId)) {
+      let pendingCreated: string | null = null;
+      try {
+        pendingCreated = sessionStorage.getItem("users:lastCreated");
+      } catch {
+        /* ignore */
+      }
+      if (pendingCreated === selectedId) return;
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("user");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [selectedId, users, searchParams, pathname, router]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,25 +213,25 @@ export function UsersWorkspace({
   }, [users, query, statusFilter]);
 
   const selected = users.find((u) => u.id === selectedId);
+
+  function closeUser() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("user");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
   const formProps = {
     tenants,
     roles,
     tenantId,
     applicationId,
     lockToApp: true as const,
-    onCreated: (id: string) => setSelectedId(id),
+    onCreated: handleUserCreated,
   };
 
   const activeCount = users.filter((u) => u.status === "active").length;
   const mfaCount = users.filter((u) => u.mfaFactors.length > 0).length;
-
-  function openUser(id: string) {
-    setSelectedId(id);
-  }
-
-  function closeUser() {
-    setSelectedId(null);
-  }
 
   if (selected) {
     return (
@@ -131,9 +245,10 @@ export function UsersWorkspace({
           roles={roles}
           tenants={tenants}
           onBack={closeUser}
+          onUserChanged={() => handleUserCreated()}
           onDeleted={() => {
             closeUser();
-            router.refresh();
+            handleUserCreated();
           }}
         />
       </div>
@@ -239,6 +354,11 @@ export function UsersWorkspace({
                           <Badge tone={statusTone(u.status)} className="capitalize text-[10px]">
                             {u.status}
                           </Badge>
+                          {!u.emailVerified && (
+                            <Badge tone="warning" className="text-[10px]">
+                              unverified
+                            </Badge>
+                          )}
                           {u.locked && (
                             <Badge tone="danger" className="text-[10px]">
                               locked

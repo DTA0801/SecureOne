@@ -77,10 +77,13 @@ public class ApplicationSignupService {
         out.put("signupEndpoint", "/api/v1/applications/" + applicationId + "/signup");
         out.put("hostedSignupPage", publicBaseUrl + "/account/signup.html?applicationId=" + applicationId);
         out.put("loginPage", publicBaseUrl + "/login.html");
-        if (enabled) {
-            out.put("passwordPolicy", sanitizePasswordPolicy(effectiveSettings.passwordPolicy(applicationId)));
-            out.put("loginUsernameHint", loginUsernameHint(app));
-        }
+        out.put(
+                "passwordPolicy",
+                com.secureone.auth.account.PasswordPolicyRules.signupPolicy(
+                        effectiveSettings.passwordPolicy(applicationId)));
+        String tenantSlug = tenants.findById(app.getTenantId()).map(t -> t.getSlug()).orElse("tenant");
+        out.put("loginUsernameHint", tenantSlug + ":user@example.com");
+        out.put("account", ApplicationAccountEndpoints.manifestBlock(applicationId, tenantSlug));
         return out;
     }
 
@@ -109,7 +112,7 @@ public class ApplicationSignupService {
 
         assignDefaultRole(applicationId, user.getId());
 
-        accountNotifications.sendVerificationEmail(user, "signup");
+        accountNotifications.sendVerificationEmail(applicationId, user, "signup");
         auditService.record(
                 app.getTenantId(),
                 applicationId,
@@ -219,12 +222,4 @@ public class ApplicationSignupService {
         return slug + ":your@email.com";
     }
 
-    private static Map<String, Object> sanitizePasswordPolicy(Map<String, Object> policy) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("minLength", policy.getOrDefault("minLength", 12));
-        out.put("requireUppercase", policy.getOrDefault("requireUppercase", true));
-        out.put("requireNumber", policy.getOrDefault("requireNumber", true));
-        out.put("requireSymbol", policy.getOrDefault("requireSymbol", true));
-        return out;
-    }
 }

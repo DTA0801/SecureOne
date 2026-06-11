@@ -1,20 +1,32 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+import { AdminContextProvider } from "./AdminContextProvider";
 import { ConsoleShell } from "./ConsoleShell";
-import type { ApplicationContextItem } from "@/lib/api/context";
+import type { AdminContext } from "@/lib/api/context";
 
 export function ConsoleProviders({
   children,
-  superAdmin,
-  applications,
+  adminContext,
 }: {
   children: React.ReactNode;
-  superAdmin: boolean;
-  applications: ApplicationContextItem[];
+  adminContext: AdminContext;
 }) {
+  const pathname = usePathname();
+  const isLogin = pathname === "/login";
+
+  if (isLogin) {
+    return <>{children}</>;
+  }
+
   return (
-    <ConsoleShell superAdmin={superAdmin} applications={applications}>
-      {children}
-    </ConsoleShell>
+    <AdminContextProvider value={adminContext}>
+      <ConsoleShell
+        superAdmin={adminContext.platformSuperAdmin}
+        applications={adminContext.applications}
+      >
+        {children}
+      </ConsoleShell>
+    </AdminContextProvider>
   );
 }

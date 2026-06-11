@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { UserFormModal } from "@/components/forms/UserFormModal";
-import { UserSetPasswordModal } from "@/components/users/UserSetPasswordModal";
+import { UserSecurityTab } from "@/components/users/UserSecurityTab";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -11,17 +11,14 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   userDeleteAction,
   userDeleteMfaFactorAction,
-  userMarkEmailVerifiedAction,
-  userResendVerificationEmailAction,
   userResetMfaAction,
   userResetMfaMethodAction,
-  userSendPasswordResetEmailAction,
-  userSetStatusAction,
-  userUnlockAction,
 } from "@/lib/actions";
 import { fetchApplicationAuthMethods } from "@/lib/api/application-settings";
 import {
   getApplicationUser,
+  setUserStatusApi,
+  unlockUserApi,
   updateUserAuthMethodsApi,
 } from "@/lib/api/users";
 import { listLoginEvents } from "@/lib/api/sessions";
@@ -60,6 +57,7 @@ export function UserDetailPanel({
   roles,
   tenants,
   onBack,
+  onUserChanged,
   onDeleted,
 }: {
   userSummary: User;
@@ -70,9 +68,11 @@ export function UserDetailPanel({
   roles: Role[];
   tenants: Tenant[];
   onBack: () => void;
+  onUserChanged?: () => void;
   onDeleted: () => void;
 }) {
   const [user, setUser] = useState<User>(userSummary);
+  const [actionBusy, setActionBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [logins, setLogins] = useState<LoginEvent[]>([]);
   const [authMethods, setAuthMethods] = useState<AuthMethod[]>([]);
@@ -98,6 +98,23 @@ export function UserDetailPanel({
   const allowedAuth = user.allowedAuthMethods ?? {};
 
   useEffect(() => {
+    setUser((prev) => {
+      if (prev.id !== userSummary.id) return userSummary;
+      return {
+        ...prev,
+        firstName: userSummary.firstName,
+        lastName: userSummary.lastName,
+        email: userSummary.email,
+        username: userSummary.username,
+        status: userSummary.status,
+        emailVerified: userSummary.emailVerified,
+        hasPassword: userSummary.hasPassword,
+        roleIds: userSummary.roleIds,
+      };
+    });
+  }, [userSummary]);
+
+  useEffect(() => {
     setLoading(true);
     Promise.all([
       getApplicationUser(applicationId, userSummary.id).then((u) => u && setUser(u)),
@@ -105,6 +122,17 @@ export function UserDetailPanel({
       fetchApplicationAuthMethods(applicationId).then(setAuthMethods).catch(() => setAuthMethods([])),
     ]).finally(() => setLoading(false));
   }, [userSummary.id, applicationId]);
+
+  async function applyUserChange(action: () => Promise<void>) {
+    setActionBusy(true);
+    try {
+      await action();
+      await reloadUser();
+      onUserChanged?.();
+    } finally {
+      setActionBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (tab === "mfa" && !showMfaTab) setTab("overview");
@@ -123,13 +151,21 @@ export function UserDetailPanel({
         [methodId]: enabled,
       });
       setUser(updated);
+      onUserChanged?.();
     } finally {
       setAuthSaving(null);
     }
   }
 
   function afterMfaFormSubmit() {
-    window.setTimeout(() => void reloadUser(), 400);
+    window.setTimeout(() => {
+      void reloadUser().then(() => onUserChanged?.());
+    }, 400);
+  }
+
+  async function handleUserUpdated() {
+    await reloadUser();
+    onUserChanged?.();
   }
 
   const hiddenApp = <input type="hidden" name="applicationId" value={applicationId} />;
@@ -181,12 +217,14 @@ export function UserDetailPanel({
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <UserFormModal
+              key={`${user.id}-${user.emailVerified}`}
               user={user}
               tenants={tenants}
               roles={roles}
               applicationId={applicationId}
               tenantId={tenantId}
               lockToApp
+              onUserUpdated={handleUserUpdated}
               triggerLabel="Edit"
               triggerVariant="secondary"
               triggerSize="sm"
@@ -266,32 +304,39 @@ export function UserDetailPanel({
             </dl>
             <div className="flex flex-wrap gap-2">
               {user.status === "active" ? (
-                <form action={userSetStatusAction}>
-                  <input type="hidden" name="id" value={user.id} />
-                  <input type="hidden" name="status" value="suspended" />
-                  {hiddenApp}
-                  <Button type="submit" variant="danger" size="sm">
-                    Suspend
-                  </Button>
-                </form>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  disabled={actionBusy}
+                  onClick={() =>
+                    applyUserChange(() => setUserStatusApi(user.id, "suspended").then(() => undefined))
+                  }
+                >
+                  Suspend
+                </Button>
               ) : (
-                <form action={userSetStatusAction}>
-                  <input type="hidden" name="id" value={user.id} />
-                  <input type="hidden" name="status" value="active" />
-                  {hiddenApp}
-                  <Button type="submit" size="sm">
-                    Activate
-                  </Button>
-                </form>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={actionBusy}
+                  onClick={() =>
+                    applyUserChange(() => setUserStatusApi(user.id, "active").then(() => undefined))
+                  }
+                >
+                  Activate
+                </Button>
               )}
               {user.locked && (
-                <form action={userUnlockAction}>
-                  <input type="hidden" name="id" value={user.id} />
-                  {hiddenApp}
-                  <Button type="submit" variant="secondary" size="sm">
-                    Unlock account
-                  </Button>
-                </form>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={actionBusy}
+                  onClick={() => applyUserChange(() => unlockUserApi(user.id).then(() => undefined))}
+                >
+                  Unlock account
+                </Button>
               )}
             </div>
 
@@ -302,7 +347,7 @@ export function UserDetailPanel({
               <div className="mt-3 grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 <SectionShortcut
                   title="Security"
-                  description="Email verification, password reset, and admin-set password."
+                  description="Account access, email verification, password emails, and MFA shortcuts."
                   onClick={() => setTab("security")}
                 />
                 {showMfaTab && (
@@ -385,58 +430,18 @@ export function UserDetailPanel({
         )}
 
         {tab === "security" && (
-          <div className="flex min-h-0 flex-1 flex-col gap-6">
-            <section>
-              <h3 className="text-sm font-semibold text-ui">Email</h3>
-              <p className="mt-1 text-xs text-muted">
-                Verification and password reset emails use your SMTP configuration (MailHog in dev).
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {!user.emailVerified && (
-                  <form action={userResendVerificationEmailAction}>
-                    <input type="hidden" name="id" value={user.id} />
-                    {hiddenApp}
-                    <Button type="submit" variant="secondary" size="sm">
-                      Resend verification
-                    </Button>
-                  </form>
-                )}
-                {!user.emailVerified && (
-                  <form action={userMarkEmailVerifiedAction}>
-                    <input type="hidden" name="id" value={user.id} />
-                    {hiddenApp}
-                    <Button type="submit" variant="ghost" size="sm">
-                      Mark verified
-                    </Button>
-                  </form>
-                )}
-              </div>
-            </section>
-            <section>
-              <h3 className="text-sm font-semibold text-ui">Password</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <form action={userSendPasswordResetEmailAction}>
-                  <input type="hidden" name="id" value={user.id} />
-                  {hiddenApp}
-                  <Button type="submit" variant="secondary" size="sm">
-                    Send reset email
-                  </Button>
-                </form>
-                <UserSetPasswordModal userId={user.id} applicationId={applicationId} />
-              </div>
-            </section>
-            <div className="mt-auto rounded-xl border border-dashed border-ui px-4 py-6 text-center text-xs text-muted">
-              Need MFA or role changes? Use the tabs above or open{" "}
-              <button
-                type="button"
-                onClick={() => setTab("overview")}
-                className="font-medium text-brand hover:underline"
-              >
-                Overview
-              </button>{" "}
-              for shortcuts to every section.
-            </div>
-          </div>
+          <UserSecurityTab
+            user={user}
+            applicationId={applicationId}
+            mfaFactorCount={visibleMfaFactors.length}
+            showMfaLink={showMfaTab}
+            onChanged={async () => {
+              await reloadUser();
+              onUserChanged?.();
+            }}
+            onOpenMfaTab={() => setTab("mfa")}
+            onOpenSignInsTab={() => setTab("signins")}
+          />
         )}
 
         {tab === "mfa" && showMfaTab && (
@@ -534,12 +539,14 @@ export function UserDetailPanel({
             <div className="mb-3 flex justify-between">
               <p className="text-sm text-muted">RBAC roles assigned to this user.</p>
               <UserFormModal
+                key={`${user.id}-${user.emailVerified}-roles`}
                 user={user}
                 tenants={tenants}
                 roles={roles}
                 applicationId={applicationId}
                 tenantId={tenantId}
                 lockToApp
+                onUserUpdated={handleUserUpdated}
                 triggerLabel="Manage roles"
                 triggerVariant="ghost"
                 triggerSize="sm"

@@ -7,7 +7,6 @@ import { ClientDetailPanel } from "@/components/applications/ClientDetailPanel";
 import { ApplicationFormModal } from "@/components/forms/ApplicationFormModal";
 import { getApplication } from "@/lib/api/applications";
 import { getTenant } from "@/lib/api/tenants";
-import { fetchAdminContext } from "@/lib/api/context";
 import { requirePlatformAccess } from "@/lib/platform-access";
 import { statusTone } from "@/lib/status";
 
@@ -18,27 +17,6 @@ export default async function ApplicationClientPage({
 }) {
   await requirePlatformAccess();
   const { id } = await params;
-
-  let ctx;
-  try {
-    ctx = await fetchAdminContext();
-  } catch {
-    ctx = { platformSuperAdmin: false, principal: "", actAsEmail: null, applications: [] };
-  }
-  if (!ctx.platformSuperAdmin) {
-    return (
-      <div className="mx-auto max-w-lg py-12 text-center">
-        <h1 className="text-lg font-semibold">Platform admin only</h1>
-        <p className="mt-2 text-sm text-muted">
-          OAuth client registration is managed by a platform super administrator. Use the{" "}
-          <Link href="/app" className="text-brand hover:underline">
-            application console
-          </Link>{" "}
-          for day-to-day operations.
-        </p>
-      </div>
-    );
-  }
 
   const app = await getApplication(id);
   if (!app) notFound();

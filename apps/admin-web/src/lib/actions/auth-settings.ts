@@ -8,7 +8,7 @@ import {
   saveFeatureFlags,
   savePasswordPolicy,
 } from "@/lib/api/auth-settings";
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/http";
 import {
   featureFlagsPayload,
   normalizeFeatureFlags,

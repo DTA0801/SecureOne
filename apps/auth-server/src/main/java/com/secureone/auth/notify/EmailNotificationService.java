@@ -1,16 +1,19 @@
 package com.secureone.auth.notify;
 
+import com.secureone.auth.notify.ApplicationEmailContextFactory.ApplicationEmailContext;
+import com.secureone.auth.notify.EmailTemplateService.RenderedEmail;
 import com.secureone.auth.platform.PlatformSettingsService;
 import com.secureone.auth.user.UserAccount;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,32 +21,34 @@ public class EmailNotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailNotificationService.class);
 
-    private final JavaMailSender mailSender;
     private final PlatformSettingsService settings;
-    private final boolean mailConfigured;
+    private final ApplicationEmailContextFactory emailContext;
+    private final EmailTemplateService templates;
+    private final EmailDeliveryService delivery;
     private final boolean logLinksWhenUnavailable;
 
     public EmailNotificationService(
-            Optional<JavaMailSender> mailSender,
             PlatformSettingsService settings,
-            @Value("${spring.mail.host:}") String mailHost,
+            ApplicationEmailContextFactory emailContext,
+            EmailTemplateService templates,
+            EmailDeliveryService delivery,
             @Value("${secureone.mail.log-links-when-smtp-unavailable:true}") boolean logLinksWhenUnavailable) {
-        this.mailSender = mailSender.orElse(null);
         this.settings = settings;
-        this.mailConfigured = mailSender.isPresent() && mailHost != null && !mailHost.isBlank();
+        this.emailContext = emailContext;
+        this.templates = templates;
+        this.delivery = delivery;
         this.logLinksWhenUnavailable = logLinksWhenUnavailable;
     }
 
-    public boolean isMailConfigured() {
-        return mailConfigured;
+    public boolean isMailConfigured(UUID applicationId) {
+        return applicationId != null && delivery.isConfigured(applicationId);
     }
 
-    /** Whether transactional user emails (verify, reset, magic link) may be sent or logged to console. */
-    public boolean isUserTransactionalEmailEnabled() {
-        Map<String, Object> notifications = getNotificationSettings();
-        Object flag = notifications.get("userEmailEnabled");
+    public boolean isUserTransactionalEmailEnabled(UUID applicationId) {
+        ApplicationEmailContext ctx = emailContext.context(applicationId);
+        Object flag = ctx.notifications().get("userEmailEnabled");
         boolean settingOn = flag == null || Boolean.TRUE.equals(flag);
-        return settingOn && (mailConfigured || logLinksWhenUnavailable);
+        return settingOn && (ctx.smtpConfigured() || logLinksWhenUnavailable);
     }
 
     public Map<String, Object> getNotificationSettings() {
@@ -62,129 +67,215 @@ public class EmailNotificationService {
         return saveSetting("email", value);
     }
 
-    public void sendTestEmail(String to) {
-        requireMail();
-        sendPlainOrThrow(
-                to,
-                "SecureOne test notification",
-                "This is a test email from SecureOne.\n\nIf you received this, SMTP/email notifications are working.");
+    public void sendTestEmail(
+            UUID applicationId,
+            String to,
+            List<String> cc,
+            List<String> bcc,
+            String templateKey,
+            Map<String, String> customData) {
+        ApplicationEmailContext ctx = emailContext.context(applicationId);
+        requireMail(ctx);
+        String key = templateKey != null && !templateKey.isBlank() ? templateKey : "test";
+        Map<String, String> vars = baseVariables(ctx);
+        if (customData != null) {
+            vars.putAll(customData);
+        }
+        vars.putIfAbsent("userName", "SecureOne Admin");
+        vars.putIfAbsent("customMessage", "Test message from SecureOne admin console.");
+        RenderedEmail rendered = templates
+                .render(applicationId, key, vars)
+                .withExtraRecipients(
+                        EmailRecipientResolver.resolve(ctx.notifications(), cc),
+                        EmailRecipientResolver.resolve(ctx.notifications(), bcc));
+        sendOrLog(ctx, to, rendered.cc(), rendered.bcc(), rendered.subject(), rendered.bodyText(), rendered.bodyHtml());
     }
 
-    /** Platform admin alerts (Settings → Admin recipients). */
-    public void sendAdminNotification(String subject, String body) {
-        Map<String, Object> notifications = getNotificationSettings();
-        if (!Boolean.TRUE.equals(notifications.get("emailEnabled"))) {
+    public void sendAdminNotification(UUID applicationId, String subject, String body) {
+        sendAdminNotification(applicationId, null, subject, body);
+    }
+
+    public void sendAdminNotification(UUID applicationId, UserAccount user, String subject, String body) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        if (appId == null) {
+            log.warn("Skipping admin notification (no application SMTP context): {}", subject);
             return;
         }
-        sendToAdminRecipients(subject, body);
-    }
-
-    /** Security-related admin alerts (Settings → Security alerts). */
-    public void sendAdminSecurityAlert(String subject, String body) {
-        Map<String, Object> notifications = getNotificationSettings();
-        if (!Boolean.TRUE.equals(notifications.get("emailEnabled"))) {
+        ApplicationEmailContext ctx = emailContext.context(appId);
+        if (!Boolean.TRUE.equals(ctx.notifications().get("emailEnabled"))) {
             return;
         }
-        if (!Boolean.TRUE.equals(notifications.get("securityAlertsEnabled"))) {
+        Map<String, String> vars = baseVariables(ctx);
+        vars.put("subject", subject);
+        vars.put("body", body);
+        sendTemplatedToRecipients(
+                ctx, "admin_notification", vars, adminRecipientEmails(ctx.notifications()), List.of(), List.of());
+    }
+
+    public void sendAdminSecurityAlert(UUID applicationId, String subject, String body) {
+        sendAdminSecurityAlert(applicationId, null, subject, body);
+    }
+
+    public void sendAdminSecurityAlert(UUID applicationId, UserAccount user, String subject, String body) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        if (appId == null) {
+            log.warn("Skipping admin security alert (no application SMTP context): {}", subject);
             return;
         }
-        sendToAdminRecipients("[SecureOne Security] " + subject, body);
-    }
-
-    /** End-user transactional email (verify, reset, password changed). */
-    public void sendVerifyEmail(UserAccount user, String verifyLink) {
-        ensureUserTransactionalEmailEnabled();
-        String name = displayName(user);
-        sendPlain(
-                user.getEmail(),
-                "Verify your SecureOne email",
-                "Hello " + name + ",\n\n"
-                        + "Please verify your email address by opening this link (valid 24 hours):\n\n"
-                        + verifyLink
-                        + "\n\n"
-                        + "If you did not create this account, you can ignore this message.");
-    }
-
-    public void sendPasswordReset(UserAccount user, String resetLink) {
-        ensureUserTransactionalEmailEnabled();
-        String name = displayName(user);
-        sendPlain(
-                user.getEmail(),
-                "Reset your SecureOne password",
-                "Hello " + name + ",\n\n"
-                        + "We received a request to reset your password. Open this link (valid 1 hour):\n\n"
-                        + resetLink
-                        + "\n\n"
-                        + "If you did not request this, ignore this email. Your password will not change.");
-    }
-
-    public void sendMagicLink(UserAccount user, String magicLink) {
-        ensureUserTransactionalEmailEnabled();
-        sendPlain(
-                user.getEmail(),
-                "Your SecureOne sign-in link",
-                "Hello " + displayName(user) + ",\n\n"
-                        + "Use this link to sign in (valid 1 hour):\n\n"
-                        + magicLink
-                        + "\n\n"
-                        + "If you did not request this, ignore this email.");
-    }
-
-    public void sendSetPasswordInvite(UserAccount user, String setPasswordLink) {
-        ensureUserTransactionalEmailEnabled();
-        sendPlain(
-                user.getEmail(),
-                "Set your SecureOne password",
-                "Hello " + displayName(user) + ",\n\n"
-                        + "Your account was created. Set your password here (valid 1 hour):\n\n"
-                        + setPasswordLink
-                        + "\n\n"
-                        + "Then sign in at " + setPasswordLink.replace("/account/set-password.html", "/login.html"));
-    }
-
-    public void sendPasswordChanged(UserAccount user) {
-        ensureUserTransactionalEmailEnabled();
-        String name = displayName(user);
-        sendPlain(
-                user.getEmail(),
-                "Your SecureOne password was changed",
-                "Hello " + name + ",\n\n"
-                        + "Your password was successfully updated.\n\n"
-                        + "If you did not make this change, contact your administrator immediately.");
-    }
-
-    private void sendToAdminRecipients(String subject, String body) {
-        if (!mailConfigured) {
+        ApplicationEmailContext ctx = emailContext.context(appId);
+        if (!Boolean.TRUE.equals(ctx.notifications().get("emailEnabled"))) {
             return;
         }
-        @SuppressWarnings("unchecked")
-        List<String> recipients = (List<String>) getNotificationSettings().getOrDefault("adminRecipients", List.of());
+        if (!Boolean.TRUE.equals(ctx.notifications().get("securityAlertsEnabled"))) {
+            return;
+        }
+        Map<String, String> vars = baseVariables(ctx);
+        vars.put("subject", subject);
+        vars.put("body", body);
+        sendTemplatedToRecipients(
+                ctx, "admin_security_alert", vars, adminRecipientEmails(ctx.notifications()), List.of(), List.of());
+    }
+
+    public void sendAccountSuspended(UUID applicationId, UserAccount user) {
+        sendAccountStatusEmail(applicationId, user, "account_suspended");
+    }
+
+    public void sendAccountReactivated(UUID applicationId, UserAccount user) {
+        sendAccountStatusEmail(applicationId, user, "account_reactivated");
+    }
+
+    public void sendVerifyEmail(UUID applicationId, UserAccount user, String verifyLink) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        ensureUserTransactionalEmailEnabled(appId);
+        sendUserTemplate(appId, user, "verify_email", verifyLink);
+    }
+
+    public void sendPasswordReset(UUID applicationId, UserAccount user, String resetLink) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        ensureUserTransactionalEmailEnabled(appId);
+        sendUserTemplate(appId, user, "password_reset", resetLink);
+    }
+
+    public void sendMagicLink(UUID applicationId, UserAccount user, String magicLink) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        ensureUserTransactionalEmailEnabled(appId);
+        sendUserTemplate(appId, user, "magic_link", magicLink);
+    }
+
+    public void sendSetPasswordInvite(UUID applicationId, UserAccount user, String setPasswordLink) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        ensureUserTransactionalEmailEnabled(appId);
+        sendUserTemplate(appId, user, "set_password_invite", setPasswordLink);
+    }
+
+    public void sendPasswordChanged(UUID applicationId, UserAccount user) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        ensureUserTransactionalEmailEnabled(appId);
+        ApplicationEmailContext ctx = emailContext.context(appId);
+        Map<String, String> vars = userVariables(ctx, user, null);
+        sendTemplated(ctx, user.getEmail(), "password_changed", vars, List.of(), List.of());
+    }
+
+    private void sendUserTemplate(UUID applicationId, UserAccount user, String templateKey, String actionLink) {
+        ApplicationEmailContext ctx = emailContext.context(applicationId);
+        Map<String, String> vars = userVariables(ctx, user, actionLink);
+        sendTemplated(ctx, user.getEmail(), templateKey, vars, List.of(), List.of());
+    }
+
+    private void sendTemplated(
+            ApplicationEmailContext ctx,
+            String to,
+            String templateKey,
+            Map<String, String> vars,
+            List<String> cc,
+            List<String> bcc) {
+        RenderedEmail rendered = templates
+                .render(ctx.applicationId(), templateKey, vars)
+                .withExtraRecipients(cc, bcc);
+        sendOrLog(ctx, to, rendered.cc(), rendered.bcc(), rendered.subject(), rendered.bodyText(), rendered.bodyHtml());
+    }
+
+    private void sendAccountStatusEmail(UUID applicationId, UserAccount user, String templateKey) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        if (appId == null) {
+            log.warn("Cannot send {} to {} — no application SMTP context", templateKey, user.getEmail());
+            return;
+        }
+        ApplicationEmailContext ctx = emailContext.context(appId);
+        if (!ctx.smtpConfigured() && !logLinksWhenUnavailable) {
+            log.warn("Cannot send {} to {} — SMTP not configured for application {}", templateKey, user.getEmail(), appId);
+            return;
+        }
+        Map<String, String> vars = userVariables(ctx, user, null);
+        sendTemplated(ctx, user.getEmail(), templateKey, vars, List.of(), List.of());
+    }
+
+    private void sendTemplatedToRecipients(
+            ApplicationEmailContext ctx,
+            String templateKey,
+            Map<String, String> vars,
+            List<String> recipients,
+            List<String> cc,
+            List<String> bcc) {
+        if (recipients.isEmpty()) {
+            log.warn(
+                    "No admin recipients configured for application {} — enable Notifications and add admin recipients",
+                    ctx.applicationId());
+            return;
+        }
+        if (!ctx.smtpConfigured() && !logLinksWhenUnavailable) {
+            return;
+        }
+        RenderedEmail rendered = templates
+                .render(ctx.applicationId(), templateKey, vars)
+                .withExtraRecipients(cc, bcc);
         for (String recipient : recipients) {
-            if (recipient != null && !recipient.isBlank()) {
-                sendPlain(recipient.trim(), subject, body);
-            }
+            sendOrLog(
+                    ctx,
+                    recipient,
+                    rendered.cc(),
+                    rendered.bcc(),
+                    rendered.subject(),
+                    rendered.bodyText(),
+                    rendered.bodyHtml());
         }
     }
 
-    private void sendPlain(String to, String subject, String text) {
-        if (!mailConfigured) {
+    private void sendOrLog(
+            ApplicationEmailContext ctx,
+            String to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String text,
+            String html) {
+        if (!ctx.smtpConfigured()) {
             if (logLinksWhenUnavailable) {
                 log.warn(
                         """
-                        SMTP unavailable — transactional email logged to console instead of sent.
+                        SMTP unavailable — email logged to console instead of sent.
+                        Application: {}
                         To: {}
+                        Cc: {}
+                        Bcc: {}
                         Subject: {}
                         Body:
                         {}
                         """,
+                        ctx.applicationId(),
                         to,
+                        cc,
+                        bcc,
                         subject,
                         text);
             }
             return;
         }
+        if (!cc.isEmpty() || !bcc.isEmpty()) {
+            log.info("Email recipients application={} to={} cc={} bcc={}", ctx.applicationId(), to, cc, bcc);
+        }
         try {
-            deliverPlain(to, subject, text);
+            delivery.send(ctx.applicationId(), ctx.email(), to, cc, bcc, subject, text, html);
         } catch (Exception ex) {
             if (logLinksWhenUnavailable) {
                 log.warn(
@@ -195,53 +286,66 @@ public class EmailNotificationService {
                         text);
                 return;
             }
-            throw new IllegalStateException("Failed to send email via SMTP: " + ex.getMessage(), ex);
+            throw ex;
         }
     }
 
-    private void sendPlainOrThrow(String to, String subject, String text) {
-        requireMail();
-        try {
-            deliverPlain(to, subject, text);
-        } catch (Exception ex) {
+    private List<String> adminRecipientEmails(Map<String, Object> notifications) {
+        Set<String> emails =
+                new LinkedHashSet<>(SmtpSettingsService.parseEmailList(notifications.get("adminRecipients")));
+        expandRecipientGroups(notifications, emails);
+        return new ArrayList<>(emails);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void expandRecipientGroups(Map<String, Object> notifications, Set<String> emails) {
+        Object groups = notifications.get("recipientGroups");
+        if (!(groups instanceof Map<?, ?> groupMap)) {
+            return;
+        }
+        for (Object members : groupMap.values()) {
+            emails.addAll(SmtpSettingsService.parseEmailList(members));
+        }
+    }
+
+    private Map<String, String> userVariables(
+            ApplicationEmailContext ctx, UserAccount user, String actionLink) {
+        Map<String, String> vars = baseVariables(ctx);
+        vars.put("userName", displayName(user));
+        vars.put("userEmail", user.getEmail());
+        if (actionLink != null) {
+            vars.put("actionLink", actionLink);
+        }
+        return vars;
+    }
+
+    private Map<String, String> baseVariables(ApplicationEmailContext ctx) {
+        Map<String, String> vars = new HashMap<>();
+        vars.put("appName", string(ctx.email(), "fromName", "SecureOne"));
+        vars.put("tenantName", "SecureOne");
+        return vars;
+    }
+
+    private void ensureUserTransactionalEmailEnabled(UUID applicationId) {
+        if (applicationId == null) {
             throw new IllegalStateException(
-                    "Failed to send test email via SMTP: "
-                            + ex.getMessage()
-                            + ". For Gmail, use an App Password (not your normal login password) in SECUREONE_SMTP_PASSWORD.",
-                    ex);
+                    "No application context for email. Configure SMTP under Application settings → Notifications.");
         }
-    }
-
-    private void deliverPlain(String to, String subject, String text) {
-        Map<String, Object> email = getEmailSettings();
-        String fromAddress = string(email, "fromAddress", "noreply@secureone.local");
-        String fromName = string(email, "fromName", "SecureOne");
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromName + " <" + fromAddress + ">");
-        message.setTo(to);
-        message.setSubject(subject);
-        message.setText(text);
-        mailSender.send(message);
-    }
-
-    private void ensureUserTransactionalEmailEnabled() {
-        Map<String, Object> notifications = getNotificationSettings();
-        if (Boolean.FALSE.equals(notifications.get("userEmailEnabled"))) {
+        ApplicationEmailContext ctx = emailContext.context(applicationId);
+        if (Boolean.FALSE.equals(ctx.notifications().get("userEmailEnabled"))) {
             throw new IllegalStateException(
-                    "User transactional email is disabled in Platform settings → Notifications.");
+                    "User transactional email is disabled in Application settings → Notifications.");
         }
-        if (!mailConfigured && !logLinksWhenUnavailable) {
-            requireMail();
+        if (!ctx.smtpConfigured() && !logLinksWhenUnavailable) {
+            requireMail(ctx);
         }
     }
 
-    private void requireMail() {
-        if (!mailConfigured) {
+    private void requireMail(ApplicationEmailContext ctx) {
+        if (!ctx.smtpConfigured()) {
             throw new IllegalStateException(
-                    "SMTP is not configured. For local dev, start MailHog: "
-                            + "docker compose -f deploy/docker-compose.yml up -d mailhog "
-                            + "(SMTP localhost:1025, inbox http://localhost:8025). "
-                            + "Or set SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE=true to print links in the server log.");
+                    "SMTP is not configured. Open Application settings → Notifications, save SMTP host/port/credentials, "
+                            + "or set SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE=true to print links in the server log.");
         }
     }
 

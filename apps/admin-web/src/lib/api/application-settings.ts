@@ -1,5 +1,12 @@
-import { apiFetch, appScopeHeaders } from "./client";
-import type { EmailSettings, NotificationSettings } from "@/lib/api/settings";
+import { appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
+import type {
+  EmailSettings,
+  EmailTemplatesMap,
+  NotificationSettings,
+  SmtpSettings,
+  TestEmailRequest,
+} from "@/lib/api/settings";
 import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
 import type { TokenPolicy } from "./token-policy";
 import type { AppSettingsExposure } from "./app-exposure";
@@ -57,6 +64,52 @@ export async function saveApplicationEmail(appId: string, body: EmailSettings): 
 
 export async function resetApplicationEmail(appId: string): Promise<void> {
   await apiFetch<void>(`${base(appId)}/email`, scoped(appId, { method: "DELETE" }));
+}
+
+export async function fetchApplicationSmtp(appId: string): Promise<SmtpSettings> {
+  return apiFetch<SmtpSettings>(`${base(appId)}/smtp`, scoped(appId));
+}
+
+export async function saveApplicationSmtp(appId: string, body: SmtpSettings): Promise<SmtpSettings> {
+  return apiFetch<SmtpSettings>(
+    `${base(appId)}/smtp`,
+    scoped(appId, { method: "PUT", body: JSON.stringify(body) }),
+  );
+}
+
+export async function fetchApplicationEmailTemplates(appId: string): Promise<EmailTemplatesMap> {
+  return apiFetch<EmailTemplatesMap>(`${base(appId)}/email-templates`, scoped(appId));
+}
+
+export async function saveApplicationEmailTemplates(
+  appId: string,
+  body: EmailTemplatesMap,
+): Promise<EmailTemplatesMap> {
+  return apiFetch<EmailTemplatesMap>(
+    `${base(appId)}/email-templates`,
+    scoped(appId, { method: "PUT", body: JSON.stringify(body) }),
+  );
+}
+
+export async function fetchApplicationEmailTemplateDefaults(appId: string): Promise<EmailTemplatesMap> {
+  return apiFetch<EmailTemplatesMap>(`${base(appId)}/email-templates/defaults`, scoped(appId));
+}
+
+export async function resetApplicationEmailTemplate(
+  appId: string,
+  templateKey: string,
+): Promise<EmailTemplatesMap> {
+  return apiFetch<EmailTemplatesMap>(
+    `${base(appId)}/email-templates/${encodeURIComponent(templateKey)}`,
+    scoped(appId, { method: "DELETE" }),
+  );
+}
+
+export async function sendApplicationTestEmail(appId: string, body: TestEmailRequest): Promise<void> {
+  await apiFetch(
+    `${base(appId)}/email/test`,
+    scoped(appId, { method: "POST", body: JSON.stringify(body) }),
+  );
 }
 
 export async function fetchApplicationAuthMethods(appId: string): Promise<AuthMethod[]> {
@@ -179,6 +232,42 @@ export async function saveApplicationTokenPolicy(appId: string, body: TokenPolic
 
 export async function resetApplicationTokenPolicy(appId: string): Promise<void> {
   await apiFetch<void>(`${base(appId)}/token-policy`, scoped(appId, { method: "DELETE" }));
+}
+
+export type IntegrationChecklist = {
+  redirectUris: boolean;
+  publicManifest: boolean;
+  smtpConfigured: boolean;
+  authMethodsReviewed: boolean;
+  signupReviewed: boolean;
+  passwordResetTested: boolean;
+  loginFlowTested: boolean;
+};
+
+export type ClientIntegrationUrls = {
+  forgotPassword?: string;
+  passwordReset?: string;
+};
+
+export type ClientIntegrationConfig = {
+  authUiMode: "hosted" | "native";
+  clientUrls?: ClientIntegrationUrls;
+  checklist: IntegrationChecklist;
+  notes: string;
+};
+
+export async function fetchClientIntegration(appId: string): Promise<ClientIntegrationConfig> {
+  return apiFetch<ClientIntegrationConfig>(`${base(appId)}/client-integration`, scoped(appId));
+}
+
+export async function saveClientIntegration(
+  appId: string,
+  body: ClientIntegrationConfig,
+): Promise<ClientIntegrationConfig> {
+  return apiFetch<ClientIntegrationConfig>(
+    `${base(appId)}/client-integration`,
+    scoped(appId, { method: "PUT", body: JSON.stringify(body) }),
+  );
 }
 
 export { listUsers as listApplicationUsers } from "./users";

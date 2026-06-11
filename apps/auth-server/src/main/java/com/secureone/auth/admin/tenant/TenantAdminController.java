@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.secureone.auth.admin.tenant.TenantWorkspaceService.TenantAdminOperator;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Admin — tenants", description = "Multi-tenant organizations")
@@ -26,9 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantAdminController {
 
     private final TenantAdminService service;
+    private final TenantWorkspaceService workspace;
 
-    public TenantAdminController(TenantAdminService service) {
+    public TenantAdminController(TenantAdminService service, TenantWorkspaceService workspace) {
         this.service = service;
+        this.workspace = workspace;
     }
 
     @GetMapping
@@ -56,5 +61,36 @@ public class TenantAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
+    }
+
+    /** Super-admin: users with Tenant Admin role in this tenant. */
+    @GetMapping("/{tenantId}/admin-operators")
+    public List<TenantAdminOperator> listAdminOperators(@PathVariable UUID tenantId) {
+        service.get(tenantId);
+        return workspace.listTenantAdminOperators(tenantId);
+    }
+
+    @PostMapping("/{tenantId}/admin-operators/{userId}/applications/{applicationId}")
+    public java.util.Map<String, Object> assignAdminOperator(
+            Authentication authentication,
+            @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
+            @PathVariable UUID tenantId,
+            @PathVariable UUID userId,
+            @PathVariable UUID applicationId) {
+        service.get(tenantId);
+        var user = workspace.assignTenantAdminRole(authentication, actAsEmail, userId, applicationId);
+        return java.util.Map.of("ok", true, "userId", user.id(), "email", user.email());
+    }
+
+    @DeleteMapping("/{tenantId}/admin-operators/{userId}/applications/{applicationId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokeAdminOperator(
+            Authentication authentication,
+            @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
+            @PathVariable UUID tenantId,
+            @PathVariable UUID userId,
+            @PathVariable UUID applicationId) {
+        service.get(tenantId);
+        workspace.revokeTenantAdminRole(authentication, actAsEmail, userId, applicationId);
     }
 }

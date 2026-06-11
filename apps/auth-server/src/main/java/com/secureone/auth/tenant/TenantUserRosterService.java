@@ -1,0 +1,130 @@
+package com.secureone.auth.tenant;
+
+import com.secureone.auth.admin.ResourceNotFoundException;
+import com.secureone.auth.admin.console.AdminConsoleAccessRepository;
+import com.secureone.auth.application.ApplicationRepository;
+import com.secureone.auth.application.UserApplicationRepository;
+import com.secureone.auth.user.UserAccount;
+import com.secureone.auth.user.UserAccountRepository;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional
+public class TenantUserRosterService {
+
+    private final TenantUserRosterRepository roster;
+    private final TenantRepository tenants;
+    private final UserAccountRepository users;
+    private final ApplicationRepository applications;
+    private final UserApplicationRepository memberships;
+    private final AdminConsoleAccessRepository consoleAccess;
+
+    public TenantUserRosterService(
+            TenantUserRosterRepository roster,
+            TenantRepository tenants,
+            UserAccountRepository users,
+            ApplicationRepository applications,
+            UserApplicationRepository memberships,
+            AdminConsoleAccessRepository consoleAccess) {
+        this.roster = roster;
+        this.tenants = tenants;
+        this.users = users;
+        this.applications = applications;
+        this.memberships = memberships;
+        this.consoleAccess = consoleAccess;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isOnRoster(UUID tenantId, UUID userId) {
+        return roster.existsByTenantIdAndUserId(tenantId, userId);
+    }
+
+    @Transactional(readOnly = true)
+    public long countForTenant(UUID tenantId) {
+        return roster.countByTenantId(tenantId);
+    }
+
+    public void addToRoster(UUID tenantId, UUID userId) {
+        addToRoster(tenantId, userId, TenantRosterSource.DIRECT, null, null);
+    }
+
+    public void addToRoster(
+            UUID tenantId,
+            UUID userId,
+            TenantRosterSource source,
+            UUID sourceApplicationId,
+            UUID addedBy) {
+        requireTenantUser(tenantId, userId);
+        if (roster.existsByTenantIdAndUserId(tenantId, userId)) {
+            return;
+        }
+        TenantUserRoster row = new TenantUserRoster();
+        row.setTenantId(tenantId);
+        row.setUserId(userId);
+        row.setSource(source.wireValue());
+        row.setSourceApplicationId(sourceApplicationId);
+        row.setAddedBy(addedBy);
+        roster.save(row);
+    }
+
+    public void importFromApplication(UUID tenantId, UUID userId, UUID applicationId) {
+        importFromApplication(tenantId, userId, applicationId, null);
+    }
+
+    public void importFromApplication(
+            UUID tenantId, UUID userId, UUID applicationId, UUID addedBy) {
+        requireTenantUser(tenantId, userId);
+        var app =
+                applications
+                        .findById(applicationId)
+                        .filter(a -> a.getTenantId().equals(tenantId))
+                        .orElseThrow(() -> new IllegalArgumentException("Application not in tenant"));
+        if (!memberships.existsByUserIdAndApplicationId(userId, app.getId())) {
+            throw new IllegalArgumentException("User is not a member of this application");
+        }
+        addToRoster(tenantId, userId, TenantRosterSource.IMPORTED, applicationId, addedBy);
+    }
+
+    public int bulkImportFromApplication(UUID tenantId, List<UUID> userIds, UUID applicationId, UUID addedBy) {
+        int imported = 0;
+        for (UUID userId : userIds) {
+            if (roster.existsByTenantIdAndUserId(tenantId, userId)) {
+                continue;
+            }
+            try {
+                importFromApplication(tenantId, userId, applicationId, addedBy);
+                imported++;
+            } catch (IllegalArgumentException ignored) {
+                // skip users not in application or wrong tenant
+            }
+        }
+        return imported;
+    }
+
+    public void removeFromRoster(UUID tenantId, UUID userId) {
+        if (!roster.existsByTenantIdAndUserId(tenantId, userId)) {
+            return;
+        }
+        boolean hasConsoleAccess =
+                consoleAccess.findActiveByTenantId(tenantId).stream()
+                        .anyMatch(row -> row.getUserId().equals(userId));
+        if (hasConsoleAccess) {
+            throw new IllegalArgumentException(
+                    "Remove admin console access before removing this user from the tenant roster");
+        }
+        roster.deleteByTenantIdAndUserId(tenantId, userId);
+    }
+
+    private UserAccount requireTenantUser(UUID tenantId, UUID userId) {
+        tenants.findById(tenantId).orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
+        UserAccount user =
+                users.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (!user.getTenantId().equals(tenantId)) {
+            throw new IllegalArgumentException("User must belong to this tenant");
+        }
+        return user;
+    }
+}

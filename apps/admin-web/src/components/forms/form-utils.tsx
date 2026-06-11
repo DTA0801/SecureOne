@@ -9,16 +9,17 @@ import type { FormState } from "@/lib/actions";
 export function useCloseOnSuccess(
   state: FormState,
   close: () => void,
-  onSuccess?: (state: FormState) => void,
+  onSuccess?: (state: FormState) => void | Promise<void>,
 ) {
   const router = useRouter();
   useEffect(() => {
-    if (state.ok) {
-      onSuccess?.(state);
+    if (!state.ok) return;
+    void (async () => {
+      await onSuccess?.(state);
       router.refresh();
       close();
-    }
-  }, [state.ok, state.createdRoleId, state.createdUserId, close, router, onSuccess]);
+    })();
+  }, [state.ok, state.createdRoleId, state.createdUserId, close, router, onSuccess, state]);
 }
 
 export function FormError({ state }: { state: FormState }) {
@@ -58,6 +59,44 @@ export function FormActions({
         {pending ? "Saving…" : submitLabel}
       </Button>
     </div>
+  );
+}
+
+export function BooleanCheckbox({
+  name,
+  label,
+  hint,
+  defaultChecked = false,
+  checked,
+  onCheckedChange,
+  disabled = false,
+}: {
+  name?: string;
+  label: string;
+  hint?: string;
+  defaultChecked?: boolean;
+  checked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  const controlled = checked !== undefined;
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-ui px-3 py-2.5 hover:bg-ui-elevated/60">
+      <input
+        type="checkbox"
+        name={name}
+        value="true"
+        defaultChecked={controlled ? undefined : defaultChecked}
+        checked={controlled ? checked : undefined}
+        onChange={onCheckedChange ? (e) => onCheckedChange(e.target.checked) : undefined}
+        disabled={disabled}
+        className="mt-0.5 h-4 w-4 accent-[var(--ui-primary)]"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ui">{label}</span>
+        {hint && <span className="mt-0.5 block text-xs text-muted">{hint}</span>}
+      </span>
+    </label>
   );
 }
 

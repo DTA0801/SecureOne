@@ -1,4 +1,5 @@
-import { ApiError, apiFetch, appScopeHeaders } from "./client";
+import { ApiError, appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { Permission, PermissionDetail } from "@/lib/types";
 
 type PermissionDto = {
@@ -86,23 +87,12 @@ export async function getPermission(
   applicationId: string,
   permissionId: string,
 ): Promise<PermissionDetail> {
-  try {
-    return mapDetail(
-      await apiFetch<PermissionDetailDto>(
-        `${appRbacBase(applicationId)}/permissions/${permissionId}`,
-        { headers: appScopeHeaders(applicationId) },
-      ),
-    );
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404) {
-      const list = await listPermissionsLegacy(applicationId);
-      const row = list.find((p) => p.id === permissionId);
-      if (row) {
-        return { ...row, roles: [], roleCount: row.roleCount ?? 0 };
-      }
-    }
-    throw e;
-  }
+  return mapDetail(
+    await apiFetch<PermissionDetailDto>(
+      `${appRbacBase(applicationId)}/permissions/${permissionId}`,
+      { headers: appScopeHeaders(applicationId) },
+    ),
+  );
 }
 
 export async function createPermissionApi(

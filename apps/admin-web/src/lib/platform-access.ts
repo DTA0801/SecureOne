@@ -14,3 +14,15 @@ export async function requirePlatformAccess(): Promise<AdminContext> {
   }
   return ctx;
 }
+
+/** Tenant console operator (not platform super-admin). */
+export async function requireTenantOperatorAccess(): Promise<AdminContext> {
+  const ctx = await getPlatformAccessContext();
+  if (
+    ctx.platformSuperAdmin ||
+    (ctx.operatorTier !== "tenant" && ctx.operatorTier !== "tenant_super")
+  ) {
+    notFound();
+  }
+  return ctx;
+}

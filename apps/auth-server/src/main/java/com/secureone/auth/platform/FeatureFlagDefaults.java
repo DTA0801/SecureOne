@@ -122,6 +122,13 @@ public final class FeatureFlagDefaults {
                 false,
                 25,
                 "provisioning"));
+        flags.add(flag(
+                "notification_email_test_ui",
+                "Email test console",
+                "Show the SMTP test panel under Application → Notifications",
+                true,
+                100,
+                "notifications"));
         return flags;
     }
 

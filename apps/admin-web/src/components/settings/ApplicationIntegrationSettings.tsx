@@ -1,0 +1,408 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { CopyValue } from "@/components/ui/CopyValue";
+import { FieldRow, Input, Textarea } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
+import { getApplication } from "@/lib/api/applications";
+import {
+  fetchClientIntegration,
+  saveClientIntegration,
+  type ClientIntegrationConfig,
+  type IntegrationChecklist,
+} from "@/lib/api/application-settings";
+import { runIntegrationHealthChecks, type IntegrationHealthResult } from "@/lib/api/integration-health";
+import { ApiReferenceList } from "@/components/settings/ApiReferenceList";
+import { AUTH_SERVER_URL } from "@/lib/config";
+import { buildIntegrationApiCatalog } from "@/lib/integration-api-catalog";
+import type { Application } from "@/lib/types";
+import type { SettingsTabId } from "@/components/settings/SettingsTabs";
+
+const DEFAULT_CONFIG: ClientIntegrationConfig = {
+  authUiMode: "hosted",
+  checklist: {
+    redirectUris: false,
+    publicManifest: false,
+    smtpConfigured: false,
+    authMethodsReviewed: false,
+    signupReviewed: false,
+    passwordResetTested: false,
+    loginFlowTested: false,
+  },
+  notes: "",
+};
+
+const CHECKLIST_META: {
+  key: keyof IntegrationChecklist;
+  label: string;
+  hint: string;
+  tab?: SettingsTabId;
+}[] = [
+  {
+    key: "redirectUris",
+    label: "Redirect URIs configured",
+    hint: "OAuth client redirect and post-logout URIs match your app URLs.",
+  },
+  {
+    key: "publicManifest",
+    label: "Public API manifest enabled",
+    hint: "Expose auth methods and branding to your client without admin credentials.",
+    tab: "public-api",
+  },
+  {
+    key: "smtpConfigured",
+    label: "SMTP / notifications ready",
+    hint: "Email verification, password reset, and invites require outbound mail.",
+    tab: "notifications",
+  },
+  {
+    key: "authMethodsReviewed",
+    label: "Authentication methods reviewed",
+    hint: "Password, MFA, and social providers match your product requirements.",
+    tab: "auth",
+  },
+  {
+    key: "signupReviewed",
+    label: "Signup flow reviewed",
+    hint: "Self-registration fields, default role, and email verification.",
+    tab: "users",
+  },
+  {
+    key: "passwordResetTested",
+    label: "Password reset tested",
+    hint: "Forgot-password email delivers and reset link works end-to-end.",
+  },
+  {
+    key: "loginFlowTested",
+    label: "Login flow tested",
+    hint: "Hosted redirect or native session login succeeds with a test user.",
+  },
+];
+
+export function ApplicationIntegrationSettings({
+  applicationId,
+  onOpenTab,
+}: {
+  applicationId: string;
+  onOpenTab?: (tab: SettingsTabId) => void;
+}) {
+  const { toast } = useToast();
+  const [config, setConfig] = useState<ClientIntegrationConfig>(DEFAULT_CONFIG);
+  const [app, setApp] = useState<Application | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [health, setHealth] = useState<IntegrationHealthResult[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleSave = useCallback(
+    (next: ClientIntegrationConfig) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(async () => {
+        try {
+          await saveClientIntegration(applicationId, next);
+        } catch (e) {
+          toast(e instanceof Error ? e.message : "Failed to save integration settings", "error");
+        }
+      }, 600);
+    },
+    [applicationId, toast],
+  );
+
+  const reload = useCallback(async () => {
+    setLoaded(false);
+    try {
+      const [integration, application] = await Promise.all([
+        fetchClientIntegration(applicationId),
+        getApplication(applicationId),
+      ]);
+      setConfig({
+        ...DEFAULT_CONFIG,
+        ...integration,
+        clientUrls: { ...DEFAULT_CONFIG.clientUrls, ...integration.clientUrls },
+        checklist: { ...DEFAULT_CONFIG.checklist, ...integration.checklist },
+      });
+      setApp(application);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Failed to load integration settings", "error");
+    } finally {
+      setLoaded(true);
+    }
+  }, [applicationId, toast]);
+
+  useEffect(() => {
+    reload();
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [reload]);
+
+  function updateConfig(patch: Partial<ClientIntegrationConfig>) {
+    setConfig((prev) => {
+      const next = { ...prev, ...patch };
+      scheduleSave(next);
+      return next;
+    });
+  }
+
+  function toggleChecklist(key: keyof IntegrationChecklist) {
+    setConfig((prev) => {
+      const next = {
+        ...prev,
+        checklist: { ...prev.checklist, [key]: !prev.checklist[key] },
+      };
+      scheduleSave(next);
+      return next;
+    });
+  }
+
+  async function runHealthCheck() {
+    setChecking(true);
+    setHealth(null);
+    try {
+      const results = await runIntegrationHealthChecks(applicationId);
+      setHealth(results);
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length === 0) {
+        toast("All API probes succeeded.", "success");
+      } else {
+        toast(`${failed.length} probe(s) failed — see details below.`, "error");
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Health check failed", "error");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const catalog = buildIntegrationApiCatalog({
+    applicationId,
+    clientId: app?.clientId,
+  });
+  const filteredCatalog = catalog.filter(
+    (e) =>
+      !e.authUiMode ||
+      e.authUiMode === "both" ||
+      e.authUiMode === config.authUiMode,
+  );
+
+  if (!loaded) {
+    return <p className="text-sm text-muted">Loading integration guide…</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-muted">
+        Configure how your application integrates with SecureOne: choose hosted vs native sign-in UI,
+        track setup tasks, and reference the APIs your client will call. OAuth client credentials
+        (client ID, secret, redirect URIs) are managed in the{" "}
+        <Link href={`/applications/${applicationId}`} className="text-brand hover:underline">
+          OAuth client registry
+        </Link>
+        .
+      </p>
+
+      <Card padded={false}>
+        <CardHeader title="Authentication UI" />
+        <div className="space-y-4 p-4">
+          <p className="text-sm text-muted">
+            Choose how end users sign in. This preference is stored for your team; wire the same mode
+            in your app (e.g. <code className="text-xs">VITE_AUTH_MODE</code> in a Vite SPA).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                {
+                  id: "hosted" as const,
+                  title: "Hosted SecureOne UI",
+                  description:
+                    "Redirect to /oauth2/authorize. SecureOne renders login, MFA, and consent. Best for quick integration.",
+                },
+                {
+                  id: "native" as const,
+                  title: "Native / custom UI",
+                  description:
+                    "Build your own login screens. Use session login + PKCE token exchange, or embed forms that call account APIs.",
+                },
+              ] as const
+            ).map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => updateConfig({ authUiMode: mode.id })}
+                className={`rounded-lg border p-4 text-left transition-colors ${
+                  config.authUiMode === mode.id
+                    ? "border-brand bg-brand/5"
+                    : "border-ui bg-surface hover:border-ui-strong"
+                }`}
+              >
+                <p className="font-medium text-ui">{mode.title}</p>
+                <p className="mt-1 text-xs text-muted">{mode.description}</p>
+              </button>
+            ))}
+          </div>
+          {app && (
+            <div className="rounded-lg border border-ui bg-black/5 px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-muted">OAuth client ID</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <code className="font-mono text-sm">{app.clientId}</code>
+                <CopyValue value={app.clientId} />
+              </div>
+              <p className="mt-2 text-xs text-muted">Application UUID</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <code className="font-mono text-xs">{app.id}</code>
+                <CopyValue value={app.id} />
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {config.authUiMode === "native" && (
+        <Card padded={false}>
+          <CardHeader title="Native app URLs" />
+          <div className="space-y-4 p-4">
+            <p className="text-sm text-muted">
+              Password reset emails include a one-time token in the link. Point these URLs at your
+              storefront pages so users land on your UI (not SecureOne&apos;s hosted HTML).
+            </p>
+            <FieldRow
+              label="Forgot password page"
+              hint="Where users request a reset email (your app calls POST /api/v1/account/password/forgot)"
+            >
+              <Input
+                value={config.clientUrls?.forgotPassword ?? ""}
+                onChange={(e) =>
+                  updateConfig({
+                    clientUrls: { ...config.clientUrls, forgotPassword: e.target.value },
+                  })
+                }
+                placeholder="http://localhost:5173/forgot-password"
+              />
+            </FieldRow>
+            <FieldRow
+              label="Reset password page"
+              hint="Base URL for the email link; SecureOne appends ?token=… automatically"
+            >
+              <Input
+                value={config.clientUrls?.passwordReset ?? ""}
+                onChange={(e) =>
+                  updateConfig({
+                    clientUrls: { ...config.clientUrls, passwordReset: e.target.value },
+                  })
+                }
+                placeholder="http://localhost:5173/reset-password"
+              />
+            </FieldRow>
+          </div>
+        </Card>
+      )}
+
+      <Card padded={false}>
+        <CardHeader
+          title="Integration checklist"
+          action={
+            <span className="text-xs text-muted">
+              {Object.values(config.checklist).filter(Boolean).length} / {CHECKLIST_META.length} done
+            </span>
+          }
+        />
+        <ul className="divide-y divide-ui">
+          {CHECKLIST_META.map((item) => (
+            <li key={item.key} className="flex items-start gap-3 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={config.checklist[item.key]}
+                onChange={() => toggleChecklist(item.key)}
+                className="mt-1"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-ui">{item.label}</p>
+                <p className="text-xs text-muted">{item.hint}</p>
+                {item.tab && onOpenTab && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTab(item.tab!)}
+                    className="mt-1 text-xs text-brand hover:underline"
+                  >
+                    Open settings →
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="border-t border-ui p-4">
+          <label className="mb-1 block text-xs font-medium text-muted">Notes</label>
+          <Textarea
+            rows={3}
+            value={config.notes}
+            onChange={(e) => updateConfig({ notes: e.target.value })}
+            placeholder="Environment URLs, test accounts, rollout notes…"
+          />
+        </div>
+      </Card>
+
+      <Card padded={false}>
+        <CardHeader
+          title="API reference"
+          action={
+            <Link
+              href={`${AUTH_SERVER_URL}/docs`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-brand hover:underline"
+            >
+              OpenAPI docs →
+            </Link>
+          }
+        />
+        <p className="border-b border-ui px-4 py-2 text-xs text-muted">
+          Click an endpoint to expand request fields, types, examples, and response shapes.
+        </p>
+        <ApiReferenceList endpoints={filteredCatalog} applicationId={applicationId} />
+      </Card>
+
+      <Card padded={false}>
+        <CardHeader
+          title="API health check"
+          action={
+            <Button variant="secondary" size="sm" onClick={runHealthCheck} disabled={checking}>
+              {checking ? "Checking…" : "Run checks"}
+            </Button>
+          }
+        />
+        <div className="space-y-3 p-4">
+          <p className="text-sm text-muted">
+            Probes public application-scoped endpoints (no tenant slug required). Forgot-password expects a
+            generic success even for unknown emails when self-service recovery is enabled.
+          </p>
+          {health && (
+            <ul className="space-y-2">
+              {health.map((r) => (
+                <li
+                  key={r.id}
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    r.ok
+                      ? "border-emerald-500/30 bg-emerald-500/10"
+                      : "border-red-500/30 bg-red-500/10"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{r.label}</span>
+                    <span className="font-mono text-xs">
+                      {r.status > 0 ? `HTTP ${r.status}` : "Network error"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">{r.detail}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}

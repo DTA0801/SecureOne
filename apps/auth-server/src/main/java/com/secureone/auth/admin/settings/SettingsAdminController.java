@@ -5,8 +5,6 @@ import com.secureone.auth.notify.EmailNotificationService;
 import com.secureone.auth.platform.AuthSettingsService;
 import com.secureone.auth.platform.PlatformSettingsService;
 import com.secureone.auth.platform.SettingsExposureService;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,37 +53,29 @@ public class SettingsAdminController {
     @GetMapping("/notifications")
     public Map<String, Object> getNotifications() {
         Map<String, Object> body = new HashMap<>(emailService.getNotificationSettings());
-        body.put("smtpConfigured", emailService.isMailConfigured());
+        body.put("smtpConfigured", false);
         return body;
     }
 
     @PutMapping("/notifications")
     public Map<String, Object> updateNotifications(@RequestBody Map<String, Object> body) {
         Map<String, Object> saved = emailService.saveNotificationSettings(body);
-        saved.put("smtpConfigured", emailService.isMailConfigured());
+        saved.put("smtpConfigured", false);
         return saved;
     }
 
     @GetMapping("/email")
     public Map<String, Object> getEmail() {
         Map<String, Object> body = new HashMap<>(emailService.getEmailSettings());
-        body.put("smtpConfigured", emailService.isMailConfigured());
+        body.put("smtpConfigured", false);
         return body;
     }
 
     @PutMapping("/email")
     public Map<String, Object> updateEmail(@RequestBody Map<String, Object> body) {
         Map<String, Object> saved = emailService.saveEmailSettings(body);
-        saved.put("smtpConfigured", emailService.isMailConfigured());
+        saved.put("smtpConfigured", false);
         return saved;
-    }
-
-    public record TestEmailRequest(@NotBlank @Email String to) {}
-
-    @PostMapping("/email/test")
-    public Map<String, String> sendTestEmail(@RequestBody TestEmailRequest request) {
-        emailService.sendTestEmail(request.to());
-        return Map.of("status", "sent", "to", request.to());
     }
 
     /** Admin UI theme / appearance (stored in platform_setting.appearance). */

@@ -88,16 +88,25 @@ pnpm --filter docs dev                  # http://localhost:3001
 
 **API documentation:** with auth-server running, open [Swagger UI](http://localhost:9000/docs) or `GET /api/info` for OpenAPI links. See [API documentation](12-api-documentation.md).
 
-## 7. First-run bootstrap
+## 7. Clean database (no sample tenants)
 
-On first boot the app creates:
-- A **platform admin** account (super-admin) — credentials from `SECUREONE_BOOTSTRAP_ADMIN_*` env, forced password change on first login.
-- A **system tenant** for platform-level operations.
+Dev migrations historically inserted Acme/Globex sample data; **V25+ removes it** on upgrade. For a completely empty database:
 
-```dotenv
-SECUREONE_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
-SECUREONE_BOOTSTRAP_ADMIN_PASSWORD=change-me-now
+```powershell
+.\scripts\reset-database.ps1 -SkipInstall
 ```
+
+**Platform super admin** (in-memory, not in Postgres): username `admin`, password from `SECUREONE_DEV_PASSWORD` (default `admin`). Sign in at http://localhost:3001/login with **no tenant slug**.
+
+### End-to-end tenant operator test
+
+1. Sign in as platform admin (above).
+2. **Tenants** → create a tenant (note the slug, e.g. `myorg`).
+3. **Applications** → register an OAuth client for that tenant.
+4. **Tenants** → open the tenant → **+ Add user** (status Active).
+5. **Grant access** → Tenant Super Admin (or Tenant Admin + pick an app).
+6. **Applications** table → **Open console → Users** → open the user → **Set password**.
+7. Sign out → sign in with tenant slug `myorg`, user email, and the password you set.
 
 ## 8. Email & notifications (dev)
 
@@ -114,7 +123,7 @@ Two channels are enabled when SMTP is up:
 
 | Flow | URL / API | Dev credentials |
 |------|-----------|-----------------|
-| Password login | http://localhost:9000/login.html | Tenant `acme`, email `sarah.chen@acme.com`, password `SecureOne123!` (username sent as `acme:sarah.chen@acme.com`) |
+| Password login | http://localhost:9000/login.html | Create a tenant + user in Admin, set a password, then sign in with `tenant-slug:email` |
 | Magic link | http://localhost:9000/account/magic-link.html | Same tenant + email; link in MailHog |
 | Forgot password | http://localhost:9000/account/forgot-password.html | `POST /api/v1/account/password/forgot` |
 | Reset password | MailHog link → `/account/reset-password.html?token=…` | `POST /api/v1/account/password/reset` |
@@ -132,11 +141,11 @@ Set `SECUREONE_PUBLIC_BASE_URL` if links must point at a host other than `http:/
 
 | Area | Who | URL |
 |------|-----|-----|
-| **Application console** | Super admin + app operators (users with a role on that client) | http://localhost:3000/app → pick application → Users / Roles / Settings / Audit / Sessions |
-| **Manage clients** | Platform super-admin only (`admin` dev user) | http://localhost:3000/applications |
-| **Platform settings** | Super-admin only | http://localhost:3000/settings |
+| **Application console** | Super admin + app operators (users with a role on that client) | http://localhost:3001/app → pick application → Users / Roles / Settings / Audit / Sessions |
+| **Manage clients** | Platform super-admin only (`admin` dev user) | http://localhost:3001/applications |
+| **Platform settings** | Super-admin only | http://localhost:3001/settings |
 
-Simulate an app-only operator (e.g. Sarah Chen on Acme Web) by setting `SECUREONE_ACT_AS_EMAIL=sarah.chen@acme.com` in the admin-web environment. The API grants access to applications where that user has a `user_role` assignment.
+Optional: set `SECUREONE_ACT_AS_EMAIL` to a tenant user email to debug API access as that operator (development only).
 
 For production, point SMTP at your provider (e.g. SendGrid, SES) via `SECUREONE_SMTP_*` and set notification toggles in the same Settings tab (stored in `platform_setting` in Postgres).
 

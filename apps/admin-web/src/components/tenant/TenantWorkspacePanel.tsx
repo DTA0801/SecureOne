@@ -1,0 +1,730 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ADMIN_MIRROR_RBAC_ROLES,
+  groupConsoleAccessByUser,
+  consoleRoleLabels,
+} from "@/components/tenants/console-access-utils";
+import {
+  CONSOLE_FEATURE_LABELS,
+  CONSOLE_ROLE_DEFAULT_FEATURES,
+} from "@/lib/api/admin-console-capabilities";
+import type { ConsoleAccessAssignment } from "@/lib/api/admin-console-access";
+import { UserFormModal } from "@/components/forms/UserFormModal";
+import { UserImportExportMenu } from "@/components/users/UserImportExportMenu";
+import { TenantRosterImportDialog } from "@/components/tenant/TenantRosterImportDialog";
+import { Badge } from "@/components/ui/Badge";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Input, Select } from "@/components/ui/Field";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
+import { useToast } from "@/components/ui/Toast";
+import {
+  fetchImportableUsers,
+  fetchTenantWorkspace,
+  grantUserApplication,
+  isInvitedAccount,
+  removeUserFromTenantRoster,
+  revokeUserApplication,
+  rosterSourceLabel,
+  userPermissionKeys,
+  type TenantRosterSource,
+  type TenantWorkspace,
+  type TenantWorkspaceUser,
+} from "@/lib/api/tenant-workspace";
+import { TenantRosterAccessDialog } from "@/components/tenant/TenantRosterAccessDialog";
+import { fetchUserDirectorySettings } from "@/lib/api/user-directory";
+import { buildAppPath } from "@/lib/app-routes";
+import { formatDate } from "@/lib/format";
+import { statusTone } from "@/lib/status";
+import type { Role, Status, Tenant } from "@/lib/types";
+
+const STATUS_FILTERS = ["ALL", "active", "invited", "pending", "suspended", "disabled"] as const;
+const SOURCE_FILTERS = [
+  "ALL",
+  "direct",
+  "imported",
+  "console_access",
+  "console_only",
+] as const;
+const CONSOLE_FILTERS = ["ALL", "with_console", "without_console"] as const;
+const VERIFIED_FILTERS = ["ALL", "verified", "unverified"] as const;
+
+function normalizeStatus(status: string): string {
+  const s = status.toLowerCase();
+  return s === "pending" ? "invited" : s;
+}
+
+function sourceTone(source: TenantRosterSource | null): "neutral" | "info" | "success" | "warning" {
+  switch (source) {
+    case "imported":
+      return "info";
+    case "direct":
+      return "success";
+    case "console_access":
+    case "console_only":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+export function TenantWorkspacePanel({
+  workspace,
+  tenant,
+  roles,
+  manageTenantId,
+  consoleAssignments = [],
+  onMutated,
+}: {
+  workspace: TenantWorkspace;
+  tenant: Tenant;
+  roles: Role[];
+  manageTenantId?: string;
+  consoleAssignments?: ConsoleAccessAssignment[];
+  onMutated?: () => Promise<void>;
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [data, setData] = useState(workspace);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
+  const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_FILTERS)[number]>("ALL");
+  const [consoleFilter, setConsoleFilter] =
+    useState<(typeof CONSOLE_FILTERS)[number]>("ALL");
+  const [verifiedFilter, setVerifiedFilter] =
+    useState<(typeof VERIFIED_FILTERS)[number]>("ALL");
+  const [appFilter, setAppFilter] = useState("ALL");
+  const [importAppId, setImportAppId] = useState(workspace.applications[0]?.id ?? "");
+  const [directory, setDirectory] = useState<Awaited<
+    ReturnType<typeof fetchUserDirectorySettings>
+  > | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importable, setImportable] = useState<TenantWorkspaceUser[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [accessUser, setAccessUser] = useState<TenantWorkspaceUser | null>(null);
+  const [accessInitialTab, setAccessInitialTab] = useState<"console" | "features" | "roles">(
+    "console",
+  );
+  const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<TenantWorkspaceUser | null>(null);
+
+  useEffect(() => {
+    setData(workspace);
+  }, [workspace]);
+
+  useEffect(() => {
+    if (importAppId) void loadDirectory(importAppId);
+  }, [importAppId]);
+
+  const consoleByUser = useMemo(
+    () => new Map(groupConsoleAccessByUser(consoleAssignments).map((g) => [g.userId, g])),
+    [consoleAssignments],
+  );
+
+  const tenantUsers = data.users ?? [];
+
+  const filteredUsers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tenantUsers.filter((u) => {
+      const status = normalizeStatus(u.status);
+      if (statusFilter !== "ALL" && status !== statusFilter) return false;
+      if (sourceFilter !== "ALL" && u.rosterSource !== sourceFilter) return false;
+      if (appFilter !== "ALL" && !u.applicationIds.includes(appFilter)) return false;
+      const hasConsole = consoleByUser.has(u.id);
+      if (consoleFilter === "with_console" && !hasConsole) return false;
+      if (consoleFilter === "without_console" && hasConsole) return false;
+      if (verifiedFilter === "verified" && !u.emailVerified) return false;
+      if (verifiedFilter === "unverified" && u.emailVerified) return false;
+      if (!q) return true;
+      const sourceLabel = rosterSourceLabel(u.rosterSource, u.sourceApplicationName).toLowerCase();
+      return (
+        u.email.toLowerCase().includes(q) ||
+        u.displayName.toLowerCase().includes(q) ||
+        (u.roleNames ?? []).some((r) => r.toLowerCase().includes(q)) ||
+        sourceLabel.includes(q) ||
+        userPermissionKeys(u).some((p) => p.toLowerCase().includes(q))
+      );
+    });
+  }, [tenantUsers, query, statusFilter, sourceFilter, appFilter, consoleFilter, verifiedFilter, consoleByUser]);
+
+  async function refresh() {
+    if (onMutated) {
+      await onMutated();
+      return;
+    }
+    const next = await fetchTenantWorkspace(manageTenantId);
+    setData(next);
+    router.refresh();
+  }
+
+  async function loadDirectory(appId: string) {
+    if (!appId) {
+      setDirectory(null);
+      return;
+    }
+    try {
+      setDirectory(await fetchUserDirectorySettings(appId));
+    } catch {
+      setDirectory(null);
+    }
+  }
+
+  async function toggleApp(userId: string, applicationId: string, hasAccess: boolean) {
+    const key = `${userId}:${applicationId}`;
+    setBusyKey(key);
+    try {
+      if (hasAccess) {
+        await revokeUserApplication(userId, applicationId, manageTenantId);
+        toast("Application access removed", "success");
+      } else {
+        await grantUserApplication(userId, applicationId, manageTenantId);
+        toast("Application access granted", "success");
+      }
+      await refresh();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not update access", "error");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function openImportDialog() {
+    if (!importAppId || !manageTenantId) return;
+    setImportOpen(true);
+    setImportLoading(true);
+    try {
+      setImportable(await fetchImportableUsers(importAppId, manageTenantId));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not load importable users", "error");
+      setImportOpen(false);
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function reloadImportable() {
+    if (!importAppId || !manageTenantId) return;
+    setImportLoading(true);
+    try {
+      setImportable(await fetchImportableUsers(importAppId, manageTenantId));
+      await refresh();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not refresh import list", "error");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function confirmRemoveFromRoster() {
+    if (!manageTenantId || !removeTarget) return;
+    setRemoveBusyId(removeTarget.id);
+    try {
+      await removeUserFromTenantRoster(removeTarget.id, manageTenantId);
+      toast("Removed from tenant roster", "success");
+      setRemoveTarget(null);
+      await refresh();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not remove user", "error");
+    } finally {
+      setRemoveBusyId(null);
+    }
+  }
+
+  const showOverview = !manageTenantId;
+  const importAppName =
+    data.applications.find((a) => a.id === importAppId)?.name ?? "Application";
+
+  return (
+    <div className="space-y-6">
+      {showOverview && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Card className="p-4">
+            <p className="text-xs text-faint">Users</p>
+            <p className="text-2xl font-semibold">{data.userCount}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-faint">Applications</p>
+            <p className="text-2xl font-semibold">{data.applicationCount}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-faint">Plan</p>
+            <p className="text-2xl font-semibold capitalize">{data.plan}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-faint">Status</p>
+            <Badge tone={statusTone(data.status as Status)} dot className="mt-1 capitalize">
+              {data.status}
+            </Badge>
+          </Card>
+        </div>
+      )}
+
+      <Card padded={false}>
+        <CardHeader title="Applications" description="Applications registered in this tenant" />
+        <Table>
+          <THead>
+            <tr>
+              <TH>Application</TH>
+              <TH>Status</TH>
+              <TH>Members</TH>
+              <TH />
+            </tr>
+          </THead>
+          <TBody>
+            {data.applications.map((app) => (
+              <TR key={app.id}>
+                <TD>
+                  <p className="font-medium">{app.name}</p>
+                  <p className="font-mono text-xs text-faint">{app.slug}</p>
+                </TD>
+                <TD>
+                  <Badge tone={statusTone(app.status as Status)} dot className="capitalize">
+                    {app.status}
+                  </Badge>
+                </TD>
+                <TD>{app.userCount}</TD>
+                <TD>
+                  <Link href={buildAppPath(app.id, "users")} className="text-sm link-brand">
+                    Open console →
+                  </Link>
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </Card>
+
+      <Card padded={false}>
+        <CardHeader
+          title="Tenant roster"
+          description={`${filteredUsers.length} of ${tenantUsers.length} shown · application members are managed per app — import here when you need tenant-wide access or console roles`}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {manageTenantId && data.applications.length > 0 && (
+                <>
+                  <Select
+                    value={importAppId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setImportAppId(id);
+                      void loadDirectory(id);
+                    }}
+                    className="h-9 min-w-[10rem] text-sm"
+                  >
+                    {data.applications.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        From {a.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <button
+                    type="button"
+                    onClick={() => void openImportDialog()}
+                    className="inline-flex h-9 items-center rounded-lg border border-ui px-3 text-sm font-medium text-ui hover:bg-ui-elevated"
+                  >
+                    Import from application
+                  </button>
+                  {importAppId && directory && (
+                    <UserImportExportMenu applicationId={importAppId} directory={directory} />
+                  )}
+                </>
+              )}
+              <UserFormModal
+                tenants={[tenant]}
+                roles={roles}
+                tenantId={tenant.id}
+                defaultStatus="active"
+                triggerLabel="+ Add tenant user"
+                onCreated={() => void refresh()}
+              />
+            </div>
+          }
+        />
+
+        <div className="space-y-3 border-b border-ui px-5 py-3">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search users, roles, permissions, source…"
+            className="max-w-md"
+          />
+          <div className="flex flex-wrap gap-2">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={`rounded-full border px-2.5 py-1 text-xs capitalize transition-colors ${
+                  statusFilter === s
+                    ? "border-brand bg-brand-muted text-brand"
+                    : "border-ui text-muted hover:bg-ui-elevated"
+                }`}
+              >
+                {s === "ALL" ? "All statuses" : s}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-faint">Source:</span>
+            {SOURCE_FILTERS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSourceFilter(s)}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  sourceFilter === s
+                    ? "border-brand bg-brand-muted text-brand"
+                    : "border-ui text-muted hover:bg-ui-elevated"
+                }`}
+              >
+                {s === "ALL"
+                  ? "All sources"
+                  : s === "console_only"
+                    ? "Console only"
+                    : s.replace("_", " ")}
+              </button>
+            ))}
+            <Select
+              value={appFilter}
+              onChange={(e) => setAppFilter(e.target.value)}
+              className="ml-2 h-8 min-w-[9rem] text-xs"
+            >
+              <option value="ALL">All apps</option>
+              {data.applications.map((a) => (
+                <option key={a.id} value={a.id}>
+                  In {a.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-faint">Console access:</span>
+            {CONSOLE_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setConsoleFilter(f)}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  consoleFilter === f
+                    ? "border-brand bg-brand-muted text-brand"
+                    : "border-ui text-muted hover:bg-ui-elevated"
+                }`}
+              >
+                {f === "ALL"
+                  ? "All"
+                  : f === "with_console"
+                    ? "Has console access"
+                    : "No console access"}
+              </button>
+            ))}
+            <span className="ml-2 text-xs text-faint">Email:</span>
+            {VERIFIED_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setVerifiedFilter(f)}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  verifiedFilter === f
+                    ? "border-brand bg-brand-muted text-brand"
+                    : "border-ui text-muted hover:bg-ui-elevated"
+                }`}
+              >
+                {f === "ALL" ? "All" : f === "verified" ? "Verified" : "Unverified"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Table>
+          <THead>
+            <tr>
+              <TH>User</TH>
+              <TH>Origin</TH>
+              <TH>Roles & permissions</TH>
+              <TH>App membership</TH>
+              <TH />
+            </tr>
+          </THead>
+          <TBody>
+            {filteredUsers.map((user) => {
+              const consoleGroup = consoleByUser.get(user.id);
+              const consoleRoles = consoleGroup ? consoleRoleLabels(consoleGroup.entries) : [];
+              const appRoles = (user.roleNames ?? []).filter(
+                (r) => !ADMIN_MIRROR_RBAC_ROLES.has(r),
+              );
+              const allPermissions = userPermissionKeys(user);
+              const consoleFeatureKeys = consoleGroup
+                ? [
+                    ...new Set(
+                      consoleGroup.entries.flatMap(
+                        (e) =>
+                          CONSOLE_ROLE_DEFAULT_FEATURES[e.roleType] ??
+                          CONSOLE_ROLE_DEFAULT_FEATURES.APPLICATION_ADMIN,
+                      ),
+                    ),
+                  ].sort()
+                : [];
+              return (
+                <TR key={user.id}>
+                  <TD>
+                    <p className="font-medium">{user.displayName}</p>
+                    <p className="text-xs text-faint">{user.email}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <Badge
+                        tone={statusTone(normalizeStatus(user.status) as Status)}
+                        dot
+                        className="capitalize"
+                      >
+                        {normalizeStatus(user.status)}
+                      </Badge>
+                      {isInvitedAccount(user.status) && (
+                        <Badge tone="warning">Invite pending</Badge>
+                      )}
+                      {user.emailVerified ? (
+                        <Badge tone="success">Verified</Badge>
+                      ) : (
+                        <Badge tone="neutral">Unverified</Badge>
+                      )}
+                    </div>
+                  </TD>
+                  <TD>
+                    <Badge tone={sourceTone(user.rosterSource)} className="capitalize">
+                      {rosterSourceLabel(user.rosterSource, user.sourceApplicationName)}
+                    </Badge>
+                    {user.rosterSource === "imported" && user.sourceApplicationId && (
+                      <p className="mt-1 text-xs text-soft">
+                        From{" "}
+                        <Link
+                          href={buildAppPath(user.sourceApplicationId, "users")}
+                          className="link-brand"
+                        >
+                          {user.sourceApplicationName ?? "application"}
+                        </Link>
+                      </p>
+                    )}
+                    {user.rosterAddedAt && (
+                      <p className="mt-1 text-[10px] text-faint">
+                        Added {formatDate(user.rosterAddedAt)}
+                      </p>
+                    )}
+                    {user.rosterAddedByLabel && (
+                      <p className="text-[10px] text-faint">By {user.rosterAddedByLabel}</p>
+                    )}
+                    {!user.onRoster && (
+                      <p className="mt-1 text-[10px] text-faint">Not on roster table</p>
+                    )}
+                  </TD>
+                  <TD>
+                    <div className="space-y-2">
+                      {consoleRoles.length > 0 && (
+                        <div>
+                          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+                            Admin console
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {consoleRoles.map((r) => (
+                              <Badge key={r} tone="info">
+                                {r}
+                              </Badge>
+                            ))}
+                          </div>
+                          {consoleFeatureKeys.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {consoleFeatureKeys.slice(0, 6).map((f) => (
+                                <span
+                                  key={f}
+                                  className="rounded-md bg-ui-elevated px-1.5 py-0.5 text-[10px] text-soft"
+                                >
+                                  {CONSOLE_FEATURE_LABELS[f] ?? f}
+                                </span>
+                              ))}
+                              {consoleFeatureKeys.length > 6 && (
+                                <span className="text-[10px] text-faint">
+                                  +{consoleFeatureKeys.length - 6}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div>
+                        <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+                          In-app roles
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {appRoles.length > 0 ? (
+                            appRoles.map((r) => (
+                              <Badge key={r} tone="neutral">
+                                {r}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-faint">—</span>
+                          )}
+                        </div>
+                      </div>
+                      {allPermissions.length > 0 && (
+                        <div>
+                          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+                            Permissions
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {allPermissions.slice(0, 8).map((p) => (
+                              <span
+                                key={p}
+                                className="rounded-md bg-ui-elevated px-1.5 py-0.5 font-mono text-[10px] text-soft"
+                              >
+                                {p}
+                              </span>
+                            ))}
+                            {allPermissions.length > 8 && (
+                              <span className="text-[10px] text-faint">
+                                +{allPermissions.length - 8} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {manageTenantId && user.onRoster && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAccessInitialTab(
+                              consoleByUser.has(user.id) ? "features" : "console",
+                            );
+                            setAccessUser(user);
+                          }}
+                          className="text-xs font-medium text-brand hover:underline"
+                        >
+                          {consoleByUser.has(user.id)
+                            ? "Manage access →"
+                            : "Grant console access →"}
+                        </button>
+                      )}
+                    </div>
+                  </TD>
+                  <TD>
+                    <div className="flex flex-col gap-2">
+                      {data.applications.map((app) => {
+                        const hasAccess = user.applicationIds.includes(app.id);
+                        const key = `${user.id}:${app.id}`;
+                        return (
+                          <label
+                            key={app.id}
+                            className="flex items-center gap-2 text-sm text-soft"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={hasAccess}
+                              disabled={busyKey === key}
+                              onChange={() => void toggleApp(user.id, app.id, hasAccess)}
+                            />
+                            {app.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </TD>
+                  <TD>
+                    {manageTenantId && user.onRoster && (
+                      consoleByUser.has(user.id) ? (
+                        <span
+                          className="text-xs text-faint"
+                          title="Revoke admin console access before removing from roster"
+                        >
+                          Remove blocked
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={removeBusyId === user.id}
+                          onClick={() => setRemoveTarget(user)}
+                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-60"
+                        >
+                          {removeBusyId === user.id ? "Removing…" : "Remove"}
+                        </button>
+                      )
+                    )}
+                  </TD>
+                </TR>
+              );
+            })}
+            {filteredUsers.length === 0 && (
+              <TR>
+                <TD colSpan={5} className="py-8 text-center text-sm text-faint">
+                  {tenantUsers.length === 0
+                    ? "No users on the tenant roster yet. Import from an application or add a tenant user."
+                    : "No users match your filters."}
+                </TD>
+              </TR>
+            )}
+          </TBody>
+        </Table>
+      </Card>
+
+      {removeTarget && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-2xl border border-ui bg-[var(--ui-surface)] p-6 shadow-2xl"
+          >
+            <h2 className="text-base font-semibold text-ui">Remove from tenant roster?</h2>
+            <p className="mt-2 text-sm text-muted">
+              <span className="font-medium text-ui">{removeTarget.displayName}</span> will be
+              removed from the tenant roster. Application memberships and in-app roles are kept.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveTarget(null)}
+                className="rounded-lg border border-ui px-4 py-2 text-sm font-medium text-ui hover:bg-ui-elevated"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={removeBusyId === removeTarget.id}
+                onClick={() => void confirmRemoveFromRoster()}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {removeBusyId === removeTarget.id ? "Removing…" : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manageTenantId && (
+        <>
+          <TenantRosterImportDialog
+            open={importOpen}
+            applicationId={importAppId}
+            applicationName={importAppName}
+            tenantId={manageTenantId}
+            importable={importable}
+            loading={importLoading}
+            onClose={() => setImportOpen(false)}
+            onImported={reloadImportable}
+          />
+          <TenantRosterAccessDialog
+            open={accessUser !== null}
+            user={accessUser}
+            applications={data.applications.map((a) => ({ id: a.id, name: a.name }))}
+            tenantId={manageTenantId}
+            initialTab={accessInitialTab}
+            consoleAssignments={consoleAssignments.filter(
+              (a) => a.userId === accessUser?.id,
+            )}
+            onClose={() => setAccessUser(null)}
+            onSaved={refresh}
+          />
+        </>
+      )}
+    </div>
+  );
+}

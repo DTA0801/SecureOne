@@ -11,23 +11,27 @@ import type { ApplicationContextItem } from "@/lib/api/context";
 export function ApplicationSelector({
   applications,
   currentApplicationId,
+  inAppWorkspace,
+  onApplicationChange,
 }: {
   applications: ApplicationContextItem[];
   currentApplicationId?: string;
+  inAppWorkspace: boolean;
+  onApplicationChange?: (applicationId: string) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
   if (applications.length === 0) {
-    return (
-      <span className="text-xs text-muted">No applications</span>
-    );
+    return <span className="text-xs text-muted">No applications assigned</span>;
   }
 
   const value = currentApplicationId ?? applications[0]?.id ?? "";
 
   function onChange(nextId: string) {
-    if (!nextId || nextId === value) return;
+    if (!nextId) return;
+    if (nextId === value && inAppWorkspace) return;
+    onApplicationChange?.(nextId);
     const section = isAppWorkspacePath(pathname) ? appSectionFromPath(pathname) : "users";
     router.push(buildAppPath(nextId, section));
   }

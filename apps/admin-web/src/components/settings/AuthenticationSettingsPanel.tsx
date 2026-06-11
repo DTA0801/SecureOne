@@ -18,7 +18,7 @@ import {
   setApplicationMfaTabEnabled,
   setApplicationTokenTabEnabled,
 } from "@/lib/api/application-settings";
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/http";
 import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
 
 type Tab = "auth" | "mfa" | "password" | "flags";
@@ -329,6 +329,7 @@ function MfaTabToggle({
 const FLAG_GROUPS: { title: string; categories: string[] }[] = [
   { title: "OAuth & tokens", categories: ["oauth"] },
   { title: "Identity & sign-in", categories: ["identity"] },
+  { title: "Notifications", categories: ["notifications"] },
   { title: "Provisioning", categories: ["provisioning"] },
 ];
 

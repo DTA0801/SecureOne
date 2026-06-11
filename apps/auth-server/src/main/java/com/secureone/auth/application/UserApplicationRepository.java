@@ -16,6 +16,8 @@ public interface UserApplicationRepository extends JpaRepository<UserApplication
 
     void deleteByUserIdAndApplicationId(UUID userId, UUID applicationId);
 
+    void deleteByUserId(UUID userId);
+
     @Query("SELECT ua.userId FROM UserApplication ua WHERE ua.applicationId = :applicationId")
     List<UUID> findUserIdsByApplicationId(@Param("applicationId") UUID applicationId);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LiveApiResponse } from "@/components/settings/LiveApiResponse";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
@@ -191,6 +192,11 @@ export function PublicManifestSettings({ applicationId }: { applicationId: strin
           Example: fetch from your SPA before rendering the login screen. Response shape depends on
           the toggles above.
         </p>
+        <LiveApiResponse
+          url={publicUrl}
+          disabled={!config.enabled}
+          disabledHint="Enable the public manifest above to fetch a live response."
+        />
       </Card>
     </div>
   );

@@ -51,12 +51,13 @@ public class TenantPasswordAuthenticationProvider implements AuthenticationProvi
         String email = username.substring(sep + 1);
         UserAccount account = userDetailsService.resolveAccount(tenantSlug, email);
         var cred = credentials
-                .findByUserIdAndCurrentTrue(account.getId())
-                .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
+                .findFirstByUserIdAndCurrentTrueOrderByCreatedAtDescIdDesc(account.getId())
+                .orElseThrow(() -> new BadCredentialsException("No password credential on file"));
         if (!passwordEncoder.matches(password, cred.getPasswordHash())) {
-            throw new BadCredentialsException("Invalid credentials");
+            throw new BadCredentialsException("Password does not match");
         }
-        return new UsernamePasswordAuthenticationToken(user, password, user.getAuthorities());
+        return new UsernamePasswordAuthenticationToken(
+                user, password, AuthenticationAuthorities.withPasswordFactor(user.getAuthorities()));
     }
 
     @Override

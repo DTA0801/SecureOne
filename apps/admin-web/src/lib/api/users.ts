@@ -1,4 +1,5 @@
-import { apiFetch, appScopeHeaders } from "./client";
+import { appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { User } from "@/lib/types";
 
 type MfaFactorDto = {
@@ -178,6 +179,7 @@ export async function updateUserApi(
     firstName: string;
     lastName: string;
     status: string;
+    emailVerified: boolean;
     roleIds: string[];
   },
 ): Promise<User> {
@@ -189,6 +191,7 @@ export async function updateUserApi(
       firstName: input.firstName,
       lastName: input.lastName,
       status: input.status,
+      emailVerified: input.emailVerified,
       roleIds: input.roleIds,
     }),
   });
@@ -234,16 +237,82 @@ export async function adminSetUserPasswordApi(
   });
 }
 
-export async function sendUserPasswordResetEmailApi(id: string): Promise<void> {
+export async function sendUserPasswordResetEmailApi(id: string, applicationId?: string): Promise<void> {
+  if (applicationId) {
+    await apiFetch(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/password/reset-email`,
+      { method: "POST", headers: appScopeHeaders(applicationId) },
+    );
+    return;
+  }
   await apiFetch(`/api/admin/v1/users/${id}/password/reset-email`, { method: "POST" });
 }
 
-export async function resendUserVerificationEmailApi(id: string): Promise<void> {
+export async function removeUserPasswordApi(id: string, applicationId?: string): Promise<void> {
+  if (applicationId) {
+    await apiFetch<void>(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/password/remove`,
+      { method: "POST", headers: appScopeHeaders(applicationId) },
+    );
+    return;
+  }
+  await apiFetch<void>(`/api/admin/v1/users/${id}/password/remove`, { method: "POST" });
+}
+
+export async function sendUserSetPasswordInviteEmailApi(
+  id: string,
+  applicationId?: string,
+): Promise<void> {
+  if (applicationId) {
+    await apiFetch(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/password/set-password-email`,
+      { method: "POST", headers: appScopeHeaders(applicationId) },
+    );
+    return;
+  }
+  await apiFetch(`/api/admin/v1/users/${id}/password/set-password-email`, { method: "POST" });
+}
+
+export async function resendUserVerificationEmailApi(id: string, applicationId?: string): Promise<void> {
+  if (applicationId) {
+    await apiFetch(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/email/resend-verification`,
+      { method: "POST", headers: appScopeHeaders(applicationId) },
+    );
+    return;
+  }
   await apiFetch(`/api/admin/v1/users/${id}/email/resend-verification`, { method: "POST" });
 }
 
-export async function markUserEmailVerifiedApi(id: string): Promise<User> {
+export async function markUserEmailVerifiedApi(id: string, applicationId?: string): Promise<User> {
+  if (applicationId) {
+    const dto = await apiFetch<UserDto>(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/email/verify`,
+      { method: "POST", headers: appScopeHeaders(applicationId) },
+    );
+    return mapUser(dto);
+  }
   const dto = await apiFetch<UserDto>(`/api/admin/v1/users/${id}/email/verify`, { method: "POST" });
+  return mapUser(dto);
+}
+
+export async function setUserEmailVerifiedApi(
+  id: string,
+  verified: boolean,
+  applicationId?: string,
+): Promise<User> {
+  const body = JSON.stringify({ verified });
+  if (applicationId) {
+    const dto = await apiFetch<UserDto>(
+      `/api/admin/v1/applications/${applicationId}/users/${id}/email-verification`,
+      { method: "PATCH", body, headers: appScopeHeaders(applicationId) },
+    );
+    return mapUser(dto);
+  }
+  const dto = await apiFetch<UserDto>(`/api/admin/v1/users/${id}/email-verification`, {
+    method: "PATCH",
+    body,
+  });
   return mapUser(dto);
 }
 

@@ -10,44 +10,153 @@
       button { width: 100%; padding: 0.6rem; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
       .links { margin-top: 1rem; font-size: 0.875rem; }
       .links a { color: #4f46e5; }
+      .banner { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.875rem; }
+      .banner.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+      .banner.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+      .panel { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #e5e7eb; background: #f9fafb; font-size: 0.875rem; }
+      .panel pre { margin: 0.5rem 0 0; padding: 0.5rem; background: #111827; color: #f9fafb; border-radius: 6px; overflow: auto; font-size: 11px; }
     </style>
   </head>
   <body>
     <h1>Sign in</h1>
+    <div id="banner" class="banner" hidden role="alert"></div>
     <p id="methods"></p>
-    <form method="post" action="/login">
+    <form method="post" action="/login" id="login-form">
       <label for="tenant">Tenant slug</label>
-      <input id="tenant" name="tenant" value="acme" required />
+      <input id="tenant" name="tenant" placeholder="your-tenant" required />
       <label for="email">Email</label>
       <input id="email" type="email" required />
       <input type="hidden" name="username" id="username" />
+      <input type="hidden" name="applicationId" id="applicationId" />
+      <input type="hidden" name="continue" id="continue" />
       <label for="password">Password</label>
       <input id="password" name="password" type="password" required autocomplete="current-password" />
       <button type="submit">Sign in with password</button>
     </form>
+    <div id="session-panel" class="panel" hidden>
+      <strong>Session signed in</strong>
+      <p id="session-hint" style="margin: 0.35rem 0 0"></p>
+      <pre id="session-json">Loading…</pre>
+      <p style="margin: 0.5rem 0 0">
+        Form login only sets a <code>JSESSIONID</code> cookie — not an OAuth access token. To get a token and
+        <code>/userinfo</code>, use your app&apos;s Sign in button (OAuth) or the
+        <a href="/account/oauth-dev.html">OAuth dev tool</a>.
+      </p>
+    </div>
     <div class="links">
       <p><a id="signup-link" href="/account/signup.html">Create an account</a></p>
       <p><a href="/account/forgot-password.html">Forgot password</a></p>
       <p><a href="/account/magic-link.html">Sign in with magic link</a></p>
     </div>
     <script>
-      const appId = new URLSearchParams(location.search).get("applicationId");
-      if (appId) {
-        document.getElementById("signup-link").href =
-          "/account/signup.html?applicationId=" + encodeURIComponent(appId);
-      }
-      fetch("/api/v1/auth/methods")
-        .then((r) => r.json())
-        .then((methods) => {
-          const available = methods.filter((m) => m.available).map((m) => m.name);
-          document.getElementById("methods").textContent =
-            "Available: " + (available.length ? available.join(", ") : "none");
+      (function () {
+        const CONTINUE_KEY = "secureone:oauth_continue";
+        const params = new URLSearchParams(location.search);
+        let continueUrl = params.get("continue");
+        if (continueUrl && continueUrl.includes("/oauth2/authorize")) {
+          sessionStorage.setItem(CONTINUE_KEY, continueUrl);
+          document.getElementById("continue").value = continueUrl;
+        } else {
+          const stored = sessionStorage.getItem(CONTINUE_KEY);
+          if (stored && stored.includes("/oauth2/authorize")) {
+            continueUrl = stored;
+            document.getElementById("continue").value = stored;
+          }
+        }
+
+        function syncUsername() {
+          const tenant = document.getElementById("tenant").value.trim();
+          const email = document.getElementById("email").value.trim().toLowerCase();
+          document.getElementById("username").value =
+            tenant && email ? tenant + ":" + email : "";
+        }
+
+        const banner = document.getElementById("banner");
+        if (banner) {
+          if (params.has("signedIn")) {
+            if (continueUrl && continueUrl.includes("/oauth2/authorize")) {
+              banner.textContent = "Signed in — returning to your application…";
+              banner.className = "banner success";
+              banner.hidden = false;
+              sessionStorage.removeItem(CONTINUE_KEY);
+              location.replace(continueUrl);
+              return;
+            }
+            banner.textContent = "Signed in successfully.";
+            banner.className = "banner success";
+            banner.hidden = false;
+            const panel = document.getElementById("session-panel");
+            const hint = document.getElementById("session-hint");
+            const json = document.getElementById("session-json");
+            panel.hidden = false;
+            fetch("/api/v1/auth/me", { credentials: "same-origin" })
+              .then((r) => r.json().then((body) => ({ ok: r.ok, body })))
+              .then(({ ok, body }) => {
+                if (!ok) {
+                  hint.textContent = "Session cookie present but /api/v1/auth/me returned an error.";
+                  json.textContent = JSON.stringify(body, null, 2);
+                  return;
+                }
+                hint.textContent =
+                  "GET /api/v1/auth/me (check Network tab) — use OAuth for access_token.";
+                json.textContent = JSON.stringify(body, null, 2);
+              })
+              .catch((e) => {
+                hint.textContent = "Could not load session profile.";
+                json.textContent = String(e);
+              });
+          } else if (continueUrl && continueUrl.includes("/oauth2/authorize")) {
+            fetch("/api/v1/auth/me", { credentials: "same-origin" })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((body) => {
+                if (body && body.authenticated) {
+                  sessionStorage.removeItem(CONTINUE_KEY);
+                  location.replace(continueUrl);
+                }
+              })
+              .catch(() => undefined);
+          } else if (params.has("error")) {
+            banner.textContent =
+              "Sign in failed. Check tenant slug, email, and password. If your email is not verified, open the link from your inbox or ask an administrator.";
+            banner.className = "banner error";
+            banner.hidden = false;
+          }
+        }
+
+        const appId = params.get("applicationId");
+        if (appId) {
+          document.getElementById("applicationId").value = appId;
+          document.getElementById("signup-link").href =
+            "/account/signup.html?applicationId=" + encodeURIComponent(appId);
+        }
+
+        const form = document.getElementById("login-form");
+        form.addEventListener("submit", (event) => {
+          syncUsername();
+          const email = document.getElementById("email").value.trim();
+          if (!email) {
+            event.preventDefault();
+            if (banner) {
+              banner.textContent = "Enter your email address.";
+              banner.className = "banner error";
+              banner.hidden = false;
+            }
+          }
         });
-      document.querySelector("form").addEventListener("submit", (e) => {
-        const tenant = document.getElementById("tenant").value.trim();
-        const email = document.getElementById("email").value.trim();
-        document.getElementById("username").value = tenant + ":" + email;
-      });
+        document.getElementById("tenant").addEventListener("input", syncUsername);
+        document.getElementById("email").addEventListener("input", syncUsername);
+
+        fetch("/api/v1/auth/methods")
+          .then((r) => r.json())
+          .then((methods) => {
+            const available = methods.filter((m) => m.available).map((m) => m.name);
+            document.getElementById("methods").textContent =
+              "Available: " + (available.length ? available.join(", ") : "none");
+          })
+          .catch(() => {
+            document.getElementById("methods").textContent = "";
+          });
+      })();
     </script>
   </body>
 </html>

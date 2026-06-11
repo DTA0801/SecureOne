@@ -18,6 +18,7 @@ public final class DefaultPermissionCatalog {
             new DefaultPermission("app:read", "View applications"),
             new DefaultPermission("app:write", "Manage OAuth clients"),
             new DefaultPermission("audit:read", "View audit logs"),
+            new DefaultPermission("logs:read", "View application logs"),
             new DefaultPermission("settings:write", "Change application settings"),
             new DefaultPermission("session:read", "View active sessions"));
 }

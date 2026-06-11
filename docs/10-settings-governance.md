@@ -96,6 +96,8 @@ Integrated clients (e.g. an e-commerce app using SecureOne for identity) can let
 
 Hosted UI: `/account/signup.html?applicationId={id}` (links from `/login.html?applicationId={id}`). New users get app membership, the app’s default role (if configured), and a verification email. Sign in with tenant username `slug:email@domain.com`.
 
+**Until email is verified**, password sign-in is blocked. Application admins can open a user → **Security** → **Verify email (allow sign-in)** (or resend the verification link). API: `POST /api/admin/v1/applications/{applicationId}/users/{userId}/email/verify`.
+
 ## Operations
 
 - After new migrations (V10+), restart **auth-server** (`./gradlew bootRun` in `apps/auth-server`).

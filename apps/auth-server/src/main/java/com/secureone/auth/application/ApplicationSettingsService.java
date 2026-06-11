@@ -2,6 +2,9 @@ package com.secureone.auth.application;
 
 import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.notify.EmailNotificationService;
+import com.secureone.auth.notify.EmailTemplateService;
+import com.secureone.auth.notify.PlatformMailSenderProvider;
+import com.secureone.auth.notify.SmtpSettingsService;
 import com.secureone.auth.platform.AuthSettingsService;
 import com.secureone.auth.platform.FeatureFlagMerge;
 import com.secureone.auth.platform.PlatformSettingsService;
@@ -25,6 +28,9 @@ public class ApplicationSettingsService {
     private final PlatformSettingsService platformSettings;
     private final AuthSettingsService authSettings;
     private final EmailNotificationService emailService;
+    private final SmtpSettingsService smtpSettings;
+    private final EmailTemplateService emailTemplates;
+    private final PlatformMailSenderProvider mailSenderProvider;
     private final SettingsExposureService exposure;
 
     public ApplicationSettingsService(
@@ -33,12 +39,18 @@ public class ApplicationSettingsService {
             PlatformSettingsService platformSettings,
             AuthSettingsService authSettings,
             EmailNotificationService emailService,
+            SmtpSettingsService smtpSettings,
+            EmailTemplateService emailTemplates,
+            PlatformMailSenderProvider mailSenderProvider,
             SettingsExposureService exposure) {
         this.applications = applications;
         this.appSettings = appSettings;
         this.platformSettings = platformSettings;
         this.authSettings = authSettings;
         this.emailService = emailService;
+        this.smtpSettings = smtpSettings;
+        this.emailTemplates = emailTemplates;
+        this.mailSenderProvider = mailSenderProvider;
         this.exposure = exposure;
     }
 
@@ -201,6 +213,7 @@ public class ApplicationSettingsService {
             platform = UserDirectoryDefaults.platformDefaults();
         }
         Map<String, Object> merged = UserDirectoryDefaults.merge(platform, getAppMap(applicationId, "user_directory").orElse(Map.of()));
+        applyLdapFeatureGate(applicationId, merged);
         merged.put("scope", "application");
         merged.put("inheritsPlatformDefaults", !hasOverride(applicationId, "user_directory"));
         return merged;
@@ -209,8 +222,50 @@ public class ApplicationSettingsService {
     public Map<String, Object> saveUserDirectory(UUID applicationId, Map<String, Object> body) {
         requireExposed("user-directory");
         requireApplication(applicationId);
-        saveAppMap(applicationId, "user_directory", body);
+        Map<String, Object> sanitized = new LinkedHashMap<>(body);
+        applyLdapFeatureGate(applicationId, sanitized);
+        saveAppMap(applicationId, "user_directory", sanitized);
         return getUserDirectory(applicationId);
+    }
+
+    private void applyLdapFeatureGate(UUID applicationId, Map<String, Object> config) {
+        if (isFeatureEnabled(applicationId, "ldap")) {
+            return;
+        }
+        Object sourcesObj = config.get("sources");
+        if (!(sourcesObj instanceof Map<?, ?> sources)) {
+            return;
+        }
+        Object ldapObj = sources.get("ldap");
+        if (!(ldapObj instanceof Map<?, ?> ldap)) {
+            return;
+        }
+        Map<String, Object> ldapSource = new LinkedHashMap<>();
+        ldap.forEach((k, v) -> ldapSource.put(k.toString(), v));
+        ldapSource.put("enabled", false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sourcesMap = (Map<String, Object>) sourcesObj;
+        sourcesMap.put("ldap", ldapSource);
+    }
+
+    private boolean isFeatureEnabled(UUID applicationId, String key) {
+        return resolveFeatureFlags(applicationId).stream()
+                .filter(f -> key.equals(String.valueOf(f.get("key"))))
+                .findFirst()
+                .map(f -> Boolean.TRUE.equals(f.get("enabled")))
+                .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getClientIntegration(UUID applicationId) {
+        requireApplication(applicationId);
+        return mergeClientIntegration(clientIntegrationDefaults(), getAppMap(applicationId, "client_integration").orElse(Map.of()));
+    }
+
+    public Map<String, Object> saveClientIntegration(UUID applicationId, Map<String, Object> body) {
+        requireApplication(applicationId);
+        saveAppMap(applicationId, "client_integration", sanitizeClientIntegration(body));
+        return getClientIntegration(applicationId);
     }
 
     @Transactional(readOnly = true)
@@ -221,7 +276,7 @@ public class ApplicationSettingsService {
         getAppMap(applicationId, "notifications").ifPresent(merged::putAll);
         merged.put("scope", "application");
         merged.put("inheritsPlatformDefaults", !hasOverride(applicationId, "notifications"));
-        merged.put("smtpConfigured", emailService.isMailConfigured());
+        merged.put("smtpConfigured", smtpSettings.isConfigured(applicationId));
         return merged;
     }
 
@@ -240,7 +295,7 @@ public class ApplicationSettingsService {
         getAppMap(applicationId, "email").ifPresent(merged::putAll);
         merged.put("scope", "application");
         merged.put("inheritsPlatformDefaults", !hasOverride(applicationId, "email"));
-        merged.put("smtpConfigured", emailService.isMailConfigured());
+        merged.put("smtpConfigured", smtpSettings.isConfigured(applicationId));
         return merged;
     }
 
@@ -249,6 +304,58 @@ public class ApplicationSettingsService {
         requireApplication(applicationId);
         saveAppMap(applicationId, "email", body);
         return getEmail(applicationId);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getSmtp(UUID applicationId) {
+        requireExposed("notifications");
+        requireApplication(applicationId);
+        return smtpSettings.getPublicSettings(applicationId);
+    }
+
+    public Map<String, Object> saveSmtp(UUID applicationId, Map<String, Object> body) {
+        requireExposed("notifications");
+        requireApplication(applicationId);
+        Map<String, Object> saved = smtpSettings.save(applicationId, body);
+        mailSenderProvider.invalidate(applicationId);
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getEmailTemplates(UUID applicationId) {
+        requireExposed("notifications");
+        requireApplication(applicationId);
+        return emailTemplates.getTemplates(applicationId);
+    }
+
+    public Map<String, Object> saveEmailTemplates(UUID applicationId, Map<String, Object> body) {
+        requireExposed("notifications");
+        requireApplication(applicationId);
+        return emailTemplates.saveTemplates(applicationId, body);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getEmailTemplateDefaults() {
+        requireExposed("notifications");
+        return emailTemplates.getPlatformDefaults();
+    }
+
+    public Map<String, Object> resetEmailTemplate(UUID applicationId, String templateKey) {
+        requireExposed("notifications");
+        requireApplication(applicationId);
+        return emailTemplates.resetTemplate(applicationId, templateKey);
+    }
+
+    public void sendTestEmail(
+            UUID applicationId,
+            String to,
+            List<String> cc,
+            List<String> bcc,
+            String templateKey,
+            Map<String, String> customData) {
+        requireExposed("notifications");
+        requireApplication(applicationId);
+        emailService.sendTestEmail(applicationId, to, cc, bcc, templateKey, customData);
     }
 
     @Transactional(readOnly = true)
@@ -561,5 +668,92 @@ public class ApplicationSettingsService {
         return ClientAppearanceDefaults.merge(
                 ClientAppearanceDefaults.platformDefaults(),
                 getAppMap(applicationId, "appearance").orElse(Map.of()));
+    }
+
+    private Map<String, Object> clientIntegrationDefaults() {
+        Map<String, Object> defaults = new LinkedHashMap<>();
+        defaults.put("authUiMode", "hosted");
+        defaults.put("clientUrls", defaultClientUrls());
+        defaults.put("checklist", defaultIntegrationChecklist());
+        defaults.put("notes", "");
+        return defaults;
+    }
+
+    private static Map<String, String> defaultClientUrls() {
+        Map<String, String> urls = new LinkedHashMap<>();
+        urls.put("forgotPassword", "");
+        urls.put("passwordReset", "");
+        return urls;
+    }
+
+    private Map<String, Boolean> defaultIntegrationChecklist() {
+        Map<String, Boolean> checklist = new LinkedHashMap<>();
+        checklist.put("redirectUris", false);
+        checklist.put("publicManifest", false);
+        checklist.put("smtpConfigured", false);
+        checklist.put("authMethodsReviewed", false);
+        checklist.put("signupReviewed", false);
+        checklist.put("passwordResetTested", false);
+        checklist.put("loginFlowTested", false);
+        return checklist;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mergeClientIntegration(Map<String, Object> defaults, Map<String, Object> stored) {
+        Map<String, Object> out = new LinkedHashMap<>(defaults);
+        if (stored.containsKey("authUiMode")) {
+            String mode = String.valueOf(stored.get("authUiMode")).toLowerCase(java.util.Locale.ROOT);
+            out.put("authUiMode", "native".equals(mode) ? "native" : "hosted");
+        }
+        if (stored.containsKey("notes")) {
+            out.put("notes", String.valueOf(stored.get("notes")));
+        }
+        out.put("clientUrls", mergeClientUrls(stored.get("clientUrls")));
+        Map<String, Boolean> mergedChecklist = new LinkedHashMap<>(defaultIntegrationChecklist());
+        if (stored.get("checklist") instanceof Map<?, ?> raw) {
+            for (String key : mergedChecklist.keySet()) {
+                Object val = raw.get(key);
+                if (val instanceof Boolean b) {
+                    mergedChecklist.put(key, b);
+                }
+            }
+        }
+        out.put("checklist", mergedChecklist);
+        return out;
+    }
+
+    private Map<String, Object> sanitizeClientIntegration(Map<String, Object> body) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String mode = body != null && body.get("authUiMode") != null
+                ? String.valueOf(body.get("authUiMode")).toLowerCase(java.util.Locale.ROOT)
+                : "hosted";
+        out.put("authUiMode", "native".equals(mode) ? "native" : "hosted");
+        out.put("notes", body != null && body.get("notes") != null ? String.valueOf(body.get("notes")) : "");
+        out.put("clientUrls", mergeClientUrls(body != null ? body.get("clientUrls") : null));
+        Map<String, Boolean> checklist = defaultIntegrationChecklist();
+        if (body != null && body.get("checklist") instanceof Map<?, ?> raw) {
+            for (String key : checklist.keySet()) {
+                Object val = raw.get(key);
+                if (val instanceof Boolean b) {
+                    checklist.put(key, b);
+                }
+            }
+        }
+        out.put("checklist", checklist);
+        return out;
+    }
+
+    private static Map<String, String> mergeClientUrls(Object raw) {
+        Map<String, String> merged = defaultClientUrls();
+        if (!(raw instanceof Map<?, ?> map)) {
+            return merged;
+        }
+        for (String key : merged.keySet()) {
+            Object value = map.get(key);
+            if (value != null) {
+                merged.put(key, String.valueOf(value).trim());
+            }
+        }
+        return merged;
     }
 }

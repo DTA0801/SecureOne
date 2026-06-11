@@ -1,101 +1,253 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/Button";
+import { AdminRecipientsPicker } from "@/components/settings/AdminRecipientsPicker";
+import { EmailTemplatesSettings } from "@/components/settings/EmailTemplatesSettings";
+import { EmailTestPanel } from "@/components/settings/EmailTestPanel";
+import { RecipientGroupsEditor } from "@/components/settings/RecipientGroupsEditor";
+import { SmtpSettingsCard } from "@/components/settings/SmtpSettingsCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { FieldRow, Input } from "@/components/ui/Field";
-import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
-import { AdminRecipientsPicker } from "@/components/settings/AdminRecipientsPicker";
+import { Toggle } from "@/components/ui/Toggle";
 import {
   loadAdminRecipientOptionsAction,
+  loadApplicationSmtpAndTemplatesAction,
   loadNotificationsAction,
   saveNotificationsAction,
   type AdminRecipientOption,
   type RecipientUserOption,
 } from "@/lib/actions/settings";
-import { ensureApplicationPolicyScopes } from "@/lib/api/ensure-application-policy";
-import type { EmailSettings, NotificationSettings } from "@/lib/api/settings";
+import type {
+  EmailSettings,
+  EmailTemplatesMap,
+  NotificationSettings,
+  RecipientGroups,
+  SmtpSettings,
+} from "@/lib/api/settings";
+import {
+  getCachedNotificationsBundle,
+  loadNotificationsBundleDeduped,
+  patchCachedNotificationsBundle,
+  type NotificationsBundle,
+} from "@/lib/settings-notifications-cache";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-export function NotificationsSettings({ applicationId }: { applicationId?: string }) {
+const EMPTY_RECIPIENT_GROUPS: RecipientGroups = { security: [], operations: [] };
+
+function normalizeEmailFields(email: EmailSettings): EmailSettings {
+  return {
+    fromName: email.fromName ?? "",
+    fromAddress: email.fromAddress ?? "",
+    replyTo: email.replyTo ?? "",
+  };
+}
+
+function serializeNotificationsDraft(
+  notifications: NotificationSettings,
+  email: EmailSettings,
+  selectedEmails: string[],
+): string {
+  const payload = {
+    ...notifications,
+    adminRecipients: [...selectedEmails].sort(),
+  } as Record<string, unknown>;
+  delete payload.inheritsPlatformDefaults;
+  delete payload.scope;
+  delete payload.smtpConfigured;
+  return JSON.stringify({
+    notifications: payload,
+    email: normalizeEmailFields(email),
+  });
+}
+
+function applyBundle(bundle: NotificationsBundle) {
+  return {
+    notifications: bundle.notifications,
+    email: bundle.email,
+    smtp: bundle.smtp,
+    templates: bundle.templates,
+    emailTestUiEnabled: bundle.emailTestUiEnabled,
+    adminRecipients: bundle.adminRecipients,
+    adminOptions: bundle.adminOptions,
+    allUsers: bundle.allUsers,
+    errors: bundle.errors,
+    baseline: serializeNotificationsDraft(bundle.notifications, bundle.email, bundle.adminRecipients),
+  };
+}
+
+export function NotificationsSettings({
+  applicationId,
+  settingsReady = true,
+}: {
+  applicationId?: string;
+  /** When false (app exposure still loading), block edits but keep mounted to avoid reload loops. */
+  settingsReady?: boolean;
+}) {
   const { toast } = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [notifications, setNotifications] = useState<NotificationSettings>({});
   const [email, setEmail] = useState<EmailSettings>({});
+  const [smtp, setSmtp] = useState<SmtpSettings>({});
+  const [templates, setTemplates] = useState<EmailTemplatesMap>({});
+  const [emailTestUiEnabled, setEmailTestUiEnabled] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [adminOptions, setAdminOptions] = useState<AdminRecipientOption[]>([]);
   const [allUsers, setAllUsers] = useState<RecipientUserOption[]>([]);
-  const [testTo, setTestTo] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipAutoSave = useRef(true);
+  const baselineSnapshotRef = useRef<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const notificationsRef = useRef(notifications);
+  const emailRef = useRef(email);
+  const selectedEmailsRef = useRef(selectedEmails);
+  notificationsRef.current = notifications;
+  emailRef.current = email;
+  selectedEmailsRef.current = selectedEmails;
+
+  const recipientGroups = useMemo(
+    () => notifications.recipientGroups ?? EMPTY_RECIPIENT_GROUPS,
+    [notifications.recipientGroups],
+  );
 
   useEffect(() => {
+    const loadId = ++loadGenerationRef.current;
     let cancelled = false;
-    async function load() {
+
+    const cached = getCachedNotificationsBundle(applicationId);
+    if (cached) {
+      const applied = applyBundle(cached);
+      setNotifications(applied.notifications);
+      setEmail(applied.email);
+      setSmtp(applied.smtp);
+      setTemplates(applied.templates);
+      setEmailTestUiEnabled(applied.emailTestUiEnabled);
+      setSelectedEmails(applied.adminRecipients);
+      setAdminOptions(applied.adminOptions);
+      setAllUsers(applied.allUsers);
+      baselineSnapshotRef.current = applied.baseline;
+      if (applied.errors) setMessage(applied.errors);
+      setLoaded(true);
+      return;
+    }
+
+    async function fetchBundle(): Promise<NotificationsBundle> {
       if (applicationId) {
-        try {
-          await ensureApplicationPolicyScopes(applicationId, ["notifications", "email"]);
-        } catch (e) {
-          if (!cancelled) toast(e instanceof Error ? e.message : "Failed to prepare settings", "error");
-        }
+        const { ensureApplicationPolicyScopes } = await import("@/lib/api/ensure-application-policy");
+        await ensureApplicationPolicyScopes(applicationId, ["notifications", "email"]);
       }
       const recipientsPromise = applicationId
         ? Promise.resolve({
-          adminOptions: [] as AdminRecipientOption[],
-          allUsers: [] as RecipientUserOption[],
-          error: undefined as string | undefined,
+            adminOptions: [] as AdminRecipientOption[],
+            allUsers: [] as RecipientUserOption[],
+            error: undefined as string | undefined,
           })
         : loadAdminRecipientOptionsAction();
-      const [{ notifications: n, email: e, error }, { adminOptions: admins, allUsers: users, error: optionsError }] =
-        await Promise.all([loadNotificationsAction(applicationId), recipientsPromise]);
-      if (cancelled) return;
-      setNotifications(n);
-      setEmail(e);
-      setSelectedEmails((n.adminRecipients ?? []).map((x) => x.trim().toLowerCase()));
-      setAdminOptions(admins);
-      setAllUsers(users);
-      if (error || optionsError) {
-        const msg = [error, optionsError].filter(Boolean).join(" ");
-        setMessage(msg);
-        toast(msg, "error");
-      }
-      skipAutoSave.current = true;
-      setLoaded(true);
+      const smtpPromise = applicationId
+        ? loadApplicationSmtpAndTemplatesAction(applicationId)
+        : Promise.resolve({
+            smtp: {},
+            templates: {},
+            emailTestUiEnabled: false,
+            error: undefined as string | undefined,
+          });
+
+      const [
+        { notifications: n, email: e, error },
+        { adminOptions: admins, allUsers: users, error: optionsError },
+        { smtp: smtpLoaded, templates: templatesLoaded, emailTestUiEnabled: testUi, error: smtpError },
+      ] = await Promise.all([
+        loadNotificationsAction(applicationId),
+        recipientsPromise,
+        smtpPromise,
+      ]);
+
+      const adminRecipients = (n.adminRecipients ?? []).map((x) => x.trim().toLowerCase());
+      return {
+        notifications: n,
+        email: e,
+        smtp: smtpLoaded,
+        templates: templatesLoaded,
+        emailTestUiEnabled: testUi,
+        adminOptions: admins,
+        allUsers: users,
+        adminRecipients,
+        errors: [error, optionsError, smtpError].filter(Boolean).join(" "),
+      };
     }
+
+    async function load() {
+      try {
+        const bundle = await loadNotificationsBundleDeduped(applicationId, fetchBundle);
+        if (cancelled || loadId !== loadGenerationRef.current) return;
+
+        const applied = applyBundle(bundle);
+        setNotifications(applied.notifications);
+        setEmail(applied.email);
+        setSmtp(applied.smtp);
+        setTemplates(applied.templates);
+        setEmailTestUiEnabled(applied.emailTestUiEnabled);
+        setSelectedEmails(applied.adminRecipients);
+        setAdminOptions(applied.adminOptions);
+        setAllUsers(applied.allUsers);
+        baselineSnapshotRef.current = applied.baseline;
+        if (applied.errors) {
+          setMessage(applied.errors);
+          toastRef.current(applied.errors, "error");
+        }
+        setLoaded(true);
+      } catch (e) {
+        if (!cancelled && loadId === loadGenerationRef.current) {
+          toastRef.current(e instanceof Error ? e.message : "Failed to prepare settings", "error");
+        }
+      }
+    }
+
+    baselineSnapshotRef.current = null;
+    setLoaded(false);
     load();
     return () => {
       cancelled = true;
     };
-  }, [toast, applicationId]);
+  }, [applicationId]);
 
   const persist = useCallback(async () => {
     setSaving(true);
     const result = await saveNotificationsAction(
       {
-        notifications: { ...notifications, adminRecipients: selectedEmails },
-        email,
+        notifications: { ...notificationsRef.current, adminRecipients: selectedEmailsRef.current },
+        email: emailRef.current,
       },
       applicationId,
       applicationId ? { saveNotifications: true, saveEmail: true } : undefined,
     );
     if (result.ok) {
-      toast("Settings saved", "success");
+      const nextNotifications = { ...notificationsRef.current, adminRecipients: selectedEmailsRef.current };
+      const nextEmail = emailRef.current;
+      baselineSnapshotRef.current = serializeNotificationsDraft(
+        nextNotifications,
+        nextEmail,
+        selectedEmailsRef.current,
+      );
+      patchCachedNotificationsBundle(applicationId, {
+        notifications: nextNotifications,
+        email: nextEmail,
+      });
+      toastRef.current("Settings saved", "success");
     } else {
       const msg = result.error ?? "Save failed";
       setMessage(msg);
-      toast(msg, "error");
+      toastRef.current(msg, "error");
     }
     setSaving(false);
-  }, [notifications, email, selectedEmails, toast, applicationId]);
+  }, [applicationId]);
 
   useEffect(() => {
-    if (!loaded) return;
-    if (skipAutoSave.current) {
-      skipAutoSave.current = false;
-      return;
-    }
+    if (!loaded || !settingsReady || baselineSnapshotRef.current === null) return;
+    const snapshot = serializeNotificationsDraft(notifications, email, selectedEmails);
+    if (snapshot === baselineSnapshotRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       persist();
@@ -103,22 +255,9 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [notifications, email, selectedEmails, loaded, persist]);
+  }, [notifications, email, selectedEmails, loaded, settingsReady, persist]);
 
-  async function sendTest() {
-    setMessage(null);
-    try {
-      const { sendTestEmailAction } = await import("@/lib/actions/settings");
-      const result = await sendTestEmailAction(testTo);
-      const msg = result.ok
-        ? `Test email sent to ${testTo}. Check MailHog at http://localhost:8025 if using dev SMTP.`
-        : (result.error ?? "Send failed");
-      setMessage(msg);
-      toast(msg, result.ok ? "success" : "error");
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Send failed");
-    }
-  }
+  const smtpReady = notifications.smtpConfigured || smtp.smtpConfigured || smtp.passwordConfigured;
 
   return (
     <div className="space-y-6">
@@ -130,12 +269,16 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
         <CardHeader
           title="Notification channels"
           description={
-            notifications.smtpConfigured
-              ? "SMTP is configured. Changes auto-save to the database."
-              : "SMTP not detected — start MailHog (docker compose) or set SECUREONE_SMTP_HOST."
+            applicationId
+              ? smtpReady
+                ? "SMTP is configured for this application. Changes auto-save."
+                : "Configure SMTP below. Gmail: smtp.gmail.com, port 465, SSL + App Password."
+              : "Platform defaults for notification toggles. SMTP is configured per application."
           }
         />
-        <ul className={`divide-y divide-ui ${!loaded ? "pointer-events-none opacity-60" : ""}`}>
+        <ul
+          className={`divide-y divide-ui ${!loaded || !settingsReady ? "pointer-events-none opacity-60" : ""}`}
+        >
           <SettingRow
             label="Email notifications (admin)"
             hint="Platform alerts to admin recipients below"
@@ -168,19 +311,28 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
           />
         </ul>
         <div className="space-y-4 border-t border-ui p-5">
-          <FieldRow
-            label="Admin recipients"
-            hint="Expand to pick admin users or add any email"
-          >
+          <FieldRow label="Admin recipients" hint="Expand to pick admin users or add any email">
             <AdminRecipientsPicker
               adminOptions={adminOptions}
               allUsers={allUsers}
               selectedEmails={selectedEmails}
               onChange={setSelectedEmails}
-              disabled={!loaded}
+              disabled={!loaded || !settingsReady}
             />
           </FieldRow>
+          {applicationId && (
+            <FieldRow label="Recipient groups" hint="Named lists merged into admin alert delivery">
+              <RecipientGroupsEditor
+                groups={recipientGroups}
+                onChange={(nextGroups) =>
+                  setNotifications((prev) => ({ ...prev, recipientGroups: nextGroups }))
+                }
+                disabled={!loaded || !settingsReady}
+              />
+            </FieldRow>
+          )}
         </div>
+        {saving && <p className="px-5 pb-4 text-xs text-muted">Saving…</p>}
       </Card>
 
       <Card padded={false}>
@@ -207,25 +359,51 @@ export function NotificationsSettings({ applicationId }: { applicationId?: strin
         </div>
       </Card>
 
-      <Card padded={false}>
-        <CardHeader title="Send test email" description="Verify SMTP (does not change saved settings)" />
-        <div className="flex flex-wrap items-end gap-3 p-5">
-          <div className="min-w-[240px] flex-1">
-            <FieldRow label="Recipient">
-              <Input
-                type="email"
-                value={testTo}
-                onChange={(e) => setTestTo(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </FieldRow>
-          </div>
-          <Button onClick={sendTest} disabled={!testTo}>
-            Send test
-          </Button>
-          {saving && <span className="text-xs text-muted">Saving…</span>}
-        </div>
-      </Card>
+      {applicationId && (
+        <>
+          <SmtpSettingsCard
+            applicationId={applicationId}
+            smtp={smtp}
+            onSaved={(next) => {
+              setSmtp(next);
+              setNotifications((prev) => {
+                const updated = { ...prev, smtpConfigured: next.smtpConfigured };
+                patchCachedNotificationsBundle(applicationId, { smtp: next, notifications: updated });
+                return updated;
+              });
+            }}
+          />
+          <EmailTemplatesSettings
+            applicationId={applicationId}
+            templates={templates}
+            recipientGroups={recipientGroups}
+            adminOptions={adminOptions}
+            allUsers={allUsers}
+            onSaved={(next) => {
+              setTemplates(next);
+              patchCachedNotificationsBundle(applicationId, { templates: next });
+            }}
+          />
+          {emailTestUiEnabled && (
+            <EmailTestPanel
+              applicationId={applicationId}
+              templates={templates}
+              recipientGroups={recipientGroups}
+              adminOptions={adminOptions}
+              allUsers={allUsers}
+            />
+          )
+          // : (
+          //   <Card padded={false}>
+          //     <CardHeader
+          //       title="Send test email"
+          //       description='Hidden — open the "Feature flags" tab above, scroll to Notifications, and turn on "Email test console".'
+          //     />
+          //   </Card>
+          // )
+          }
+        </>
+      )}
     </div>
   );
 }

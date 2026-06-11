@@ -1,4 +1,5 @@
-import { apiFetch, appScopeHeaders } from "./client";
+import { appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { LoginEvent } from "@/lib/types";
 
 type SessionDto = {
@@ -11,6 +12,7 @@ type SessionDto = {
   device: string;
   method: string;
   result: string;
+  sessionId?: string | null;
 };
 
 export async function listLoginEvents(opts?: {
@@ -37,5 +39,6 @@ export async function listLoginEvents(opts?: {
     device: r.device,
     method: r.method as LoginEvent["method"],
     result: r.result as LoginEvent["result"],
+    sessionId: r.sessionId ?? null,
   }));
 }

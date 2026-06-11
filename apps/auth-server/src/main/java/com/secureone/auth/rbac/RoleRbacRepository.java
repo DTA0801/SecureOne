@@ -101,6 +101,13 @@ public class RoleRbacRepository {
         return permissionIds.size();
     }
 
+    public Set<UUID> collectEffectivePermissionIds(UUID roleId) {
+        Set<UUID> permissionIds = new HashSet<>();
+        Set<UUID> visitedRoles = new HashSet<>();
+        collectEffectivePermissions(roleId, permissionIds, visitedRoles);
+        return permissionIds;
+    }
+
     private void collectEffectivePermissions(UUID roleId, Set<UUID> permissionIds, Set<UUID> visitedRoles) {
         if (!visitedRoles.add(roleId)) {
             return;

@@ -24,8 +24,10 @@ import com.secureone.auth.rbac.RoleRepository;
 import com.secureone.auth.rbac.UserRole;
 import com.secureone.auth.rbac.UserRoleRepository;
 import com.secureone.auth.tenant.TenantRepository;
+import com.secureone.auth.tenant.TenantUserRosterService;
 import com.secureone.auth.user.UserAccount;
 import com.secureone.auth.user.UserAccountRepository;
+import com.secureone.auth.user.UserInviteContext;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -51,6 +53,7 @@ public class UserAdminService {
     private final ApplicationRepository applicationRepository;
     private final UserApplicationRepository userApplications;
     private final ApplicationSettingsService applicationSettings;
+    private final TenantUserRosterService tenantUserRoster;
 
     public UserAdminService(
             UserAccountRepository userRepository,
@@ -64,7 +67,8 @@ public class UserAdminService {
             UserPasswordService passwords,
             ApplicationRepository applicationRepository,
             UserApplicationRepository userApplications,
-            ApplicationSettingsService applicationSettings) {
+            ApplicationSettingsService applicationSettings,
+            TenantUserRosterService tenantUserRoster) {
         this.userRepository = userRepository;
         this.tenantRepository = tenantRepository;
         this.userRoleRepository = userRoleRepository;
@@ -77,6 +81,7 @@ public class UserAdminService {
         this.applicationRepository = applicationRepository;
         this.userApplications = userApplications;
         this.applicationSettings = applicationSettings;
+        this.tenantUserRoster = tenantUserRoster;
     }
 
     @Transactional(readOnly = true)
@@ -194,26 +199,33 @@ public class UserAdminService {
     }
 
     public UserResponse create(UserCreateRequest request) {
-        requireTenant(request.tenantId());
+        UUID tenantId = resolveTenantId(request);
+        requireTenant(tenantId);
         String email = request.email().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.findByTenantIdAndEmail(request.tenantId(), email).isPresent()) {
+        if (userRepository.findByTenantIdAndEmail(tenantId, email).isPresent()) {
             throw new ConflictException("User email already exists in tenant: " + email);
         }
         UserAccount user = new UserAccount();
-        user.setTenantId(request.tenantId());
+        user.setTenantId(tenantId);
         user.setEmail(email);
         user.setUsername(resolveUsername(request.username(), email));
         user.setDisplayName(displayName(request.firstName(), request.lastName()));
-        user.setStatus(normalizeStatus(request.status(), "PENDING"));
-        user.setEmailVerified(false);
+        String status = normalizeStatus(request.status(), "PENDING");
+        user.setStatus(status);
+        user.setEmailVerified("ACTIVE".equalsIgnoreCase(status));
         user.setType("USER");
-        userRepository.save(user);
+        if (request.applicationId() != null) {
+            UserInviteContext.markPendingApplicationInvite(user, request.applicationId());
+        }
+        userRepository.saveAndFlush(user);
         syncUserRoles(user.getId(), request.roleIds());
         if (request.applicationId() != null) {
             grantApplicationAccess(request.applicationId(), user.getId());
+        } else {
+            tenantUserRoster.addToRoster(tenantId, user.getId());
         }
         auditService.record(user.getTenantId(), "admin", "user.created", "user_account", user.getId(), user.getEmail(), true);
-        accountNotifications.onUserInvited(user);
+        accountNotifications.onUserInvited(request.applicationId(), user);
         return toResponse(user);
     }
 
@@ -238,36 +250,120 @@ public class UserAdminService {
         auditService.record(
                 user.getTenantId(), "admin", "user.password_set", "user_account", user.getId(), user.getEmail(), true);
         emailService.sendAdminSecurityAlert(
-                "Password set by admin", "An administrator set a new password for " + user.getEmail() + ".");
+                applicationId,
+                user,
+                "Password set by admin",
+                "An administrator set a new password for " + user.getEmail() + ".");
     }
 
     public void sendPasswordResetEmail(UUID id) {
+        sendPasswordResetEmail(id, null);
+    }
+
+    public void sendPasswordResetEmail(UUID id, UUID applicationId) {
         UserAccount user = require(id);
-        accountNotifications.sendPasswordResetEmail(user, "admin");
+        if (applicationId != null) {
+            requireUserInApplication(user, applicationId);
+        }
+        accountNotifications.sendPasswordResetEmail(applicationId, user, "admin");
         auditService.record(
                 user.getTenantId(), "admin", "user.password_reset_sent", "user_account", user.getId(), user.getEmail(), true);
     }
 
-    public void resendVerificationEmail(UUID id) {
+    public void adminRemovePassword(UUID id) {
+        adminRemovePassword(id, null);
+    }
+
+    public void adminRemovePassword(UUID id, UUID applicationId) {
         UserAccount user = require(id);
-        accountNotifications.sendVerificationEmail(user, "admin");
+        if (applicationId != null) {
+            requireUserInApplication(user, applicationId);
+        }
+        if (!passwords.hasPassword(user.getId())) {
+            return;
+        }
+        passwords.removePassword(user.getId());
         auditService.record(
-                user.getTenantId(), "admin", "user.verification_resent", "user_account", user.getId(), user.getEmail(), true);
+                user.getTenantId(), "admin", "user.password_removed", "user_account", user.getId(), user.getEmail(), true);
+        emailService.sendAdminSecurityAlert(
+                applicationId,
+                user,
+                "Password removed",
+                "An administrator removed the password credential for " + user.getEmail() + ".");
+    }
+
+    public void sendSetPasswordInviteEmail(UUID id) {
+        sendSetPasswordInviteEmail(id, null);
+    }
+
+    public void sendSetPasswordInviteEmail(UUID id, UUID applicationId) {
+        UserAccount user = require(id);
+        if (applicationId != null) {
+            requireUserInApplication(user, applicationId);
+        }
+        accountNotifications.sendSetPasswordEmail(applicationId, user);
+        auditService.record(
+                user.getTenantId(),
+                "admin",
+                "user.set_password_invite_sent",
+                "user_account",
+                user.getId(),
+                user.getEmail(),
+                true);
+    }
+
+    public void resendVerificationEmail(UUID id) {
+        resendVerificationEmail(id, null);
+    }
+
+    public void resendVerificationEmail(UUID id, UUID applicationId) {
+        UserAccount user = require(id);
+        if (applicationId != null) {
+            requireUserInApplication(user, applicationId);
+        }
+        accountNotifications.sendVerificationEmail(applicationId, user, "admin");
+        recordUserAudit(
+                user,
+                applicationId,
+                "user.verification_resent",
+                true);
     }
 
     public UserResponse markEmailVerified(UUID id) {
+        return setEmailVerified(id, true, null);
+    }
+
+    public UserResponse markEmailVerified(UUID id, UUID applicationId) {
+        return setEmailVerified(id, true, applicationId);
+    }
+
+    public UserResponse setEmailVerified(UUID id, boolean verified, UUID applicationId) {
         UserAccount user = require(id);
-        accountNotifications.adminMarkEmailVerified(id);
-        auditService.record(
-                user.getTenantId(), "admin", "user.email_verified", "user_account", user.getId(), user.getEmail(), true);
-        return toResponse(require(id));
+        if (applicationId != null) {
+            requireUserInApplication(user, applicationId);
+        }
+        if (verified) {
+            accountNotifications.adminMarkEmailVerified(id, applicationId);
+            recordUserAudit(user, applicationId, "user.email_verified", true);
+        } else {
+            user.setEmailVerified(false);
+            userRepository.save(user);
+            recordUserAudit(user, applicationId, "user.email_unverified", true);
+            emailService.sendAdminSecurityAlert(
+                    applicationId,
+                    user,
+                    "Email marked unverified",
+                    "Admin cleared email verification for " + user.getEmail() + ".");
+        }
+        UserAccount updated = require(id);
+        return toResponse(updated, effectiveAuthMethods(updated, applicationId));
     }
 
     public void resetMfa(UUID id) {
         UserAccount user = require(id);
         mfaFactors.deleteByUserId(user.getId());
         auditService.record(user.getTenantId(), "admin", "user.mfa_reset", "user_account", user.getId(), user.getEmail(), true);
-        emailService.sendAdminSecurityAlert("MFA reset", "Admin cleared MFA factors for " + user.getEmail() + ".");
+        emailService.sendAdminSecurityAlert(null, user, "MFA reset", "Admin cleared MFA factors for " + user.getEmail() + ".");
     }
 
     public UserResponse update(UUID id, UserUpdateRequest request) {
@@ -281,31 +377,88 @@ public class UserAdminService {
         user.setEmail(email);
         user.setUsername(resolveUsername(request.username(), email));
         user.setDisplayName(displayName(request.firstName(), request.lastName()));
-        user.setStatus(normalizeStatus(request.status(), user.getStatus()));
+        String previousStatus = user.getStatus();
+        String nextStatus = normalizeStatus(request.status(), user.getStatus());
+        user.setStatus(nextStatus);
+        userRepository.save(user);
+        notifyStatusChange(user, previousStatus, nextStatus, null);
+        if (request.emailVerified() != null) {
+            boolean verified = Boolean.TRUE.equals(request.emailVerified());
+            if (verified != require(id).isEmailVerified()) {
+                setEmailVerified(id, verified, null);
+            }
+        }
         if (request.roleIds() != null) {
             syncUserRoles(user.getId(), request.roleIds());
         }
-        auditService.record(user.getTenantId(), "admin", "user.updated", "user_account", user.getId(), user.getEmail(), true);
-        return toResponse(user);
+        UserAccount updated = require(id);
+        auditService.record(
+                updated.getTenantId(), "admin", "user.updated", "user_account", updated.getId(), updated.getEmail(), true);
+        return toResponse(updated);
     }
 
     public void delete(UUID id) {
         UserAccount user = require(id);
+        userApplications.deleteByUserId(id);
+        userRoleRepository.deleteByUserId(id);
+        mfaFactors.deleteByUserId(id);
+        passwords.removePassword(id);
         userRepository.delete(user);
         auditService.record(user.getTenantId(), "admin", "user.deleted", "user_account", id, user.getEmail(), true);
     }
 
     public UserResponse setStatus(UUID id, String status) {
         UserAccount user = require(id);
-        user.setStatus(normalizeStatus(status, user.getStatus()));
+        String previousStatus = user.getStatus();
+        String nextStatus = normalizeStatus(status, user.getStatus());
+        user.setStatus(nextStatus);
+        userRepository.save(user);
         auditService.record(user.getTenantId(), "admin", "user.status_changed", "user_account", user.getId(), user.getEmail(), true);
+        notifyStatusChange(user, previousStatus, nextStatus, null);
         return toResponse(user);
+    }
+
+    private void notifyStatusChange(
+            UserAccount user, String previousStatus, String nextStatus, UUID applicationId) {
+        if (previousStatus != null && previousStatus.equalsIgnoreCase(nextStatus)) {
+            return;
+        }
+        if ("SUSPENDED".equalsIgnoreCase(nextStatus)) {
+            emailService.sendAccountSuspended(applicationId, user);
+            emailService.sendAdminSecurityAlert(
+                    applicationId,
+                    user,
+                    "Account suspended",
+                    "Administrator suspended the account for " + user.getEmail() + ".");
+            return;
+        }
+        if ("SUSPENDED".equalsIgnoreCase(previousStatus) && "ACTIVE".equalsIgnoreCase(nextStatus)) {
+            emailService.sendAccountReactivated(applicationId, user);
+            emailService.sendAdminSecurityAlert(
+                    applicationId,
+                    user,
+                    "Account reactivated",
+                    "Administrator reactivated the account for " + user.getEmail() + ".");
+        }
     }
 
     private UserAccount require(UUID id) {
         return userRepository
                 .findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
+    }
+
+    private UUID resolveTenantId(UserCreateRequest request) {
+        if (request.tenantId() != null) {
+            return request.tenantId();
+        }
+        if (request.applicationId() != null) {
+            return applicationRepository
+                    .findById(request.applicationId())
+                    .map(app -> app.getTenantId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Application not found: " + request.applicationId()));
+        }
+        throw new IllegalArgumentException("tenantId or applicationId is required");
     }
 
     private void requireTenant(UUID tenantId) {
@@ -327,6 +480,37 @@ public class UserAdminService {
     private void requireApplication(UUID applicationId) {
         if (!applicationRepository.existsById(applicationId)) {
             throw new ResourceNotFoundException("Application not found: " + applicationId);
+        }
+    }
+
+    private void requireUserInApplication(UserAccount user, UUID applicationId) {
+        requireApplication(applicationId);
+        var app = applicationRepository
+                .findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found: " + applicationId));
+        if (!user.getTenantId().equals(app.getTenantId())) {
+            throw new IllegalArgumentException("User must belong to the same tenant as the application");
+        }
+        if (!userApplications.existsByUserIdAndApplicationId(user.getId(), applicationId)) {
+            throw new ResourceNotFoundException("User is not a member of this application");
+        }
+    }
+
+    private void recordUserAudit(
+            UserAccount user, UUID applicationId, String action, boolean success) {
+        if (applicationId != null) {
+            auditService.record(
+                    user.getTenantId(),
+                    applicationId,
+                    "admin",
+                    action,
+                    "user_account",
+                    user.getId(),
+                    user.getEmail(),
+                    success);
+        } else {
+            auditService.record(
+                    user.getTenantId(), "admin", action, "user_account", user.getId(), user.getEmail(), success);
         }
     }
 
@@ -385,8 +569,15 @@ public class UserAdminService {
             UserApplication link = new UserApplication();
             link.setUserId(userId);
             link.setApplicationId(applicationId);
-            userApplications.save(link);
+            userApplications.saveAndFlush(link);
         }
+        userRepository
+                .findById(userId)
+                .ifPresent(
+                        u -> {
+                            UserInviteContext.clearPendingApplicationInvite(u);
+                            userRepository.save(u);
+                        });
     }
 
     private void syncUserRoles(UUID userId, List<UUID> roleIds) {

@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import { fetchApplicationFeatureFlags } from "@/lib/api/application-settings";
 import {
   exportUsersCsv,
   importUsersFile,
@@ -11,6 +12,8 @@ import {
   type UserDirectorySettings,
   type UserDirectorySourceKey,
 } from "@/lib/api/user-directory";
+import { normalizeFeatureFlags } from "@/lib/auth-settings-normalize";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export function UserImportExportMenu({
   applicationId,
@@ -24,6 +27,19 @@ export function UserImportExportMenu({
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [importSource, setImportSource] = useState<UserDirectorySourceKey>("csv");
+  const [ldapFeatureEnabled, setLdapFeatureEnabled] = useState(false);
+
+  useEffect(() => {
+    fetchApplicationFeatureFlags(applicationId)
+      .then((raw) => setLdapFeatureEnabled(isFeatureEnabled(normalizeFeatureFlags(raw), "ldap")))
+      .catch(() => setLdapFeatureEnabled(false));
+  }, [applicationId]);
+
+  useEffect(() => {
+    if (importSource === "ldap" && !ldapFeatureEnabled) {
+      setImportSource("csv");
+    }
+  }, [importSource, ldapFeatureEnabled]);
 
   if (!directory) return null;
 
@@ -83,7 +99,9 @@ export function UserImportExportMenu({
     }
   }
 
-  const enabledSources = (["csv", "excel", "ldap"] as const).filter((k) => sources[k]?.enabled);
+  const enabledSources = (["csv", "excel", "ldap"] as const).filter(
+    (k) => sources[k]?.enabled && (k !== "ldap" || ldapFeatureEnabled),
+  );
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -109,7 +127,7 @@ export function UserImportExportMenu({
             >
               {sources.csv?.enabled && <option value="csv">CSV</option>}
               {sources.excel?.enabled && <option value="excel">Excel (CSV)</option>}
-              {sources.ldap?.enabled && <option value="ldap">LDAP</option>}
+              {sources.ldap?.enabled && ldapFeatureEnabled && <option value="ldap">LDAP</option>}
             </select>
           )}
           {importSource !== "ldap" ? (

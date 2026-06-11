@@ -1,4 +1,5 @@
-import { apiFetch, appScopeHeaders } from "./client";
+import { appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { AuditEvent } from "@/lib/types";
 
 type AuditDto = {

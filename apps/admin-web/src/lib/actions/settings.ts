@@ -8,9 +8,12 @@ import {
   saveEmailSettings,
   saveNotificationSettings,
   type EmailSettings,
+  type EmailTemplatesMap,
   type NotificationSettings,
+  type SmtpSettings,
+  type TestEmailRequest,
 } from "@/lib/api/settings";
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/http";
 import { listAdminUsers, listUsers } from "@/lib/api/users";
 import { listRoles } from "@/lib/api/roles";
 import type { UiPreferences } from "@/lib/theme/types";
@@ -31,7 +34,7 @@ export type RecipientUserOption = {
 function formatSettingsError(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 404) {
-      return "Auth server is missing settings API — restart apps/auth-server (./gradlew bootRun).";
+      return "Auth server is running an old build — stop it and restart from apps/auth-server (./gradlew bootRun) so application SMTP/template APIs are available.";
     }
     return e.message;
   }
@@ -137,13 +140,110 @@ export async function loadNotificationsAction(applicationId?: string): Promise<{
   }
 }
 
-export async function sendTestEmailAction(to: string): Promise<{ ok: boolean; error?: string }> {
+export async function loadApplicationSmtpAndTemplatesAction(applicationId: string): Promise<{
+  smtp: SmtpSettings;
+  templates: EmailTemplatesMap;
+  emailTestUiEnabled: boolean;
+  error?: string;
+}> {
+  const {
+    fetchApplicationSmtp,
+    fetchApplicationEmailTemplates,
+    fetchApplicationFeatureFlags,
+  } = await import("@/lib/api/application-settings");
+  const { normalizeFeatureFlags } = await import("@/lib/auth-settings-normalize");
+
+  let smtp: SmtpSettings = {};
+  let templates: EmailTemplatesMap = {};
+  let emailTestUiEnabled = true;
+  const errors: string[] = [];
+
   try {
-    const { apiFetch } = await import("@/lib/api/client");
-    await apiFetch("/api/admin/v1/settings/email/test", {
-      method: "POST",
-      body: JSON.stringify({ to }),
-    });
+    smtp = await fetchApplicationSmtp(applicationId);
+  } catch (e) {
+    errors.push(formatSettingsError(e));
+  }
+
+  try {
+    templates = await fetchApplicationEmailTemplates(applicationId);
+  } catch (e) {
+    errors.push(formatSettingsError(e));
+  }
+
+  try {
+    const flags = normalizeFeatureFlags(await fetchApplicationFeatureFlags(applicationId));
+    const testFlag = flags.find((f) => f.key === "notification_email_test_ui");
+    emailTestUiEnabled = testFlag ? testFlag.enabled : true;
+  } catch {
+    emailTestUiEnabled = true;
+  }
+
+  return {
+    smtp,
+    templates,
+    emailTestUiEnabled,
+    error: errors.length ? errors.join(" ") : undefined,
+  };
+}
+
+export async function saveSmtpAction(
+  applicationId: string,
+  body: SmtpSettings,
+): Promise<{ ok: boolean; smtp?: SmtpSettings; error?: string }> {
+  try {
+    const { saveApplicationSmtp } = await import("@/lib/api/application-settings");
+    const smtp = await saveApplicationSmtp(applicationId, body);
+    return { ok: true, smtp };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function saveEmailTemplatesAction(
+  applicationId: string,
+  body: EmailTemplatesMap,
+): Promise<{ ok: boolean; templates?: EmailTemplatesMap; error?: string }> {
+  try {
+    const { saveApplicationEmailTemplates } = await import("@/lib/api/application-settings");
+    const templates = await saveApplicationEmailTemplates(applicationId, body);
+    return { ok: true, templates };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function loadEmailTemplateDefaultsAction(
+  applicationId: string,
+): Promise<{ ok: boolean; templates?: EmailTemplatesMap; error?: string }> {
+  try {
+    const { fetchApplicationEmailTemplateDefaults } = await import("@/lib/api/application-settings");
+    const templates = await fetchApplicationEmailTemplateDefaults(applicationId);
+    return { ok: true, templates };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function resetEmailTemplateAction(
+  applicationId: string,
+  templateKey: string,
+): Promise<{ ok: boolean; templates?: EmailTemplatesMap; error?: string }> {
+  try {
+    const { resetApplicationEmailTemplate } = await import("@/lib/api/application-settings");
+    const templates = await resetApplicationEmailTemplate(applicationId, templateKey);
+    return { ok: true, templates };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function sendTestEmailAction(
+  applicationId: string,
+  body: TestEmailRequest,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { sendApplicationTestEmail } = await import("@/lib/api/application-settings");
+    await sendApplicationTestEmail(applicationId, body);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: formatSettingsError(e) };

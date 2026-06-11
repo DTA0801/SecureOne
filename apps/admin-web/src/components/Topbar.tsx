@@ -1,24 +1,51 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { initials } from "@/lib/format";
 import { ApplicationSelector } from "./ApplicationSelector";
-import { applicationIdFromPath } from "@/lib/app-routes";
-import { usePathname } from "next/navigation";
+import { OperatorProfileModal } from "./profile/OperatorProfileModal";
+import { useAdminContext } from "./AdminContextProvider";
 import type { ApplicationContextItem } from "@/lib/api/context";
 
-const ADMIN_NAME = "Sarah Chen";
-const ADMIN_EMAIL = "sarah.chen@acme.com";
+export function Topbar({
+  applications,
+  activeApplicationId,
+  inAppWorkspace,
+  onApplicationChange,
+}: {
+  applications: ApplicationContextItem[];
+  activeApplicationId?: string;
+  inAppWorkspace: boolean;
+  onApplicationChange?: (applicationId: string) => void;
+}) {
+  const router = useRouter();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const ctx = useAdminContext();
+  const displayName = ctx.displayName || ctx.principal || "Operator";
+  const subtitle =
+    ctx.platformSuperAdmin
+      ? "Platform super admin"
+      : ctx.operatorTier === "tenant_super"
+        ? "Tenant super admin"
+        : ctx.operatorTier === "tenant"
+          ? "Tenant admin"
+          : "Application admin";
 
-export function Topbar({ applications }: { applications: ApplicationContextItem[] }) {
-  const pathname = usePathname();
-  const currentApplicationId = applicationIdFromPath(pathname) ?? applications[0]?.id;
+  async function signOut() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-4 border-b border-ui bg-[var(--ui-surface)]/85 px-8 backdrop-blur">
       <div className="flex min-w-0 flex-1 items-center gap-4">
         <ApplicationSelector
           applications={applications}
-          currentApplicationId={currentApplicationId}
+          currentApplicationId={activeApplicationId}
+          inAppWorkspace={inAppWorkspace}
+          onApplicationChange={onApplicationChange}
         />
         <div className="relative hidden max-w-xs flex-1 md:block">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint">
@@ -32,14 +59,29 @@ export function Topbar({ applications }: { applications: ApplicationContextItem[
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted text-xs font-semibold text-brand">
-          {initials(ADMIN_NAME)}
-        </div>
-        <div className="hidden leading-tight sm:block">
-          <p className="text-xs font-medium text-[var(--ui-text)]">{ADMIN_NAME}</p>
-          <p className="text-[11px] text-faint">{ADMIN_EMAIL}</p>
-        </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="hidden rounded-lg border border-ui px-2.5 py-1.5 text-xs text-soft hover:bg-ui-elevated sm:block"
+        >
+          Sign out
+        </button>
+        <button
+          type="button"
+          onClick={() => setProfileOpen(true)}
+          className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-ui-elevated"
+          title="My profile"
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-muted text-xs font-semibold text-brand">
+            {initials(displayName)}
+          </div>
+          <div className="hidden leading-tight sm:block">
+            <p className="text-xs font-medium text-[var(--ui-text)]">{displayName}</p>
+            <p className="text-[11px] text-faint">{subtitle}</p>
+          </div>
+        </button>
+        <OperatorProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       </div>
     </header>
   );

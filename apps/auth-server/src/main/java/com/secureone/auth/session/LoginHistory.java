@@ -42,6 +42,9 @@ public class LoginHistory {
     @Column(name = "device")
     private String device;
 
+    @Column(name = "session_id", length = 128)
+    private String sessionId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "geo", columnDefinition = "jsonb")
     private Map<String, Object> geo = new HashMap<>();

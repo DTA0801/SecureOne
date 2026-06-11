@@ -146,6 +146,23 @@ export type LoginEvent = {
   device: string;
   method: "password" | "passkey" | "totp" | "social";
   result: "success" | "failure" | "mfa_required";
+  sessionId?: string | null;
+};
+
+export type ApplicationLogEntry = {
+  id: string;
+  timestamp: string;
+  level: "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR";
+  logger: string;
+  message: string;
+  sessionId: string | null;
+  requestId: string | null;
+  principal: string | null;
+  tenantId: string | null;
+  applicationId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown>;
 };
 
 export type AuthMethod = {
@@ -163,8 +180,13 @@ export type FeatureFlag = {
   description: string;
   enabled: boolean;
   rollout: number;
-  /** Grouping for admin UI: oauth, identity, provisioning */
+  /** Grouping for admin UI: oauth, identity, notifications, provisioning */
   category?: string;
+};
+
+export type PasswordRequirement = {
+  key: string;
+  label: string;
 };
 
 export type PasswordPolicy = {
@@ -175,4 +197,5 @@ export type PasswordPolicy = {
   expiryDays: number;
   historyCount: number;
   hashAlgorithm: string;
+  requirements?: PasswordRequirement[];
 };

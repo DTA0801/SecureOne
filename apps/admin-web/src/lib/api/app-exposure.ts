@@ -1,4 +1,5 @@
-import { apiFetch } from "./client";
+import { browserApiFetch as apiFetch } from "./browser-client";
+import { appScopeHeaders } from "./http";
 
 export type AppSettingsExposure = Record<string, boolean>;
 
@@ -14,8 +15,7 @@ export async function saveAppExposure(body: AppSettingsExposure): Promise<AppSet
 }
 
 export async function fetchApplicationExposure(appId: string): Promise<AppSettingsExposure> {
-  const { apiFetch: fetch, appScopeHeaders } = await import("./client");
-  return fetch<AppSettingsExposure>(
+  return apiFetch<AppSettingsExposure>(
     `/api/admin/v1/applications/${appId}/settings/exposure`,
     { headers: appScopeHeaders(appId) },
   );

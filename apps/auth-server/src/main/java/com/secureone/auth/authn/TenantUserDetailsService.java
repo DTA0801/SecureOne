@@ -46,7 +46,12 @@ public class TenantUserDetailsService implements UserDetailsService {
         if (!"ACTIVE".equalsIgnoreCase(account.getStatus())) {
             throw new UsernameNotFoundException("Account is not active");
         }
-        boolean hasPassword = credentials.findByUserIdAndCurrentTrue(account.getId()).isPresent();
+        if (!account.isEmailVerified()) {
+            throw new UsernameNotFoundException(
+                    "Email address is not verified. Open the link from your inbox or ask an administrator to verify your account.");
+        }
+        boolean hasPassword =
+                credentials.findFirstByUserIdAndCurrentTrueOrderByCreatedAtDescIdDesc(account.getId()).isPresent();
         return User.withUsername(username)
                 .password(hasPassword ? "{noop}placeholder" : "")
                 .roles("USER")

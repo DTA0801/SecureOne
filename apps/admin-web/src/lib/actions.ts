@@ -24,6 +24,7 @@ import {
   createUserApi,
   deleteUserApi,
   markUserEmailVerifiedApi,
+  setUserEmailVerifiedApi,
   resendUserVerificationEmailApi,
   deleteUserMfaFactorApi,
   resetUserMfaApi,
@@ -208,14 +209,21 @@ export async function applicationDeleteAction(fd: FormData): Promise<void> {
 
 // ---- Users ----
 
-function revalidateUserPaths(applicationId?: string, userId?: string) {
+function revalidateUserPaths(paths: {
+  tenantId?: string;
+  applicationId?: string;
+  userId?: string;
+} = {}) {
   revalidatePath("/users");
   revalidatePath("/tenants");
-  if (applicationId) {
-    revalidatePath(`/app/${applicationId}/users`);
+  if (paths.tenantId) {
+    revalidatePath(`/tenants/${paths.tenantId}`);
   }
-  if (userId) {
-    revalidatePath(`/users/${userId}`);
+  if (paths.applicationId) {
+    revalidatePath(`/app/${paths.applicationId}/users`);
+  }
+  if (paths.userId) {
+    revalidatePath(`/users/${paths.userId}`);
   }
 }
 
@@ -239,7 +247,7 @@ export async function userCreateAction(_prev: FormState, fd: FormData): Promise<
       status: str(fd, "status") || "invited",
       roleIds: list(fd, "roleIds"),
     });
-    revalidateUserPaths(applicationId, created.id);
+    revalidateUserPaths({ tenantId, applicationId, userId: created.id });
     return ok({ createdUserId: created.id });
   } catch (e) {
     return actionError(e);
@@ -251,6 +259,8 @@ export async function userUpdateAction(_prev: FormState, fd: FormData): Promise<
   if (!id) return fail("Missing user id.");
   const email = str(fd, "email");
   if (!email) return fail("Email is required.");
+  const applicationId = str(fd, "applicationId");
+  const emailVerified = fd.get("emailVerified") === "true";
   try {
     await updateUserApi(id, {
       email,
@@ -258,10 +268,12 @@ export async function userUpdateAction(_prev: FormState, fd: FormData): Promise<
       firstName: str(fd, "firstName"),
       lastName: str(fd, "lastName"),
       status: str(fd, "status") || "active",
+      emailVerified,
       roleIds: list(fd, "roleIds"),
     });
-    const applicationId = str(fd, "applicationId");
-    revalidateUserPaths(applicationId, id);
+    // Dedicated endpoint (same as Security tab) — PUT emailVerified alone is easy to miss on older servers.
+    await setUserEmailVerifiedApi(id, emailVerified, applicationId || undefined);
+    revalidateUserPaths({ applicationId, userId: id });
     return ok();
   } catch (e) {
     return actionError(e);
@@ -272,7 +284,7 @@ export async function userDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const applicationId = str(fd, "applicationId");
   if (id) await deleteUserApi(id);
-  revalidateUserPaths(applicationId);
+  revalidateUserPaths({ applicationId });
   if (applicationId) {
     redirect(`/app/${applicationId}/users`);
   } else {
@@ -284,7 +296,7 @@ export async function userResetMfaAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const applicationId = str(fd, "applicationId");
   if (id) await resetUserMfaApi(id);
-  revalidateUserPaths(applicationId, id);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 export async function userUpdateAuthMethodsAction(fd: FormData): Promise<void> {
@@ -294,7 +306,7 @@ export async function userUpdateAuthMethodsAction(fd: FormData): Promise<void> {
   if (!id || !applicationId || !methodsJson) return;
   const methods = JSON.parse(methodsJson) as Record<string, boolean>;
   await updateUserAuthMethodsApi(applicationId, id, methods);
-  revalidateUserPaths(applicationId, id);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 export async function userDeleteMfaFactorAction(fd: FormData): Promise<void> {
@@ -303,7 +315,7 @@ export async function userDeleteMfaFactorAction(fd: FormData): Promise<void> {
   const factorId = str(fd, "factorId");
   if (id && applicationId && factorId) {
     await deleteUserMfaFactorApi(applicationId, id, factorId);
-    revalidateUserPaths(applicationId, id);
+    revalidateUserPaths({ applicationId, userId: id });
   }
 }
 
@@ -313,7 +325,7 @@ export async function userResetMfaMethodAction(fd: FormData): Promise<void> {
   const methodId = str(fd, "methodId");
   if (id && applicationId && methodId) {
     await resetUserMfaMethodApi(applicationId, id, methodId);
-    revalidateUserPaths(applicationId, id);
+    revalidateUserPaths({ applicationId, userId: id });
   }
 }
 
@@ -322,14 +334,14 @@ export async function userSetStatusAction(fd: FormData): Promise<void> {
   const status = str(fd, "status");
   const applicationId = str(fd, "applicationId");
   if (id && status) await setUserStatusApi(id, status);
-  revalidateUserPaths(applicationId, id);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 export async function userUnlockAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const applicationId = str(fd, "applicationId");
   if (id) await unlockUserApi(id);
-  revalidateUserPaths(applicationId, id);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 export async function userAdminSetPasswordAction(
@@ -345,32 +357,48 @@ export async function userAdminSetPasswordAction(
   }
   try {
     await adminSetUserPasswordApi(id, password, applicationId || undefined);
-    revalidateUserPaths(applicationId, id);
+    revalidateUserPaths({ applicationId, userId: id });
     return ok();
   } catch (e) {
     return actionError(e);
   }
 }
 
+export async function userRemovePasswordAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  if (!id) return;
+  const { removeUserPasswordApi } = await import("./api/users");
+  await removeUserPasswordApi(id, applicationId || undefined);
+  revalidateUserPaths({ applicationId, userId: id });
+}
+
 export async function userSendPasswordResetEmailAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const applicationId = str(fd, "applicationId");
-  if (id) await sendUserPasswordResetEmailApi(id);
-  revalidateUserPaths(applicationId, id);
+  if (id) await sendUserPasswordResetEmailApi(id, applicationId || undefined);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 export async function userResendVerificationEmailAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const applicationId = str(fd, "applicationId");
-  if (id) await resendUserVerificationEmailApi(id);
-  revalidateUserPaths(applicationId, id);
+  if (id) await resendUserVerificationEmailApi(id, applicationId || undefined);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 export async function userMarkEmailVerifiedAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   const applicationId = str(fd, "applicationId");
-  if (id) await markUserEmailVerifiedApi(id);
-  revalidateUserPaths(applicationId, id);
+  if (id) await markUserEmailVerifiedApi(id, applicationId || undefined);
+  revalidateUserPaths({ applicationId, userId: id });
+}
+
+export async function userSetEmailUnverifiedAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  if (id) await setUserEmailVerifiedApi(id, false, applicationId || undefined);
+  revalidateUserPaths({ applicationId, userId: id });
 }
 
 // ---- Roles ----

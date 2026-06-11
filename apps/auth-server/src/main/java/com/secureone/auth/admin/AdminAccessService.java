@@ -1,10 +1,14 @@
 package com.secureone.auth.admin;
 
+import com.secureone.auth.admin.console.AdminConsoleAccessService;
 import com.secureone.auth.application.Application;
 import com.secureone.auth.application.ApplicationRepository;
-import com.secureone.auth.rbac.UserRoleRepository;
+import com.secureone.auth.tenant.TenantRepository;
+import com.secureone.auth.user.UserAccount;
+import com.secureone.auth.user.UserAccountRepository;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
@@ -16,23 +20,32 @@ import org.springframework.transaction.annotation.Transactional;
  * Resolves which applications an admin principal may operate on.
  *
  * <p>Platform super-admin ({@code spring.security.user.name}, default {@code admin}) may manage OAuth
- * clients and all applications. Application operators may only access apps where they hold a role
- * (see {@code X-Act-As-Email} for dev simulation).
+ * clients and all applications. Tenant operators are authorized via {@code admin_console_access}
+ * (application admin, tenant admin, or tenant super admin).
  */
 @Service
 @Transactional(readOnly = true)
 public class AdminAccessService {
 
     private final ApplicationRepository applications;
-    private final UserRoleRepository userRoles;
+    private final AdminConsoleAccessService consoleAccess;
+    private final AdminOperatorResolver operators;
+    private final TenantRepository tenants;
+    private final UserAccountRepository users;
     private final String platformAdminUsername;
 
     public AdminAccessService(
             ApplicationRepository applications,
-            UserRoleRepository userRoles,
+            AdminConsoleAccessService consoleAccess,
+            AdminOperatorResolver operators,
+            TenantRepository tenants,
+            UserAccountRepository users,
             @Value("${spring.security.user.name:admin}") String platformAdminUsername) {
         this.applications = applications;
-        this.userRoles = userRoles;
+        this.consoleAccess = consoleAccess;
+        this.operators = operators;
+        this.tenants = tenants;
+        this.users = users;
         this.platformAdminUsername = platformAdminUsername;
     }
 
@@ -55,24 +68,29 @@ public class AdminAccessService {
         return actAsEmail != null && !actAsEmail.isBlank();
     }
 
-    public List<ApplicationSummary> accessibleApplications(Authentication authentication, String actAsEmail) {
-        List<UUID> ids;
-        if (isPlatformSuperAdmin(authentication)) {
-            ids = applications.findAll().stream().map(Application::getId).toList();
-        } else if (actAsEmail != null && !actAsEmail.isBlank()) {
-            ids = userRoles.findDistinctApplicationIdsByUserEmail(actAsEmail.trim());
-        } else {
-            return List.of();
+    public String resolveOperatorEmail(Authentication authentication, String actAsEmail) {
+        return operators.resolveEmail(authentication, actAsEmail);
+    }
+
+    public String resolveOperatorTier(Authentication authentication, String actAsEmail) {
+        if (canAccessPlatformSettings(authentication, actAsEmail)) {
+            return "platform";
         }
-        return applications.findAllById(ids).stream()
-                .sorted(Comparator.comparing(Application::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(app -> new ApplicationSummary(
-                        app.getId(),
-                        app.getTenantId(),
-                        app.getName(),
-                        app.getSlug(),
-                        app.getStatus()))
-                .toList();
+        return resolveTenantUserId(authentication, actAsEmail)
+                .map(consoleAccess::resolveOperatorTier)
+                .orElse("application");
+    }
+
+    public List<ApplicationSummary> accessibleApplications(Authentication authentication, String actAsEmail) {
+        if (isPlatformSuperAdmin(authentication)) {
+            return applications.findAll().stream()
+                    .sorted(Comparator.comparing(Application::getName, String.CASE_INSENSITIVE_ORDER))
+                    .map(this::toSummary)
+                    .toList();
+        }
+        return resolveTenantUserId(authentication, actAsEmail)
+                .map(consoleAccess::accessibleApplications)
+                .orElse(List.of());
     }
 
     public void requireApplicationAccess(Authentication authentication, String actAsEmail, UUID applicationId) {
@@ -94,6 +112,32 @@ public class AdminAccessService {
             throw new AccessDeniedException(
                     "Platform settings require the platform operator account without X-Act-As-Email");
         }
+    }
+
+    public boolean bypassesPermissionChecks(
+            Authentication authentication, String actAsEmail, UUID applicationId) {
+        if (canAccessPlatformSettings(authentication, actAsEmail)) {
+            return true;
+        }
+        return resolveTenantUserId(authentication, actAsEmail)
+                .map(userId -> consoleAccess.isTenantSuperAdminForApplication(userId, applicationId))
+                .orElse(false);
+    }
+
+    private Optional<UUID> resolveTenantUserId(Authentication authentication, String actAsEmail) {
+        String email = resolveOperatorEmail(authentication, actAsEmail);
+        String tenantSlug = operators.resolveTenantSlug(authentication);
+        if (email == null || tenantSlug == null) {
+            return Optional.empty();
+        }
+        return tenants.findBySlug(tenantSlug.trim().toLowerCase()).flatMap(tenant -> users
+                .findByTenantIdAndEmail(tenant.getId(), email.trim().toLowerCase())
+                .map(UserAccount::getId));
+    }
+
+    private ApplicationSummary toSummary(Application app) {
+        return new ApplicationSummary(
+                app.getId(), app.getTenantId(), app.getName(), app.getSlug(), app.getStatus());
     }
 
     public record ApplicationSummary(

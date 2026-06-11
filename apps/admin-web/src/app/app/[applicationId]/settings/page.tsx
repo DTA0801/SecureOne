@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApplicationSettingsEditor } from "@/components/applications/ApplicationSettingsEditor";
 import { resolveApplicationMeta } from "@/lib/api/app-workspace";
@@ -22,7 +23,9 @@ export default async function AppSettingsPage({
         title="Settings"
         description={`${app.name} · overrides platform defaults`}
       />
-      <ApplicationSettingsEditor appId={applicationId} />
+      <Suspense fallback={<p className="text-sm text-muted">Loading settings…</p>}>
+        <ApplicationSettingsEditor appId={applicationId} />
+      </Suspense>
     </div>
   );
 }

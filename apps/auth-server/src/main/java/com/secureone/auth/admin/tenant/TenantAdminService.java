@@ -10,6 +10,7 @@ import com.secureone.auth.audit.AuditService;
 import com.secureone.auth.notify.EmailNotificationService;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
+import com.secureone.auth.tenant.TenantUserRosterRepository;
 import com.secureone.auth.user.UserAccountRepository;
 import java.util.HashMap;
 import java.util.List;
@@ -28,18 +29,21 @@ public class TenantAdminService {
     private final ApplicationRepository applicationRepository;
     private final AuditService auditService;
     private final EmailNotificationService emailService;
+    private final TenantUserRosterRepository tenantUserRoster;
 
     public TenantAdminService(
             TenantRepository tenantRepository,
             UserAccountRepository userAccountRepository,
             ApplicationRepository applicationRepository,
             AuditService auditService,
-            EmailNotificationService emailService) {
+            EmailNotificationService emailService,
+            TenantUserRosterRepository tenantUserRoster) {
         this.tenantRepository = tenantRepository;
         this.userAccountRepository = userAccountRepository;
         this.applicationRepository = applicationRepository;
         this.auditService = auditService;
         this.emailService = emailService;
+        this.tenantUserRoster = tenantUserRoster;
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +68,7 @@ public class TenantAdminService {
         tenant.setSettings(planSettings(request.plan(), "free"));
         tenantRepository.save(tenant);
         auditService.record(tenant.getId(), "admin", "tenant.created", "tenant", tenant.getId(), tenant.getName(), true);
-        emailService.sendAdminNotification("Tenant created", "New tenant: " + tenant.getName());
+        emailService.sendAdminNotification(null, "Tenant created", "New tenant: " + tenant.getName());
         return toResponse(tenant);
     }
 
@@ -90,7 +94,7 @@ public class TenantAdminService {
         Tenant tenant = require(id);
         tenantRepository.delete(tenant);
         auditService.record(tenant.getId(), "admin", "tenant.deleted", "tenant", id, tenant.getName(), true);
-        emailService.sendAdminNotification("Tenant deleted", "Removed tenant: " + tenant.getName());
+        emailService.sendAdminNotification(null, "Tenant deleted", "Removed tenant: " + tenant.getName());
     }
 
     private Tenant require(UUID id) {
@@ -107,7 +111,7 @@ public class TenantAdminService {
                 tenant.getSlug(),
                 tenant.getStatus().toLowerCase(Locale.ROOT),
                 readPlan(tenant.getSettings()),
-                userAccountRepository.countByTenantId(id),
+                tenantUserRoster.countByTenantId(id),
                 applicationRepository.countByTenantId(id),
                 tenant.getCreatedAt());
     }

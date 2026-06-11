@@ -1,12 +1,16 @@
 package com.secureone.auth.admin;
 
 import com.secureone.auth.admin.AdminAccessService.ApplicationSummary;
+import com.secureone.auth.admin.console.AdminConsoleCapabilityService;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
+import com.secureone.auth.user.UserAccount;
+import com.secureone.auth.user.UserAccountRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,14 +27,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminContextController {
 
     private final AdminAccessService access;
+    private final AdminPermissionService permissions;
+    private final AdminConsoleCapabilityService consoleCapabilities;
+    private final AdminOperatorResolver operators;
     private final ApplicationRepository applications;
     private final TenantRepository tenants;
+    private final UserAccountRepository users;
 
     public AdminContextController(
-            AdminAccessService access, ApplicationRepository applications, TenantRepository tenants) {
+            AdminAccessService access,
+            AdminPermissionService permissions,
+            AdminConsoleCapabilityService consoleCapabilities,
+            AdminOperatorResolver operators,
+            ApplicationRepository applications,
+            TenantRepository tenants,
+            UserAccountRepository users) {
         this.access = access;
+        this.permissions = permissions;
+        this.consoleCapabilities = consoleCapabilities;
+        this.operators = operators;
         this.applications = applications;
         this.tenants = tenants;
+        this.users = users;
     }
 
     public record ApplicationContextItem(
@@ -40,12 +58,21 @@ public class AdminContextController {
             String tenantSlug,
             String name,
             String slug,
-            String status) {}
+            String status,
+            List<String> permissions,
+            List<String> consoleFeatures) {}
 
     public record AdminContextResponse(
             boolean platformSuperAdmin,
+            String operatorTier,
             String principal,
             String actAsEmail,
+            String email,
+            String displayName,
+            UUID tenantId,
+            String tenantSlug,
+            String tenantName,
+            UUID userId,
             List<ApplicationContextItem> applications) {}
 
     @GetMapping
@@ -53,10 +80,45 @@ public class AdminContextController {
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail) {
         boolean superAdmin = access.canAccessPlatformSettings(authentication, actAsEmail);
+        String operatorTier = access.resolveOperatorTier(authentication, actAsEmail);
+        String email = access.resolveOperatorEmail(authentication, actAsEmail);
         List<ApplicationSummary> apps = access.accessibleApplications(authentication, actAsEmail);
+        String displayName = resolveDisplayName(email, authentication);
+        UUID tenantId = null;
+        String tenantSlug = null;
+        String tenantName = null;
+        UUID userId = null;
+        if (email != null && operators.resolveTenantSlug(authentication) != null) {
+            String slug = operators.resolveTenantSlug(authentication);
+            Tenant tenant = tenants.findBySlug(slug).orElse(null);
+            if (tenant != null) {
+                tenantId = tenant.getId();
+                tenantSlug = tenant.getSlug();
+                tenantName = tenant.getName();
+            }
+            final UUID resolvedTenantId = tenantId;
+            userId = users.findByEmailIgnoreCase(email).stream()
+                    .filter(u -> resolvedTenantId == null || u.getTenantId().equals(resolvedTenantId))
+                    .map(UserAccount::getId)
+                    .findFirst()
+                    .orElse(null);
+        }
+        final UUID operatorUserId = userId;
+        final UUID operatorTenantId = tenantId;
         List<ApplicationContextItem> items = new ArrayList<>();
         for (ApplicationSummary app : apps) {
             Tenant tenant = tenants.findById(app.tenantId()).orElse(null);
+            List<String> appPermissions = superAdmin
+                    ? List.of()
+                    : email != null
+                            ? permissions.effectivePermissionKeys(app.id(), email).stream().sorted().toList()
+                            : List.of();
+            List<String> features = superAdmin
+                    ? consoleCapabilities.allFeatureKeys()
+                    : operatorUserId != null && operatorTenantId != null
+                            ? consoleCapabilities.effectiveFeatureKeys(
+                                    operatorUserId, operatorTenantId, app.id())
+                            : List.of();
             items.add(new ApplicationContextItem(
                     app.id(),
                     app.tenantId(),
@@ -64,13 +126,36 @@ public class AdminContextController {
                     tenant != null ? tenant.getSlug() : "",
                     app.name(),
                     app.slug(),
-                    app.status()));
+                    app.status(),
+                    appPermissions,
+                    features));
         }
         return new AdminContextResponse(
                 superAdmin,
+                operatorTier,
                 authentication != null ? authentication.getName() : "",
                 actAsEmail,
+                email,
+                displayName,
+                tenantId,
+                tenantSlug,
+                tenantName,
+                userId,
                 items);
+    }
+
+    private String resolveDisplayName(String email, Authentication authentication) {
+        if (email != null) {
+            return users.findByEmailIgnoreCase(email).stream()
+                    .map(UserAccount::getDisplayName)
+                    .filter(n -> n != null && !n.isBlank())
+                    .findFirst()
+                    .orElse(email);
+        }
+        if (authentication != null && authentication.isAuthenticated()) {
+            return authentication.getName();
+        }
+        return "";
     }
 
     @GetMapping("/tenants")

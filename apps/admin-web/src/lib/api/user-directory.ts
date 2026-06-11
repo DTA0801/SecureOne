@@ -1,5 +1,5 @@
-import { AUTH_SERVER_URL } from "@/lib/config";
-import { apiFetch, appScopeHeaders } from "./client";
+import { appScopeHeaders } from "./http";
+import { browserApiFetch as apiFetch } from "./browser-client";
 
 export type UserDirectorySourceKey = "csv" | "excel" | "ldap";
 
@@ -55,17 +55,12 @@ export async function resetUserDirectorySettings(appId: string): Promise<void> {
   await apiFetch<void>(settingsBase(appId), scoped(appId, { method: "DELETE" }));
 }
 
-function authHeader(): string {
-  const user = process.env.SECUREONE_DEV_USER ?? "admin";
-  const pass = process.env.SECUREONE_DEV_PASSWORD ?? "admin";
-  return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
-}
-
 export async function exportUsersCsv(appId: string): Promise<Blob> {
-  const url = `${AUTH_SERVER_URL}/api/admin/v1/applications/${appId}/users/export?format=csv`;
-  const res = await fetch(url, {
+  const path = `api/admin/v1/applications/${appId}/users/export?format=csv`;
+  const res = await fetch(`/api/proxy/${path}`, {
+    credentials: "same-origin",
     headers: {
-      Authorization: authHeader(),
+      Accept: "text/csv, application/octet-stream",
       ...appScopeHeaders(appId),
     },
     cache: "no-store",
@@ -84,13 +79,11 @@ export async function importUsersFile(
 ): Promise<UserImportResult> {
   const form = new FormData();
   form.append("file", file);
-  const url = `${AUTH_SERVER_URL}/api/admin/v1/applications/${appId}/users/import?source=${source}`;
-  const res = await fetch(url, {
+  const path = `api/admin/v1/applications/${appId}/users/import?source=${source}`;
+  const res = await fetch(`/api/proxy/${path}`, {
     method: "POST",
-    headers: {
-      Authorization: authHeader(),
-      ...appScopeHeaders(appId),
-    },
+    credentials: "same-origin",
+    headers: appScopeHeaders(appId),
     body: form,
     cache: "no-store",
   });

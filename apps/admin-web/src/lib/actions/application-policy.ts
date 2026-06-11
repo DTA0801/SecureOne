@@ -7,7 +7,7 @@ import {
   type PolicySource,
   type SettingsExposureKey,
 } from "@/lib/api/application-policy";
-import { ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/http";
 
 function formatError(e: unknown): string {
   if (e instanceof ApiError) {

@@ -1,11 +1,28 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ConsoleProviders } from "@/components/ConsoleProviders";
 import { loadAdminContextSafe } from "@/lib/api/app-workspace";
+import type { AdminContext } from "@/lib/api/context";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { ThemeInitScript } from "@/components/ThemeInitScript";
 import { ToastProvider } from "@/components/ui/Toast";
+import { getServerThemeBootstrap } from "@/lib/theme/server";
+
+const EMPTY_ADMIN_CONTEXT: AdminContext = {
+  platformSuperAdmin: false,
+  operatorTier: "application",
+  principal: "",
+  email: null,
+  displayName: "",
+  tenantId: null,
+  tenantSlug: null,
+  tenantName: null,
+  userId: null,
+  actAsEmail: null,
+  applications: [],
+};
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,22 +44,29 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const ctx = await loadAdminContextSafe();
-  const superAdmin = ctx.platformSuperAdmin;
-  const applications = ctx.applications;
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const isBareRoute =
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname.startsWith("/api/");
+  const [ctx, theme] = await Promise.all([
+    isBareRoute ? Promise.resolve(EMPTY_ADMIN_CONTEXT) : loadAdminContextSafe(),
+    getServerThemeBootstrap(),
+  ]);
 
   return (
     <html
       lang="en"
-      data-theme="light"
+      data-theme={theme.dataTheme}
+      data-gradient={theme.dataGradient}
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      style={theme.style as CSSProperties}
     >
       <body className="min-h-full">
-        <ThemeInitScript />
         <ToastProvider>
-          <ConsoleProviders superAdmin={superAdmin} applications={applications}>
-            <ThemeProvider platformSettingsAccess={superAdmin}>{children}</ThemeProvider>
+          <ConsoleProviders adminContext={ctx}>
+            <ThemeProvider platformSettingsAccess={ctx.platformSuperAdmin}>{children}</ThemeProvider>
           </ConsoleProviders>
         </ToastProvider>
       </body>

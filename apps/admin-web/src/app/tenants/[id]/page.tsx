@@ -4,28 +4,37 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ButtonLink } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
-import { Card, CardHeader } from "@/components/ui/Card";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TenantFormModal } from "@/components/forms/TenantFormModal";
+import { TenantDetailPanels } from "@/components/tenants/TenantDetailPanels";
 import { tenantDeleteAction } from "@/lib/actions";
-import { listUsers } from "@/lib/api/users";
 import { getTenant } from "@/lib/api/tenants";
 import { listApplications } from "@/lib/api/applications";
+import { listRoles } from "@/lib/api/roles";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
+import { fetchTenantWorkspace } from "@/lib/api/tenant-workspace-server";
+import { requirePlatformAccess } from "@/lib/platform-access";
 
 export default async function TenantDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePlatformAccess();
   const { id } = await params;
   const tenant = await getTenant(id);
   if (!tenant) notFound();
 
-  const apps = await listApplications(tenant.id);
-  const users = await listUsers(tenant.id);
+  const [apps, workspace] = await Promise.all([
+    listApplications(tenant.id),
+    fetchTenantWorkspace(tenant.id).catch(() => null),
+  ]);
+
+  if (!workspace) notFound();
+
+  const defaultAppId = workspace.applications[0]?.id ?? apps[0]?.id;
+  const roles = defaultAppId ? await listRoles({ applicationId: defaultAppId }) : [];
 
   return (
     <div className="w-full min-w-0">
@@ -37,6 +46,9 @@ export default async function TenantDetailPage({
           <>
             <Badge tone={planTone(tenant.plan)} className="capitalize">{tenant.plan}</Badge>
             <Badge tone={statusTone(tenant.status)} dot className="capitalize">{tenant.status}</Badge>
+            <ButtonLink href="/applications" variant="ghost" size="sm">
+              OAuth clients
+            </ButtonLink>
             <TenantFormModal tenant={tenant} triggerLabel="Edit" triggerVariant="secondary" />
             <ConfirmDialog
               action={tenantDeleteAction}
@@ -57,49 +69,12 @@ export default async function TenantDetailPage({
         <StatCard label="Status" value={tenant.status} />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card padded={false}>
-          <CardHeader title="Applications" description={`${apps.length} registered`} action={<ButtonLink href="/applications" variant="ghost" size="sm">All</ButtonLink>} />
-          <Table>
-            <THead>
-              <tr><TH>Name</TH><TH>Type</TH><TH>Status</TH></tr>
-            </THead>
-            <TBody>
-              {apps.map((a) => (
-                <TR key={a.id}>
-                  <TD>
-                    <Link href={`/applications/${a.id}`} className="link-brand">{a.name}</Link>
-                    <p className="font-mono text-xs text-black/45 dark:text-white/45">{a.clientId}</p>
-                  </TD>
-                  <TD><Badge tone="neutral" className="uppercase">{a.type}</Badge></TD>
-                  <TD><Badge tone={statusTone(a.status)} dot className="capitalize">{a.status}</Badge></TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </Card>
-
-        <Card padded={false}>
-          <CardHeader title="Recent users" description={`${users.length} shown`} action={<ButtonLink href="/users" variant="ghost" size="sm">All</ButtonLink>} />
-          <Table>
-            <THead>
-              <tr><TH>User</TH><TH>Status</TH><TH>MFA</TH></tr>
-            </THead>
-            <TBody>
-              {users.map((u) => (
-                <TR key={u.id}>
-                  <TD>
-                    <Link href={`/users/${u.id}`} className="link-brand">{u.firstName} {u.lastName}</Link>
-                    <p className="text-xs text-black/45 dark:text-white/45">{u.email}</p>
-                  </TD>
-                  <TD><Badge tone={statusTone(u.status)} dot className="capitalize">{u.status}</Badge></TD>
-                  <TD>{u.mfaFactors.length > 0 ? <Badge tone="success">{u.mfaFactors.length} factor{u.mfaFactors.length > 1 ? "s" : ""}</Badge> : <Badge tone="warning">none</Badge>}</TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </Card>
-      </div>
+      <TenantDetailPanels
+        initialWorkspace={workspace}
+        tenant={tenant}
+        roles={roles}
+        applications={apps}
+      />
     </div>
   );
 }

@@ -15,4 +15,6 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
     boolean existsByApplicationIdAndName(UUID applicationId, String name);
 
     Optional<Role> findFirstByApplicationIdAndDefaultRoleTrue(UUID applicationId);
+
+    Optional<Role> findByApplicationIdAndName(UUID applicationId, String name);
 }

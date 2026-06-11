@@ -4,6 +4,7 @@ import com.secureone.auth.admin.ConflictException;
 import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.admin.user.UserAdminDtos.UserCreateRequest;
 import com.secureone.auth.application.Application;
+import com.secureone.auth.application.ApplicationEffectiveSettingsService;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.application.ApplicationSettingsService;
 import com.secureone.auth.application.UserApplication;
@@ -31,6 +32,7 @@ public class UserImportExportService {
 
     private final ApplicationRepository applications;
     private final ApplicationSettingsService settings;
+    private final ApplicationEffectiveSettingsService effectiveSettings;
     private final UserAccountRepository users;
     private final UserApplicationRepository memberships;
     private final UserAdminService userAdmin;
@@ -39,12 +41,14 @@ public class UserImportExportService {
     public UserImportExportService(
             ApplicationRepository applications,
             ApplicationSettingsService settings,
+            ApplicationEffectiveSettingsService effectiveSettings,
             UserAccountRepository users,
             UserApplicationRepository memberships,
             UserAdminService userAdmin,
             AuditService auditService) {
         this.applications = applications;
         this.settings = settings;
+        this.effectiveSettings = effectiveSettings;
         this.users = users;
         this.memberships = memberships;
         this.userAdmin = userAdmin;
@@ -301,6 +305,9 @@ public class UserImportExportService {
     }
 
     private void requireSourceEnabled(UUID applicationId, String source) {
+        if ("ldap".equalsIgnoreCase(source)) {
+            requireLdapFeature(applicationId);
+        }
         Map<String, Object> config = settings.getUserDirectory(applicationId);
         @SuppressWarnings("unchecked")
         Map<String, Object> sources = (Map<String, Object>) config.getOrDefault("sources", Map.of());
@@ -308,6 +315,12 @@ public class UserImportExportService {
         Map<String, Object> src = (Map<String, Object>) sources.get(source);
         if (src == null || !Boolean.TRUE.equals(src.get("enabled"))) {
             throw new IllegalStateException("Import source '" + source + "' is disabled in User directory settings.");
+        }
+    }
+
+    private void requireLdapFeature(UUID applicationId) {
+        if (!effectiveSettings.isFeatureEnabled(applicationId, "ldap")) {
+            throw new IllegalStateException("LDAP is disabled. Enable the LDAP / AD feature flag first.");
         }
     }
 

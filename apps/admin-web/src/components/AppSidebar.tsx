@@ -6,6 +6,8 @@ import { appNav, SUPER_ADMIN_NAV } from "./nav";
 import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { buildAppPath } from "@/lib/app-routes";
+import { useAdminContext } from "./AdminContextProvider";
+import { canAccessSection } from "@/lib/auth/permissions";
 
 export function AppSidebar({
   applicationId,
@@ -15,7 +17,12 @@ export function AppSidebar({
   superAdmin: boolean;
 }) {
   const pathname = usePathname();
-  const items = appNav(applicationId);
+  const ctx = useAdminContext();
+  const app = ctx.applications.find((a) => a.id === applicationId);
+  const items = appNav(applicationId).filter((item) => {
+    const section = item.href.split("/").pop() ?? "";
+    return canAccessSection(superAdmin, app, section);
+  });
   const platformItems = superAdmin ? SUPER_ADMIN_NAV : [];
 
   return (

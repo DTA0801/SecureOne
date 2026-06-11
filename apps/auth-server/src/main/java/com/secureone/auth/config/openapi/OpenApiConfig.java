@@ -112,6 +112,7 @@ public class OpenApiConfig {
                         "/api/admin/v1/users/**",
                         "/api/admin/v1/settings/**",
                         "/api/admin/v1/audit/**",
+                        "/api/admin/v1/logs/**",
                         "/api/admin/v1/sessions/**",
                         "/api/admin/v1/context/**",
                         "/api/admin/v1/permissions/**",

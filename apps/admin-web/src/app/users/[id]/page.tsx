@@ -1,25 +1,24 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
+import { UserFormModal } from "@/components/forms/UserFormModal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { UserFormModal } from "@/components/forms/UserFormModal";
-import { UserEmailActions } from "@/components/users/UserEmailActions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { UserSecurityTab } from "@/components/users/UserSecurityTab";
 import {
   userDeleteAction,
   userResetMfaAction,
   userSetStatusAction,
 } from "@/lib/actions";
-import { getUser } from "@/lib/api/users";
-import { listTenants } from "@/lib/api/tenants";
 import { listRoles } from "@/lib/api/roles";
 import { listLoginEvents } from "@/lib/api/sessions";
-import { tenantName } from "@/lib/data";
+import { listTenants } from "@/lib/api/tenants";
+import { getUser } from "@/lib/api/users";
 import { formatDate, formatDateTime, initials } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 import type { MfaFactorType } from "@/lib/types";
+import Link from "next/link";
+import { notFound } from "next/navigation";
 
 const MFA_LABEL: Record<MfaFactorType, string> = {
   passkey: "Passkey",
@@ -45,11 +44,10 @@ export default async function UserDetailPage({
   ]);
   const fullName = `${user.firstName} ${user.lastName}`;
   const roleById = new Map(roles.map((r) => [r.id, r]));
-  const tenantLabel =
-    tenants.find((t) => t.id === user.tenantId)?.name ?? tenantName(user.tenantId);
+  const tenantLabel = tenants.find((t) => t.id === user.tenantId)?.name ?? user.tenantId;
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="">
       <PageHeader
         breadcrumb={<Link href="/users" className="hover:underline">Users</Link>}
         title={fullName}
@@ -106,11 +104,14 @@ export default async function UserDetailPage({
         <div className="space-y-6 lg:col-span-2">
           <Card padded={false}>
             <CardHeader
-              title="Email & password"
-              description="Transactional emails via SMTP (MailHog in dev). Links are sent to the user's inbox."
+              title="Security"
+              description="Account access, email verification, password reset/set-password emails, and MFA overview."
             />
             <div className="border-t border-ui px-5 py-4">
-              <UserEmailActions userId={user.id} emailVerified={user.emailVerified} />
+              <UserSecurityTab
+                user={user}
+                mfaFactorCount={user.mfaFactors.length}
+              />
             </div>
           </Card>
 

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PLATFORM_NAV } from "./nav";
+import { PLATFORM_NAV, TENANT_OPERATOR_NAV } from "./nav";
+import { useAdminContext } from "./AdminContextProvider";
 import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { buildAppPath } from "@/lib/app-routes";
@@ -17,9 +18,17 @@ export function PlatformSidebar({
   applications: ApplicationContextItem[];
 }) {
   const pathname = usePathname();
-  const items = PLATFORM_NAV.filter((i) => superAdmin || !i.superAdminOnly);
+  const ctx = useAdminContext();
+  const isTenantOperator =
+    (ctx.operatorTier === "tenant" || ctx.operatorTier === "tenant_super") && !superAdmin;
+  const navSource = isTenantOperator ? TENANT_OPERATOR_NAV : PLATFORM_NAV;
+  const items = navSource.filter((i) => superAdmin || !i.superAdminOnly);
   const defaultAppHref =
-    applications.length > 0 ? buildAppPath(applications[0].id, "users") : "/app";
+    applications.length > 0
+      ? buildAppPath(applications[0].id, "users")
+      : isTenantOperator
+        ? "/login"
+        : "/applications";
 
   return (
     <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-ui bg-ui-surface px-3 py-5">

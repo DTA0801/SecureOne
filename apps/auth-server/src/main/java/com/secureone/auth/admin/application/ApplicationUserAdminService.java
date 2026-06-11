@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,28 +28,42 @@ public class ApplicationUserAdminService {
     private final UserAccountRepository users;
     private final UserAdminService userAdminService;
     private final AuditLogRepository auditLogs;
+    private final JdbcTemplate jdbc;
 
     public ApplicationUserAdminService(
             ApplicationRepository applications,
             UserApplicationRepository memberships,
             UserAccountRepository users,
             UserAdminService userAdminService,
-            AuditLogRepository auditLogs) {
+            AuditLogRepository auditLogs,
+            JdbcTemplate jdbc) {
         this.applications = applications;
         this.memberships = memberships;
         this.users = users;
         this.userAdminService = userAdminService;
         this.auditLogs = auditLogs;
+        this.jdbc = jdbc;
     }
 
     @Transactional
     public List<UserResponse> listUsers(UUID applicationId) {
-        requireApplication(applicationId);
-        Set<UUID> userIds = new LinkedHashSet<>(memberships.findUserIdsByApplicationId(applicationId));
-        for (UUID userId : auditLogs.findDistinctTargetIdsByApplicationIdAndAction(applicationId, SELF_REGISTERED_ACTION)) {
-            if (!memberships.existsByUserIdAndApplicationId(userId, applicationId)) {
-                grantAccess(applicationId, userId);
+        var app = requireApplication(applicationId);
+        Set<UUID> userIds = new LinkedHashSet<>();
+        for (UUID userId : findPendingInviteUserIds(app.getTenantId(), applicationId)) {
+            userIds.add(userId);
+        }
+        for (UUID userId : memberships.findUserIdsByApplicationId(applicationId)) {
+            if (users.findById(userId).isPresent()) {
+                userIds.add(userId);
+            } else {
+                memberships.deleteByUserIdAndApplicationId(userId, applicationId);
             }
+        }
+        for (UUID userId : auditLogs.findDistinctTargetIdsByApplicationIdAndAction(applicationId, SELF_REGISTERED_ACTION)) {
+            if (users.findById(userId).isEmpty()) {
+                continue;
+            }
+            linkAccessIfAbsent(applicationId, userId);
             userIds.add(userId);
         }
         if (userIds.isEmpty()) {
@@ -64,10 +79,17 @@ public class ApplicationUserAdminService {
     }
 
     public void grantAccess(UUID applicationId, UUID userId) {
-        var app = requireApplication(applicationId);
         var user = users.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        var app = requireApplication(applicationId);
         if (!user.getTenantId().equals(app.getTenantId())) {
             throw new IllegalArgumentException("User must belong to the same tenant as the application");
+        }
+        linkAccessIfAbsent(applicationId, userId);
+    }
+
+    private void linkAccessIfAbsent(UUID applicationId, UUID userId) {
+        if (!users.findById(userId).isPresent()) {
+            return;
         }
         if (!memberships.existsByUserIdAndApplicationId(userId, applicationId)) {
             UserApplication link = new UserApplication();
@@ -80,6 +102,19 @@ public class ApplicationUserAdminService {
     public void revokeAccess(UUID applicationId, UUID userId) {
         requireApplication(applicationId);
         memberships.deleteByUserIdAndApplicationId(userId, applicationId);
+    }
+
+    private List<UUID> findPendingInviteUserIds(UUID tenantId, UUID applicationId) {
+        return jdbc.queryForList(
+                """
+                SELECT id
+                FROM user_account
+                WHERE tenant_id = ?
+                  AND attributes->>'pendingInviteApplicationId' = ?
+                """,
+                UUID.class,
+                tenantId,
+                applicationId.toString());
     }
 
     private com.secureone.auth.application.Application requireApplication(UUID applicationId) {

@@ -1,6 +1,14 @@
 /** App workspace sections under /app/[applicationId]/… */
 
-export const APP_SECTIONS = ["users", "roles", "settings", "audit", "sessions"] as const;
+export const APP_SECTIONS = [
+  "users",
+  "roles",
+  "permissions",
+  "settings",
+  "audit",
+  "logs",
+  "sessions",
+] as const;
 export type AppSection = (typeof APP_SECTIONS)[number];
 
 export function appSectionFromPath(pathname: string): AppSection {

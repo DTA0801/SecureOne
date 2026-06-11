@@ -10,6 +10,16 @@ import {
 } from "./types";
 
 const STORAGE_KEY = "secureone-ui-preferences";
+const THEME_MODE_COOKIE = "secureone-theme-mode";
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function writeThemeCookies(prefs: UiPreferences): void {
+  if (typeof document === "undefined") return;
+  const encoded = encodeURIComponent(JSON.stringify(prefs));
+  const base = `path=/;max-age=${COOKIE_MAX_AGE};SameSite=Lax`;
+  document.cookie = `${STORAGE_KEY}=${encoded};${base}`;
+  document.cookie = `${THEME_MODE_COOKIE}=${resolveThemeMode(prefs)};${base}`;
+}
 
 const GRADIENT_PRESET_VALUES: GradientPreset[] = ["none", "brand", "sunset", "ocean", "violet", "custom"];
 const GRADIENT_SCOPE_VALUES: GradientScope[] = ["page", "brand", "both"];
@@ -103,6 +113,7 @@ export function applyGradientPreset(prefs: UiPreferences, preset: GradientPreset
 export function saveUiPreferences(prefs: UiPreferences): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  writeThemeCookies(prefs);
 }
 
 export function resolveThemeMode(
@@ -271,11 +282,4 @@ export function applyUiPreferences(prefs: UiPreferences): void {
 export function themeModeLabel(mode: ThemeMode): string {
   if (mode === "system") return "System";
   return mode === "dark" ? "Dark" : "Light";
-}
-
-/** Inline bootstrap — must stay in sync with resolveThemeColors / applyThemeVars. */
-export function buildThemeInitScript(): string {
-  const d = JSON.stringify(DEFAULT_UI_PREFERENCES);
-  const presets = JSON.stringify(GRADIENT_PRESETS);
-  return `(function(){try{var k="secureone-ui-preferences",d=${d},gp=${presets},raw=localStorage.getItem(k),p=raw?Object.assign({},d,JSON.parse(raw)):d;if(p.gradientEnabled&&!p.gradientPreset)p.gradientPreset="brand";var r=p.mode==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):p.mode,h=document.documentElement,bg=r==="dark"?(p.darkBackgroundColor||d.darkBackgroundColor):p.backgroundColor,sf=r==="dark"?(p.darkSurfaceColor||d.darkSurfaceColor):p.surfaceColor,tx=r==="dark"?(p.darkTextColor||d.darkTextColor):p.textColor,pr=p.primaryColor||d.primaryColor,ac=p.accentColor||d.accentColor,bt=p.buttonTextColor||d.buttonTextColor||"#ffffff",preset=p.gradientPreset||"none",scope=p.gradientScope||"both",ang=p.gradientAngle!=null?p.gradientAngle:135,gf=p.gradientFrom||pr,gt=p.gradientTo||ac;if(preset==="brand"){gf=pr;gt=ac;}else if(preset!=="none"&&preset!=="custom"&&gp[preset]){gf=gp[preset].from;gt=gp[preset].to;ang=gp[preset].angle;}var grad="linear-gradient("+ang+"deg,"+gf+","+gt+")",gOn=preset!=="none",brand=gOn&&(scope==="brand"||scope==="both")?grad:pr,page=gOn&&(scope==="page"||scope==="both")?"linear-gradient("+ang+"deg,color-mix(in srgb,"+gf+" 38%,"+bg+"),color-mix(in srgb,"+gt+" 22%,"+bg+"))":bg;h.dataset.theme=r;h.dataset.gradient=gOn?"on":"off";h.style.colorScheme=r;h.style.setProperty("--ui-primary",pr);h.style.setProperty("--ui-accent",ac);h.style.setProperty("--ui-button-text",bt);h.style.setProperty("--ui-background",bg);h.style.setProperty("--ui-surface",sf);h.style.setProperty("--ui-text",tx);h.style.setProperty("--ui-radius",(p.borderRadius||12)+"px");h.style.setProperty("--ui-font-scale",String(p.fontScale||1));h.style.setProperty("--ui-brand-fill",brand);h.style.setProperty("--ui-page-fill",page);h.style.setProperty("--background",page);h.style.setProperty("--foreground",tx);h.style.setProperty("--ui-notify-info-bg",p.notifyInfoBackground||d.notifyInfoBackground);h.style.setProperty("--ui-notify-info-text",p.notifyInfoText||d.notifyInfoText);h.style.setProperty("--ui-notify-info-border",p.notifyInfoBorder||d.notifyInfoBorder);h.style.setProperty("--ui-notify-success-bg",p.notifySuccessBackground||d.notifySuccessBackground);h.style.setProperty("--ui-notify-success-text",p.notifySuccessText||d.notifySuccessText);h.style.setProperty("--ui-notify-success-border",p.notifySuccessBorder||d.notifySuccessBorder);h.style.setProperty("--ui-notify-error-bg",p.notifyErrorBackground||d.notifyErrorBackground);h.style.setProperty("--ui-notify-error-text",p.notifyErrorText||d.notifyErrorText);h.style.setProperty("--ui-notify-error-border",p.notifyErrorBorder||d.notifyErrorBorder);}catch(e){}})();`;
 }

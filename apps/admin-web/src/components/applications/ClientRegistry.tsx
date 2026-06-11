@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Field";
@@ -23,6 +24,7 @@ export function ClientRegistry({
   apps: Application[];
   tenants: Tenant[];
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [tenantFilter, setTenantFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -109,11 +111,13 @@ export function ClientRegistry({
             </tr>
           ) : (
             filtered.map((a) => (
-              <TR key={a.id}>
+              <TR
+                key={a.id}
+                className="cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                onClick={() => router.push(`/applications/${a.id}`)}
+              >
                 <TD>
-                  <Link href={`/applications/${a.id}`} className="link-brand font-medium">
-                    {a.name}
-                  </Link>
+                  <span className="link-brand font-medium">{a.name}</span>
                   <p className="font-mono text-xs text-faint">{a.clientId}</p>
                   {a.description && <p className="mt-0.5 text-xs text-muted line-clamp-1">{a.description}</p>}
                 </TD>

@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { browserApiFetch as apiFetch } from "./browser-client";
 import type { AuthMethod, FeatureFlag, PasswordPolicy } from "@/lib/types";
 
 type AuthMethodDto = AuthMethod & { implemented?: boolean; available?: boolean };

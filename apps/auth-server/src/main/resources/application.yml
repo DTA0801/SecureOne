@@ -24,16 +24,15 @@ spring:
     redis:
       url: ${SECUREONE_REDIS_URL:redis://localhost:6379}
 
-  # SMTP — defaults to MailHog in docker-compose (localhost:1025). For production, set SECUREONE_SMTP_* env vars.
+  # SMTP is configured in Platform settings → Notifications (stored in DB). Optional env override for local MailHog.
   mail:
-    host: ${SECUREONE_SMTP_HOST:localhost}
+    host: ${SECUREONE_SMTP_HOST:}
     port: ${SECUREONE_SMTP_PORT:1025}
     username: ${SECUREONE_SMTP_USERNAME:}
     password: ${SECUREONE_SMTP_PASSWORD:}
     properties:
       mail.smtp.auth: ${SECUREONE_SMTP_AUTH:false}
       mail.smtp.starttls.enable: ${SECUREONE_SMTP_STARTTLS:false}
-      mail.smtp.ssl.trust: ${SECUREONE_SMTP_SSL_TRUST:}
       mail.smtp.connectiontimeout: 10000
       mail.smtp.timeout: 10000
 
@@ -45,7 +44,7 @@ spring:
     oauth2:
       authorizationserver:
         issuer: ${SECUREONE_ISSUER_URL:http://localhost:9000}
-        # demo-client is registered in OAuth2ServerConfig (BCrypt-encoded secret)
+        # OAuth clients are loaded from application records (admin Applications API).
 
 server:
   port: ${SECUREONE_PORT:9000}
@@ -65,6 +64,9 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    mail:
+      enabled: false
 
 info:
   app:

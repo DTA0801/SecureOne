@@ -14,16 +14,24 @@ export default async function AppIndexPage() {
     redirect(buildAppPath(ctx.applications[0].id, "users"));
   }
 
+  const isTenantOperator =
+    (ctx.operatorTier === "tenant" || ctx.operatorTier === "tenant_super") && !ctx.platformSuperAdmin;
+
   return (
     <div className="mx-auto max-w-lg">
       <PageHeader
         title="Application console"
-        description="Select an application from the header dropdown once the auth-server is available."
+        description={
+          isTenantOperator
+            ? "Your account has no applications assigned yet."
+            : "Select an application from the header dropdown or register a new OAuth client."
+        }
       />
       <Card className="p-5">
         <p className="text-sm text-muted">
-          No applications loaded. Start the auth-server on port 9000 and refresh, or register a client under
-          Manage clients.
+          {isTenantOperator
+            ? "Ask a platform administrator to grant you admin console access and assign applications, then sign in again."
+            : "No applications yet. Create a tenant and OAuth client under Tenants and OAuth clients, then return here."}
         </p>
       </Card>
     </div>

@@ -22,8 +22,17 @@ public class AccountController {
         this.accounts = accounts;
     }
 
+    /**
+     * @deprecated Prefer {@code POST /api/v1/applications/{applicationId}/account/password/forgot} with
+     *     {@code { email }} only.
+     */
+    @Deprecated
     @PostMapping("/password/forgot")
     public Map<String, String> forgotPassword(@Valid @RequestBody AccountDtos.TenantEmailRequest request) {
+        if (request.applicationId() != null) {
+            return accounts.requestPasswordResetForApplication(request.applicationId(), request.email());
+        }
+        requireTenantSlug(request.tenantSlug());
         return accounts.requestPasswordReset(request.tenantSlug(), request.email());
     }
 
@@ -32,8 +41,16 @@ public class AccountController {
         return accounts.resetPassword(request.token(), request.password());
     }
 
+    /**
+     * @deprecated Prefer {@code POST /api/v1/applications/{applicationId}/account/email/resend-verification}.
+     */
+    @Deprecated
     @PostMapping("/email/resend-verification")
     public Map<String, String> resendVerification(@Valid @RequestBody AccountDtos.TenantEmailRequest request) {
+        if (request.applicationId() != null) {
+            return accounts.resendVerificationForApplication(request.applicationId(), request.email());
+        }
+        requireTenantSlug(request.tenantSlug());
         return accounts.resendVerification(request.tenantSlug(), request.email());
     }
 
@@ -61,8 +78,16 @@ public class AccountController {
         }
     }
 
+    /**
+     * @deprecated Prefer {@code POST /api/v1/applications/{applicationId}/account/magic-link/request}.
+     */
+    @Deprecated
     @PostMapping("/magic-link/request")
     public Map<String, String> requestMagicLink(@Valid @RequestBody AccountDtos.TenantEmailRequest request) {
+        if (request.applicationId() != null) {
+            return accounts.requestMagicLinkForApplication(request.applicationId(), request.email());
+        }
+        requireTenantSlug(request.tenantSlug());
         return accounts.requestMagicLink(request.tenantSlug(), request.email());
     }
 
@@ -86,7 +111,7 @@ public class AccountController {
 
     @PostMapping("/set-password")
     public Map<String, String> setPassword(@Valid @RequestBody AccountDtos.ResetPasswordRequest request) {
-        return accounts.setPasswordFromInvite(request.token(), request.password());
+        return accounts.setPasswordFromInvite(request.token(), request.password(), request.applicationId());
     }
 
     @PostMapping("/email/verify")
@@ -97,6 +122,12 @@ public class AccountController {
         }
         var user = accounts.verifyEmail(token);
         return Map.of("verified", true, "email", user.getEmail());
+    }
+
+    private static void requireTenantSlug(String tenantSlug) {
+        if (tenantSlug == null || tenantSlug.isBlank()) {
+            throw new IllegalArgumentException("applicationId or tenantSlug is required");
+        }
     }
 
     private static String escapeHtml(String value) {

@@ -67,6 +67,8 @@ const SECTIONS: { key: string; label: string; description: string }[] = [
 
 export function AppExposureSettings() {
   const { toast } = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [exposure, setExposure] = useState<AppSettingsExposure>({});
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,12 +87,12 @@ export function AppExposureSettings() {
       setExposure(resolved);
       exposureRef.current = resolved;
       setLoaded(true);
-      if (error) toast(error, "error");
+      if (error) toastRef.current(error, "error");
     });
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, []);
 
   const scheduleSave = useCallback(
     (next: AppSettingsExposure) => {
@@ -106,11 +108,11 @@ export function AppExposureSettings() {
         const applied = normalizeAppSettingsExposure(saved);
         setExposure(applied);
         exposureRef.current = applied;
-        if (error) toast(error, "error");
-        else toast("Settings saved", "success");
+        if (error) toastRef.current(error, "error");
+        else toastRef.current("Settings saved", "success");
       }, 600);
     },
-    [loaded, toast],
+    [loaded],
   );
 
   useEffect(() => {

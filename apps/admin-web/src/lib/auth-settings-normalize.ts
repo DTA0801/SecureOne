@@ -55,9 +55,14 @@ export function normalizeFeatureFlags(raw: unknown): FeatureFlag[] {
       enabled: coerceBool(row.enabled, false),
       rollout: coerceInt(row.rollout, 0),
       category:
-        row.category === "oauth" || row.category === "identity" || row.category === "provisioning"
+        row.category === "oauth" ||
+        row.category === "identity" ||
+        row.category === "notifications" ||
+        row.category === "provisioning"
           ? row.category
-          : undefined,
+          : typeof row.category === "string"
+            ? row.category
+            : undefined,
     });
   }
   return out;

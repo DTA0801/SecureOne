@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/ui/PageHeader";
-import { SettingsTabs } from "@/components/settings/SettingsTabs";
+import { PlatformSettingsEditor } from "@/components/applications/PlatformSettingsEditor";
 import { requirePlatformAccess } from "@/lib/platform-access";
 
 /** Platform-wide defaults (platform operator only). Per-app overrides live under /app/[id]/settings. */
@@ -14,7 +14,7 @@ export default async function PlatformSettingsPage() {
         title="Platform settings"
         description="Global defaults inherited by all applications unless overridden."
       />
-      <SettingsTabs scope={{ mode: "platform" }} />
+      <PlatformSettingsEditor />
     </div>
   );
 }

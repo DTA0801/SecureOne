@@ -64,7 +64,7 @@ public final class OAuth2OpenApiDocumentation {
                                 .tags(List.of("OAuth 2.1 / OIDC"))
                                 .parameters(List.of(
                                         queryParam("response_type", "code", true),
-                                        queryParam("client_id", "demo-client", true),
+                                        queryParam("client_id", "your-client-id", true),
                                         queryParam(
                                                 "redirect_uri",
                                                 "http://127.0.0.1:3000/login/oauth2/code/secureone",
