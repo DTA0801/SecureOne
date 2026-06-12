@@ -60,12 +60,13 @@ public class TenantRbacAdminService {
     }
 
     @Transactional(readOnly = true)
-    public List<TenantRoleSummaryResponse> listRoles(UUID tenantId) {
+    public List<TenantRoleSummaryResponse> listRoles(UUID tenantId, boolean customOnly) {
         requireTenant(tenantId);
         ensureSeeded(tenantId);
-        return roles.findByTenantIdOrderByNameAsc(tenantId).stream()
-                .map(this::toSummary)
-                .toList();
+        var rows = customOnly
+                ? roles.findByTenantIdAndSystemRoleFalseOrderByNameAsc(tenantId)
+                : roles.findByTenantIdOrderByNameAsc(tenantId);
+        return rows.stream().map(this::toSummary).toList();
     }
 
     @Transactional(readOnly = true)

@@ -20,6 +20,7 @@ public class AdminConsoleCapabilityService {
 
     private final AdminConsoleAccessRepository consoleAccess;
     private final AdminConsoleFeatureOverrideRepository overrides;
+    private final TenantConsoleRoleDefaultsService roleDefaults;
     private final UserAccountRepository users;
     private final TenantRepository tenants;
     private final ApplicationRepository applications;
@@ -27,6 +28,7 @@ public class AdminConsoleCapabilityService {
     public AdminConsoleCapabilityService(
             AdminConsoleAccessRepository consoleAccess,
             AdminConsoleFeatureOverrideRepository overrides,
+            TenantConsoleRoleDefaultsService roleDefaults,
             UserAccountRepository users,
             TenantRepository tenants,
             ApplicationRepository applications) {
@@ -35,6 +37,7 @@ public class AdminConsoleCapabilityService {
         this.tenants = tenants;
         this.applications = applications;
         this.overrides = overrides;
+        this.roleDefaults = roleDefaults;
     }
 
     public record FeatureOverride(String featureKey, String effect) {}
@@ -155,13 +158,17 @@ public class AdminConsoleCapabilityService {
                 .toList();
     }
 
+    public List<String> defaultFeaturesForRole(UUID tenantId, AdminConsoleRoleType roleType) {
+        return roleDefaults.resolveFeatureKeys(tenantId, roleType.name());
+    }
+
     private Set<ConsoleFeature> baseFeaturesFromAllRoles(UUID userId, UUID tenantId) {
         Set<ConsoleFeature> features = EnumSet.noneOf(ConsoleFeature.class);
         for (AdminConsoleAccess row : consoleAccess.findActiveByTenantId(tenantId)) {
             if (!row.getUserId().equals(userId)) {
                 continue;
             }
-            features.addAll(AdminConsoleCapabilityCatalog.baseFeatures(row.getRoleType()));
+            features.addAll(catalogFeaturesForRole(tenantId, row.getRoleType()));
         }
         return features;
     }
@@ -173,14 +180,23 @@ public class AdminConsoleCapabilityService {
                 continue;
             }
             if (row.getRoleType() == AdminConsoleRoleType.TENANT_SUPER_ADMIN) {
-                return EnumSet.allOf(ConsoleFeature.class);
+                features.addAll(catalogFeaturesForRole(tenantId, row.getRoleType()));
+                continue;
             }
             if (row.getRoleType() == AdminConsoleRoleType.TENANT_ADMIN
                     || row.getRoleType() == AdminConsoleRoleType.APPLICATION_ADMIN) {
                 if (row.getApplicationId() != null && row.getApplicationId().equals(applicationId)) {
-                    features.addAll(AdminConsoleCapabilityCatalog.baseFeatures(row.getRoleType()));
+                    features.addAll(catalogFeaturesForRole(tenantId, row.getRoleType()));
                 }
             }
+        }
+        return features;
+    }
+
+    private Set<ConsoleFeature> catalogFeaturesForRole(UUID tenantId, AdminConsoleRoleType roleType) {
+        Set<ConsoleFeature> features = EnumSet.noneOf(ConsoleFeature.class);
+        for (String key : roleDefaults.resolveFeatureKeys(tenantId, roleType.name())) {
+            ConsoleFeature.fromKey(key).ifPresent(features::add);
         }
         return features;
     }

@@ -7,21 +7,31 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { CONSOLE_FEATURE_LABELS } from "@/lib/api/admin-console-capabilities";
+import type { AdminConsoleRoleType } from "@/lib/api/admin-console-access";
 import type { TenantConsoleRolesCatalog } from "@/lib/api/tenant-console-roles";
+import { saveConsoleRoleFeaturesAction } from "@/lib/actions/tenant-console-roles";
 import {
-  createTenantPermission,
-  createTenantRole,
-  deleteTenantPermission,
-  deleteTenantRole,
-  getTenantRole,
+  createTenantPermissionAction,
+  deleteTenantPermissionAction,
+  deleteTenantRoleAction,
+  getTenantRoleAction,
+  listTenantPermissionsAction,
+  listTenantRolesAction,
+  updateTenantRoleAction,
+} from "@/lib/actions/tenant-rbac";
+import {
+  consoleFeaturesFromPermissionIds,
+  isConsolePermissionKey,
+  syncConsolePermissionIds,
+} from "@/lib/tenant-console-sections";
+import { CreateTenantCustomRoleDialog } from "@/components/tenant-rbac/CreateTenantCustomRoleDialog";
+import {
   isTenantCatalogPermission,
-  listTenantPermissions,
-  listTenantRoles,
-  updateTenantRole,
   type TenantPermission,
   type TenantRole,
   type TenantRoleDetail,
 } from "@/lib/api/tenant-rbac";
+import { isUserDefinedTenantRole } from "@/lib/tenant-rbac-catalog";
 import type { Application } from "@/lib/types";
 
 type WorkspaceTab = "roles" | "permissions";
@@ -42,11 +52,70 @@ function scopeLabel(role: TenantConsoleRolesCatalog["roles"][number]): string {
   return "Assigned applications only";
 }
 
+function ConsoleSectionGrid({
+  features,
+  selected,
+  editable,
+  onToggle,
+}: {
+  features: string[];
+  selected: string[];
+  editable: boolean;
+  onToggle?: (feature: string) => void;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {features.map((key) => {
+        const enabled = selected.includes(key);
+        const body = (
+          <>
+            <span
+              className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                enabled ? "bg-brand" : "bg-faint"
+              }`}
+              aria-hidden
+            />
+            <span>{CONSOLE_FEATURE_LABELS[key] ?? key}</span>
+          </>
+        );
+        if (!editable) {
+          return (
+            <div
+              key={key}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                enabled ? "border-brand bg-brand-muted/30" : "border-ui opacity-60"
+              }`}
+            >
+              {body}
+            </div>
+          );
+        }
+        return (
+          <label
+            key={key}
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+              enabled ? "border-brand bg-brand-muted/30" : "border-ui"
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={enabled}
+              onChange={() => onToggle?.(key)}
+            />
+            {body}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 export function TenantRolesWorkspace({
   tenantId,
   tenantName,
   applications,
-  consoleCatalog,
+  consoleCatalog: consoleCatalogProp,
   initialCustomRoles,
   initialPermissions,
 }: {
@@ -59,19 +128,22 @@ export function TenantRolesWorkspace({
 }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<WorkspaceTab>("roles");
+  const [consoleCatalog, setConsoleCatalog] = useState(consoleCatalogProp);
   const [customRoles, setCustomRoles] = useState(initialCustomRoles);
   const [permissions, setPermissions] = useState(initialPermissions);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<RoleSelection>({
     kind: "console",
-    roleType: consoleCatalog.roles[0]?.roleType ?? "APPLICATION_ADMIN",
+    roleType: consoleCatalogProp.roles[0]?.roleType ?? "APPLICATION_ADMIN",
   });
+  const [editConsoleFeatures, setEditConsoleFeatures] = useState<string[]>([]);
   const [customDetail, setCustomDetail] = useState<TenantRoleDetail | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPermissionIds, setEditPermissionIds] = useState<string[]>([]);
   const [editApplicationIds, setEditApplicationIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [createRoleOpen, setCreateRoleOpen] = useState(false);
   const [permKey, setPermKey] = useState("");
   const [permDescription, setPermDescription] = useState("");
 
@@ -79,10 +151,28 @@ export function TenantRolesWorkspace({
     (r) => r.roleType === (selected.kind === "console" ? selected.roleType : ""),
   );
 
+  const userCustomRoles = useMemo(
+    () => customRoles.filter(isUserDefinedTenantRole),
+    [customRoles],
+  );
+
+  const governancePermissions = permissions.filter((p) => !isConsolePermissionKey(p.key));
+  const editCustomConsoleFeatures = consoleFeaturesFromPermissionIds(
+    permissions,
+    editPermissionIds,
+    consoleCatalog.features,
+  );
+
+  useEffect(() => {
+    if (selected.kind === "console" && consoleRole) {
+      setEditConsoleFeatures(consoleRole.defaultFeatures);
+    }
+  }, [selected, consoleRole?.roleType, consoleRole?.defaultFeatures]);
+
   async function reloadCustom() {
     const [roles, perms] = await Promise.all([
-      listTenantRoles(tenantId),
-      listTenantPermissions(tenantId),
+      listTenantRolesAction(tenantId),
+      listTenantPermissionsAction(tenantId),
     ]);
     setCustomRoles(roles);
     setPermissions(perms);
@@ -94,7 +184,7 @@ export function TenantRolesWorkspace({
       return;
     }
     let cancelled = false;
-    void getTenantRole(tenantId, selected.roleId)
+    void getTenantRoleAction(tenantId, selected.roleId)
       .then((row) => {
         if (!cancelled) {
           setCustomDetail(row);
@@ -142,6 +232,43 @@ export function TenantRolesWorkspace({
     );
   }
 
+  function toggleConsoleFeature(feature: string) {
+    setEditConsoleFeatures((prev) =>
+      prev.includes(feature) ? prev.filter((f) => f !== feature) : [...prev, feature],
+    );
+  }
+
+  function toggleCustomConsoleFeature(feature: string) {
+    setEditPermissionIds((prev) =>
+      syncConsolePermissionIds(permissions, prev, feature, !editCustomConsoleFeatures.includes(feature)),
+    );
+  }
+
+  async function saveConsoleRole() {
+    if (selected.kind !== "console") return;
+    setSaving(true);
+    try {
+      const updated = await saveConsoleRoleFeaturesAction(
+        tenantId,
+        selected.roleType as AdminConsoleRoleType,
+        editConsoleFeatures,
+      );
+      setConsoleCatalog((prev) => ({
+        ...prev,
+        roles: prev.roles.map((r) =>
+          r.roleType === selected.roleType
+            ? { ...r, defaultFeatures: updated, customized: true }
+            : r,
+        ),
+      }));
+      toast("Console sections saved", "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not save console sections", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function toggleApplication(id: string) {
     setEditApplicationIds((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
@@ -152,7 +279,7 @@ export function TenantRolesWorkspace({
     if (selected.kind !== "custom" || !customDetail || !editName.trim()) return;
     setSaving(true);
     try {
-      const updated = await updateTenantRole(tenantId, selected.roleId, {
+      const updated = await updateTenantRoleAction(tenantId, selected.roleId, {
         name: editName.trim(),
         description: editDescription.trim(),
         permissionIds: editPermissionIds,
@@ -168,33 +295,12 @@ export function TenantRolesWorkspace({
     }
   }
 
-  async function createRole() {
-    const name = window.prompt("Role name");
-    if (!name?.trim()) return;
-    setSaving(true);
-    try {
-      const created = await createTenantRole(tenantId, {
-        name: name.trim(),
-        description: "",
-        permissionIds: [],
-        applicationIds: [],
-      });
-      toast("Custom role created", "success");
-      setSelected({ kind: "custom", roleId: created.id });
-      await reloadCustom();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not create role", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function removeCustomRole() {
     if (selected.kind !== "custom" || !customDetail) return;
     if (!window.confirm(`Delete role "${customDetail.name}"?`)) return;
     setSaving(true);
     try {
-      await deleteTenantRole(tenantId, selected.roleId);
+      await deleteTenantRoleAction(tenantId, selected.roleId);
       toast("Role deleted", "success");
       setSelected({ kind: "console", roleType: "APPLICATION_ADMIN" });
       setCustomDetail(null);
@@ -211,7 +317,7 @@ export function TenantRolesWorkspace({
     if (!key) return;
     setSaving(true);
     try {
-      await createTenantPermission(tenantId, { key, description: permDescription.trim() });
+      await createTenantPermissionAction(tenantId, { key, description: permDescription.trim() });
       toast("Permission created", "success");
       setPermKey("");
       setPermDescription("");
@@ -227,7 +333,7 @@ export function TenantRolesWorkspace({
     if (!window.confirm(`Delete permission "${permission.key}"?`)) return;
     setSaving(true);
     try {
-      await deleteTenantPermission(tenantId, permission.id);
+      await deleteTenantPermissionAction(tenantId, permission.id);
       toast("Permission deleted", "success");
       await reloadCustom();
     } catch (e) {
@@ -241,8 +347,9 @@ export function TenantRolesWorkspace({
     <div className="space-y-5">
       <div className="rounded-xl border border-ui bg-ui-elevated/40 px-4 py-3 text-sm text-muted">
         Manage console operator roles and custom tenant governance roles for{" "}
-        <strong className="text-ui">{tenantName}</strong>. System console roles control admin
-        sign-in scope; custom roles use the tenant permission catalog below.
+        <strong className="text-ui">{tenantName}</strong>. Console roles (Application Admin, Tenant
+        Admin, Tenant Super Admin) control operator sign-in; custom roles below are tenant-defined
+        and use the permission catalog.
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -250,7 +357,7 @@ export function TenantRolesWorkspace({
           label="Console roles"
           value={consoleCatalog.roles.length}
         />
-        <SummaryCard label="Custom roles" value={customRoles.length} />
+        <SummaryCard label="Custom roles" value={userCustomRoles.length} />
         <SummaryCard label="Permissions" value={permissions.length} />
         <SummaryCard
           label="Assignments"
@@ -346,7 +453,12 @@ export function TenantRolesWorkspace({
               title="Role directory"
               description="Console and custom roles"
               action={
-                <Button size="sm" variant="secondary" disabled={saving} onClick={() => void createRole()}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={saving}
+                  onClick={() => setCreateRoleOpen(true)}
+                >
                   + New role
                 </Button>
               }
@@ -403,7 +515,6 @@ export function TenantRolesWorkspace({
                         <p className="truncate font-medium text-ui">{r.name}</p>
                         <p className="truncate text-xs text-faint">{r.description || "—"}</p>
                       </div>
-                      {r.systemRole && <Badge tone="info">System</Badge>}
                     </button>
                   </li>
                 ))}
@@ -419,7 +530,11 @@ export function TenantRolesWorkspace({
               <>
                 <CardHeader
                   title={consoleRole.name}
-                  description="Console operator role — assign from tenant roster"
+                  description={
+                    consoleRole.customized
+                      ? "Customized default console sections for this tenant"
+                      : "Default console sections — customize and save for this tenant"
+                  }
                 />
                 <div className="space-y-6 px-5 py-5">
                   <p className="text-sm text-muted">{consoleRole.description}</p>
@@ -435,25 +550,20 @@ export function TenantRolesWorkspace({
                   </div>
                   <div>
                     <p className="mb-2 text-sm font-medium text-ui">Console sections</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {consoleCatalog.features.map((key) => {
-                        const enabled = consoleRole.defaultFeatures.includes(key);
-                        return (
-                          <div
-                            key={key}
-                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                              enabled ? "border-brand bg-brand-muted/30" : "border-ui opacity-60"
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-2 w-2 rounded-full ${
-                                enabled ? "bg-brand" : "bg-faint"
-                              }`}
-                            />
-                            <span>{CONSOLE_FEATURE_LABELS[key] ?? key}</span>
-                          </div>
-                        );
-                      })}
+                    <p className="mb-3 text-xs text-muted">
+                      Default sections granted to operators with this role. Per-user overrides can
+                      still be set from the tenant roster.
+                    </p>
+                    <ConsoleSectionGrid
+                      features={consoleCatalog.features}
+                      selected={editConsoleFeatures}
+                      editable
+                      onToggle={toggleConsoleFeature}
+                    />
+                    <div className="mt-4 flex justify-end border-t border-ui pt-4">
+                      <Button disabled={saving} onClick={() => void saveConsoleRole()}>
+                        {saving ? "Saving…" : "Save console sections"}
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -497,31 +607,45 @@ export function TenantRolesWorkspace({
                     </div>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-ui">Permissions</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {permissions.map((p) => (
-                        <label
-                          key={p.id}
-                          className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
-                            editPermissionIds.includes(p.id)
-                              ? "border-brand bg-brand-muted/30"
-                              : "border-ui"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={editPermissionIds.includes(p.id)}
-                            onChange={() => togglePermission(p.id)}
-                          />
-                          <span>
-                            <span className="block font-mono text-xs text-ui">{p.key}</span>
-                            <span className="block text-xs text-faint">{p.description}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
+                    <p className="mb-2 text-sm font-medium text-ui">Console sections</p>
+                    <p className="mb-3 text-xs text-muted">
+                      Admin console areas operators with this role can access.
+                    </p>
+                    <ConsoleSectionGrid
+                      features={consoleCatalog.features}
+                      selected={editCustomConsoleFeatures}
+                      editable
+                      onToggle={toggleCustomConsoleFeature}
+                    />
                   </div>
+                  {governancePermissions.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-ui">Governance permissions</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {governancePermissions.map((p) => (
+                          <label
+                            key={p.id}
+                            className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                              editPermissionIds.includes(p.id)
+                                ? "border-brand bg-brand-muted/30"
+                                : "border-ui"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={editPermissionIds.includes(p.id)}
+                              onChange={() => togglePermission(p.id)}
+                            />
+                            <span>
+                              <span className="block font-mono text-xs text-ui">{p.key}</span>
+                              <span className="block text-xs text-faint">{p.description}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <p className="mb-2 text-sm font-medium text-ui">Application scope</p>
                     <p className="mb-3 text-xs text-muted">
@@ -557,6 +681,17 @@ export function TenantRolesWorkspace({
           </Card>
         </div>
       )}
+      <CreateTenantCustomRoleDialog
+        open={createRoleOpen}
+        onClose={() => setCreateRoleOpen(false)}
+        tenantId={tenantId}
+        tenantName={tenantName}
+        applications={applications}
+        onCreated={async (roleId) => {
+          setSelected({ kind: "custom", roleId });
+          await reloadCustom();
+        }}
+      />
     </div>
   );
 }

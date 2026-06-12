@@ -3,10 +3,9 @@ package com.secureone.auth.admin.tenant;
 import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.admin.console.AdminConsoleAccess;
 import com.secureone.auth.admin.console.AdminConsoleAccessRepository;
-import com.secureone.auth.admin.console.AdminConsoleCapabilityCatalog;
 import com.secureone.auth.admin.console.AdminConsoleCapabilityService;
 import com.secureone.auth.admin.console.AdminConsoleRoleType;
-import com.secureone.auth.admin.console.ConsoleFeature;
+import com.secureone.auth.admin.console.TenantConsoleRoleDefaultsService;
 import com.secureone.auth.tenant.TenantRepository;
 import java.util.Arrays;
 import java.util.List;
@@ -21,14 +20,17 @@ public class TenantConsoleRolesService {
     private final TenantRepository tenants;
     private final AdminConsoleAccessRepository consoleAccess;
     private final AdminConsoleCapabilityService capabilities;
+    private final TenantConsoleRoleDefaultsService roleDefaults;
 
     public TenantConsoleRolesService(
             TenantRepository tenants,
             AdminConsoleAccessRepository consoleAccess,
-            AdminConsoleCapabilityService capabilities) {
+            AdminConsoleCapabilityService capabilities,
+            TenantConsoleRoleDefaultsService roleDefaults) {
         this.tenants = tenants;
         this.consoleAccess = consoleAccess;
         this.capabilities = capabilities;
+        this.roleDefaults = roleDefaults;
     }
 
     public record TenantConsoleRoleResponse(
@@ -38,6 +40,7 @@ public class TenantConsoleRolesService {
             boolean applicationScoped,
             boolean allApplications,
             List<String> defaultFeatures,
+            boolean customized,
             int assignmentCount) {}
 
     public record TenantConsoleRolesCatalogResponse(
@@ -49,12 +52,18 @@ public class TenantConsoleRolesService {
         }
         List<AdminConsoleAccess> assignments = consoleAccess.findActiveByTenantId(tenantId);
         List<String> features = capabilities.allFeatureKeys();
-        List<TenantConsoleRoleResponse> roles =
-                Arrays.stream(AdminConsoleRoleType.values()).map(type -> toRole(type, assignments)).toList();
+        List<TenantConsoleRoleResponse> roles = Arrays.stream(AdminConsoleRoleType.values())
+                .map(type -> toRole(tenantId, type, assignments))
+                .toList();
         return new TenantConsoleRolesCatalogResponse(features, roles);
     }
 
-    private TenantConsoleRoleResponse toRole(AdminConsoleRoleType type, List<AdminConsoleAccess> assignments) {
+    public List<String> updateConsoleRoleFeatures(UUID tenantId, String roleKey, List<String> features) {
+        return roleDefaults.updateConsoleRoleFeatures(tenantId, roleKey, features);
+    }
+
+    private TenantConsoleRoleResponse toRole(
+            UUID tenantId, AdminConsoleRoleType type, List<AdminConsoleAccess> assignments) {
         int count = (int) assignments.stream()
                 .filter(row -> row.getRoleType() == type)
                 .count();
@@ -64,10 +73,8 @@ public class TenantConsoleRolesService {
                 description(type),
                 type == AdminConsoleRoleType.APPLICATION_ADMIN,
                 type == AdminConsoleRoleType.TENANT_SUPER_ADMIN,
-                AdminConsoleCapabilityCatalog.baseFeatures(type).stream()
-                        .map(ConsoleFeature::key)
-                        .sorted()
-                        .toList(),
+                roleDefaults.resolveFeatureKeys(tenantId, type.name()),
+                roleDefaults.hasCustomDefaults(tenantId, type.name()),
                 count);
     }
 

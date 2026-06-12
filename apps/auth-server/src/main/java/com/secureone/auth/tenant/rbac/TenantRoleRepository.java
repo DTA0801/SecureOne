@@ -9,6 +9,8 @@ public interface TenantRoleRepository extends JpaRepository<TenantRole, UUID> {
 
     List<TenantRole> findByTenantIdOrderByNameAsc(UUID tenantId);
 
+    List<TenantRole> findByTenantIdAndSystemRoleFalseOrderByNameAsc(UUID tenantId);
+
     Optional<TenantRole> findByTenantIdAndName(UUID tenantId, String name);
 
     boolean existsByTenantIdAndName(UUID tenantId, String name);

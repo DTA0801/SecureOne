@@ -66,8 +66,10 @@ public class AdminCredentialAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(username, password));
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 }
+            } catch (org.springframework.security.core.AuthenticationException ignored) {
+                SecurityContextHolder.clearContext();
             } catch (RuntimeException ignored) {
-                // Fall through to HTTP Basic handling.
+                // Malformed token — fall through to HTTP Basic handling.
             }
         }
 

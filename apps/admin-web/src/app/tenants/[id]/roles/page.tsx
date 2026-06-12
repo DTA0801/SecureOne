@@ -5,11 +5,8 @@ import { ButtonLink } from "@/components/ui/Button";
 import { TenantRolesWorkspace } from "@/components/tenant-rbac/TenantRolesWorkspace";
 import { getTenant } from "@/lib/api/tenants";
 import { listApplications } from "@/lib/api/applications";
-import {
-  loadTenantConsoleRolesCatalog,
-  loadTenantConsoleRolesCatalogFromAssignments,
-} from "@/lib/api/tenant-console-roles";
-import { listTenantPermissions, listTenantRoles } from "@/lib/api/tenant-rbac";
+import { loadTenantConsoleRolesCatalog } from "@/lib/api/tenant-console-roles";
+import { listTenantPermissionsAction, listTenantRolesAction } from "@/lib/actions/tenant-rbac";
 import { fetchGovernanceTenantWorkspace } from "@/lib/api/tenant-workspace-server";
 import {
   assertTenantScope,
@@ -41,13 +38,11 @@ export default async function TenantRolesPage({
     ? applicationsFromWorkspace(workspace)
     : await listApplications(tenant.id);
 
-  const catalog = tenantSuper
-    ? loadTenantConsoleRolesCatalogFromAssignments(workspace.consoleAccess)
-    : await loadTenantConsoleRolesCatalog(tenant.id);
+  const catalog = await loadTenantConsoleRolesCatalog(tenant.id);
 
   const [customRoles, permissions] = await Promise.all([
-    listTenantRoles(tenant.id).catch(() => []),
-    listTenantPermissions(tenant.id).catch(() => []),
+    listTenantRolesAction(tenant.id, true).catch(() => []),
+    listTenantPermissionsAction(tenant.id).catch(() => []),
   ]);
 
   return (

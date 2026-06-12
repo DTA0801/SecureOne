@@ -1,3 +1,4 @@
+import { browserApiFetch as apiFetch } from "./browser-client";
 import {
   CONSOLE_ROLE_DEFAULT_FEATURES,
   CONSOLE_FEATURE_LABELS,
@@ -18,6 +19,7 @@ export type TenantConsoleRole = {
   applicationScoped: boolean;
   allApplications: boolean;
   defaultFeatures: string[];
+  customized?: boolean;
   assignmentCount: number;
 };
 
@@ -52,20 +54,47 @@ export function buildTenantConsoleRolesCatalog(
     applicationScoped: roleType === "APPLICATION_ADMIN",
     allApplications: roleType === "TENANT_SUPER_ADMIN",
     defaultFeatures: CONSOLE_ROLE_DEFAULT_FEATURES[roleType] ?? [],
+    customized: false,
     assignmentCount: assignments.filter((a) => a.roleType === roleType).length,
   }));
   return { features, roles };
 }
 
-/** Load tenant console role catalog using the same auth path as other tenant pages. */
+export async function fetchTenantConsoleRolesCatalog(
+  tenantId: string,
+): Promise<TenantConsoleRolesCatalog> {
+  return apiFetch<TenantConsoleRolesCatalog>(
+    `/api/admin/v1/tenants/${tenantId}/console-roles`,
+  );
+}
+
+export async function updateConsoleRoleFeatures(
+  tenantId: string,
+  roleType: AdminConsoleRoleType,
+  features: string[],
+): Promise<string[]> {
+  return apiFetch<string[]>(
+    `/api/admin/v1/tenants/${tenantId}/console-roles/${roleType}/features`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features }),
+    },
+  );
+}
+
+/** Load catalog from API with fallback to assignment-derived defaults. */
 export async function loadTenantConsoleRolesCatalog(
   tenantId: string,
 ): Promise<TenantConsoleRolesCatalog> {
-  const assignments = await listConsoleAccess(tenantId);
-  return buildTenantConsoleRolesCatalog(assignments);
+  try {
+    return await fetchTenantConsoleRolesCatalog(tenantId);
+  } catch {
+    const assignments = await listConsoleAccess(tenantId).catch(() => []);
+    return buildTenantConsoleRolesCatalog(assignments);
+  }
 }
 
-/** Tenant super-admin: use console assignments from operator workspace payload. */
 export function loadTenantConsoleRolesCatalogFromAssignments(
   assignments: ConsoleAccessAssignment[],
 ): TenantConsoleRolesCatalog {

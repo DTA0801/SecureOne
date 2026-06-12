@@ -26,6 +26,10 @@ public class AdminAccessInterceptor implements HandlerInterceptor {
             Pattern.compile("^/api/admin/v1/roles/([0-9a-fA-F-]{36})$");
     private static final Pattern PERMISSION_PATH =
             Pattern.compile("^/api/admin/v1/permissions/([0-9a-fA-F-]{36})$");
+    private static final Pattern TENANT_PATH =
+            Pattern.compile("^/api/admin/v1/tenants/([0-9a-fA-F-]{36})(?:/|$)");
+    private static final Pattern TENANT_GOVERNANCE_PATH = Pattern.compile(
+            "^/api/admin/v1/tenants/[0-9a-fA-F-]{36}/(?:console-roles|tenant-rbac)(?:/|$)");
 
     private static final Map<String, String> PATH_PERMISSIONS = Map.ofEntries(
             Map.entry("users", "user:read"),
@@ -86,7 +90,12 @@ public class AdminAccessInterceptor implements HandlerInterceptor {
         }
 
         if (path.startsWith("/api/admin/v1/tenants")) {
-            access.requirePlatformSettingsAccess(auth, actAs);
+            Matcher tenantMatcher = TENANT_PATH.matcher(path);
+            if (tenantMatcher.find() && TENANT_GOVERNANCE_PATH.matcher(path).find()) {
+                access.requireTenantGovernanceAccess(auth, actAs, UUID.fromString(tenantMatcher.group(1)));
+            } else {
+                access.requirePlatformSettingsAccess(auth, actAs);
+            }
             return true;
         }
 

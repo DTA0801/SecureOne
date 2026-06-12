@@ -114,6 +114,31 @@ public class AdminAccessService {
         }
     }
 
+    /**
+     * Platform super-admin or tenant super-admin for the given tenant (roles, console sections, tenant
+     * RBAC).
+     */
+    public boolean canManageTenantGovernance(
+            Authentication authentication, String actAsEmail, UUID tenantId) {
+        if (canAccessPlatformSettings(authentication, actAsEmail)) {
+            return true;
+        }
+        if (!"tenant_super".equals(resolveOperatorTier(authentication, actAsEmail))) {
+            return false;
+        }
+        return resolveTenantUserId(authentication, actAsEmail)
+                .flatMap(users::findById)
+                .map(user -> user.getTenantId().equals(tenantId))
+                .orElse(false);
+    }
+
+    public void requireTenantGovernanceAccess(
+            Authentication authentication, String actAsEmail, UUID tenantId) {
+        if (!canManageTenantGovernance(authentication, actAsEmail, tenantId)) {
+            throw new AccessDeniedException("Tenant governance access required");
+        }
+    }
+
     public boolean bypassesPermissionChecks(
             Authentication authentication, String actAsEmail, UUID applicationId) {
         if (canAccessPlatformSettings(authentication, actAsEmail)) {

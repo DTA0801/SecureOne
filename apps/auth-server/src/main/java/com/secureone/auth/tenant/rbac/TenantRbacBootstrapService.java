@@ -75,6 +75,10 @@ public class TenantRbacBootstrapService {
             created.setSystemRole(true);
             return roles.save(created);
         });
+        if (!role.isSystemRole()) {
+            role.setSystemRole(true);
+            roles.save(role);
+        }
         if (rbac.countPermissionsByRoleId(role.getId()) == 0) {
             List<UUID> permissionIds =
                     permissionKeys.stream().map(byKey::get).filter(java.util.Objects::nonNull).toList();

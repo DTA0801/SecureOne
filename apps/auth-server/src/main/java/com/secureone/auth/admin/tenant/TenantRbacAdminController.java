@@ -1,6 +1,6 @@
 package com.secureone.auth.admin.tenant;
 
-import com.secureone.auth.admin.AdminOperatorService;
+import com.secureone.auth.admin.AdminAccessService;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantPermissionCreateRequest;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantPermissionResponse;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleCreateRequest;
@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -32,11 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantRbacAdminController {
 
     private final TenantRbacAdminService rbac;
-    private final AdminOperatorService operators;
+    private final AdminAccessService access;
 
-    public TenantRbacAdminController(TenantRbacAdminService rbac, AdminOperatorService operators) {
+    public TenantRbacAdminController(TenantRbacAdminService rbac, AdminAccessService access) {
         this.rbac = rbac;
-        this.operators = operators;
+        this.access = access;
     }
 
     @GetMapping("/permissions")
@@ -74,9 +75,10 @@ public class TenantRbacAdminController {
     public List<TenantRoleSummaryResponse> listRoles(
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
-            @PathVariable UUID tenantId) {
+            @PathVariable UUID tenantId,
+            @RequestParam(defaultValue = "false") boolean customOnly) {
         requirePlatform(authentication, actAsEmail, tenantId);
-        return rbac.listRoles(tenantId);
+        return rbac.listRoles(tenantId, customOnly);
     }
 
     @GetMapping("/roles/{roleId}")
@@ -123,10 +125,6 @@ public class TenantRbacAdminController {
     }
 
     private void requirePlatform(Authentication authentication, String actAsEmail, UUID tenantId) {
-        operators.requireTenantAccess(authentication, actAsEmail, tenantId);
-        if (!operators.isPlatformSuperAdmin(authentication, actAsEmail)) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "Platform super-admin required for tenant RBAC");
-        }
+        access.requireTenantGovernanceAccess(authentication, actAsEmail, tenantId);
     }
 }

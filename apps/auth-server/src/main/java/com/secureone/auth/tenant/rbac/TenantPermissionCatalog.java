@@ -52,6 +52,17 @@ public final class TenantPermissionCatalog {
     public static final List<String> TENANT_AUDITOR = List.of(
             "tenant:read", "operator:read", "console:audit", "console:logs", "console:sessions");
 
+    public static final List<String> SEEDED_ROLE_NAMES = List.of(
+            "Tenant Administrator", "Application Operator", "Tenant Auditor");
+
+    public static boolean isSeededRoleName(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        String normalized = name.trim();
+        return SEEDED_ROLE_NAMES.stream().anyMatch(n -> n.equalsIgnoreCase(normalized));
+    }
+
     public static boolean isCatalogKey(String key) {
         if (key == null || key.isBlank()) {
             return false;
