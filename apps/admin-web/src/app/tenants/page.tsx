@@ -8,13 +8,18 @@ import { TenantFormModal } from "@/components/forms/TenantFormModal";
 import { listTenants } from "@/lib/api/tenants";
 import { tenantDeleteAction } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
-import { requirePlatformAccess } from "@/lib/platform-access";
+import { redirect } from "next/navigation";
+import { isTenantSuperAdmin } from "@/lib/operator-access";
+import { requireTenantGovernanceAccess } from "@/lib/platform-access";
 import { planTone, statusTone } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
 export default async function TenantsPage() {
-  await requirePlatformAccess();
+  const ctx = await requireTenantGovernanceAccess();
+  if (isTenantSuperAdmin(ctx) && ctx.tenantId) {
+    redirect(`/tenants/${ctx.tenantId}`);
+  }
   const tenants = await listTenants();
   const totalUsers = tenants.reduce((s, t) => s + t.userCount, 0);
 

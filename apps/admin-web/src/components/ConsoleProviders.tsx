@@ -23,6 +23,9 @@ export function ConsoleProviders({
     <AdminContextProvider value={adminContext}>
       <ConsoleShell
         superAdmin={adminContext.platformSuperAdmin}
+        tenantSuperAdmin={
+          adminContext.operatorTier === "tenant_super" && !adminContext.platformSuperAdmin
+        }
         applications={adminContext.applications}
       >
         {children}

@@ -20,11 +20,14 @@ export function TenantDetailPanels({
   tenant,
   roles,
   applications,
+  useOperatorWorkspace = false,
 }: {
   initialWorkspace: TenantWorkspace;
   tenant: Tenant;
   roles: Role[];
   applications: Application[];
+  /** Tenant super-admin: use operator workspace API (no platform tenantId query). */
+  useOperatorWorkspace?: boolean;
 }) {
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [assignments, setAssignments] = useState(() => consoleAccessFrom(initialWorkspace));
@@ -43,7 +46,7 @@ export function TenantDetailPanels({
   // Server render may omit console access; always refetch once on mount.
   useEffect(() => {
     let cancelled = false;
-    void fetchTenantWorkspace(tenant.id)
+    void fetchTenantWorkspace(useOperatorWorkspace ? undefined : tenant.id)
       .then((next) => {
         if (!cancelled) applyWorkspace(next);
       })
@@ -53,12 +56,12 @@ export function TenantDetailPanels({
     return () => {
       cancelled = true;
     };
-  }, [tenant.id, applyWorkspace]);
+  }, [tenant.id, useOperatorWorkspace, applyWorkspace]);
 
   const refreshAll = useCallback(async () => {
-    const next = await fetchTenantWorkspace(tenant.id);
+    const next = await fetchTenantWorkspace(useOperatorWorkspace ? undefined : tenant.id);
     applyWorkspace(next);
-  }, [tenant.id, applyWorkspace]);
+  }, [tenant.id, useOperatorWorkspace, applyWorkspace]);
 
   return (
     <>

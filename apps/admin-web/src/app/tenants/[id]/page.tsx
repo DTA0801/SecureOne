@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ButtonLink } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,51 +12,69 @@ import { listApplications } from "@/lib/api/applications";
 import { listRoles } from "@/lib/api/roles";
 import { formatDate } from "@/lib/format";
 import { planTone, statusTone } from "@/lib/status";
-import { fetchTenantWorkspace } from "@/lib/api/tenant-workspace-server";
-import { requirePlatformAccess } from "@/lib/platform-access";
+import { fetchGovernanceTenantWorkspace } from "@/lib/api/tenant-workspace-server";
+import {
+  assertTenantScope,
+  requireTenantGovernanceAccess,
+} from "@/lib/platform-access";
+import { isTenantSuperAdmin } from "@/lib/operator-access";
+import { applicationsFromWorkspace, tenantFromWorkspace } from "@/lib/tenant-governance";
+import type { Application, Tenant } from "@/lib/types";
 
 export default async function TenantDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requirePlatformAccess();
+  const ctx = await requireTenantGovernanceAccess();
+  const tenantSuper = isTenantSuperAdmin(ctx);
   const { id } = await params;
-  const tenant = await getTenant(id);
-  if (!tenant) notFound();
+  assertTenantScope(ctx, id);
 
-  const [apps, workspace] = await Promise.all([
-    listApplications(tenant.id),
-    fetchTenantWorkspace(tenant.id).catch(() => null),
-  ]);
+  const workspace = await fetchGovernanceTenantWorkspace(id, tenantSuper);
 
-  if (!workspace) notFound();
+  let tenant: Tenant | null = tenantSuper ? tenantFromWorkspace(workspace) : await getTenant(id);
+  if (!tenant) {
+    tenant = tenantFromWorkspace(workspace);
+  }
+
+  const apps: Application[] = tenantSuper
+    ? (applicationsFromWorkspace(workspace) as Application[])
+    : await listApplications(tenant.id);
 
   const defaultAppId = workspace.applications[0]?.id ?? apps[0]?.id;
   const roles = defaultAppId ? await listRoles({ applicationId: defaultAppId }) : [];
+
+  const description = tenant.createdAt
+    ? `@${tenant.slug} · created ${formatDate(tenant.createdAt)}`
+    : `@${tenant.slug}`;
 
   return (
     <div className="w-full min-w-0">
       <PageHeader
         breadcrumb={<Link href="/tenants" className="hover:underline">Tenants</Link>}
         title={tenant.name}
-        description={`@${tenant.slug} · created ${formatDate(tenant.createdAt)}`}
+        description={description}
         actions={
           <>
             <Badge tone={planTone(tenant.plan)} className="capitalize">{tenant.plan}</Badge>
             <Badge tone={statusTone(tenant.status)} dot className="capitalize">{tenant.status}</Badge>
-            <ButtonLink href="/applications" variant="ghost" size="sm">
-              OAuth clients
-            </ButtonLink>
-            <TenantFormModal tenant={tenant} triggerLabel="Edit" triggerVariant="secondary" />
-            <ConfirmDialog
-              action={tenantDeleteAction}
-              id={tenant.id}
-              triggerLabel="Delete"
-              triggerVariant="danger"
-              title={`Delete ${tenant.name}?`}
-              message="This removes the tenant and all associated configuration. This action cannot be undone."
-            />
+            {!tenantSuper && (
+              <>
+                <ButtonLink href="/applications" variant="ghost" size="sm">
+                  OAuth clients
+                </ButtonLink>
+                <TenantFormModal tenant={tenant} triggerLabel="Edit" triggerVariant="secondary" />
+                <ConfirmDialog
+                  action={tenantDeleteAction}
+                  id={tenant.id}
+                  triggerLabel="Delete"
+                  triggerVariant="danger"
+                  title={`Delete ${tenant.name}?`}
+                  message="This removes the tenant and all associated configuration. This action cannot be undone."
+                />
+              </>
+            )}
           </>
         }
       />
@@ -74,6 +91,7 @@ export default async function TenantDetailPage({
         tenant={tenant}
         roles={roles}
         applications={apps}
+        useOperatorWorkspace={tenantSuper}
       />
     </div>
   );

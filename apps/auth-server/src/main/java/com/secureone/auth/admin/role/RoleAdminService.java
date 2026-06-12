@@ -6,6 +6,7 @@ import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.audit.AuditService;
 import com.secureone.auth.rbac.Permission;
 import com.secureone.auth.rbac.PermissionRepository;
+import com.secureone.auth.rbac.ApplicationRbacScope;
 import com.secureone.auth.rbac.Role;
 import com.secureone.auth.rbac.RoleRbacRepository;
 import com.secureone.auth.rbac.RoleRepository;
@@ -60,6 +61,7 @@ public class RoleAdminService {
     public List<RoleAdminDtos.PermissionResponse> listPermissions(UUID applicationId) {
         requireApplication(applicationId);
         return permissionRepository.findByApplicationIdOrderByKeyAsc(applicationId).stream()
+                .filter(p -> ApplicationRbacScope.isApplicationScopedPermissionKey(p.getKey()))
                 .map(this::toPermissionResponse)
                 .toList();
     }
@@ -72,7 +74,10 @@ public class RoleAdminService {
                         : tenantId != null
                                 ? roleRepository.findByTenantIdOrderByNameAsc(tenantId)
                                 : roleRepository.findAll();
-        return roles.stream().map(this::toSummary).toList();
+        return roles.stream()
+                .filter(role -> applicationId == null || ApplicationRbacScope.isApplicationScopedRole(role))
+                .map(this::toSummary)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -221,6 +226,9 @@ public class RoleAdminService {
             if (child.isComposite()) {
                 throw new IllegalArgumentException("Composite roles cannot inherit other composite roles.");
             }
+            if (!ApplicationRbacScope.isApplicationScopedRole(child)) {
+                throw new IllegalArgumentException("Console operator roles cannot be inherited.");
+            }
         }
     }
 
@@ -253,6 +261,7 @@ public class RoleAdminService {
                 .toList();
         List<RoleAdminDtos.PermissionResponse> permissions =
                 permissionRepository.findByApplicationIdOrderByKeyAsc(role.getApplicationId()).stream()
+                        .filter(p -> ApplicationRbacScope.isApplicationScopedPermissionKey(p.getKey()))
                         .map(this::toPermissionResponse)
                         .toList();
         return new RoleAdminDtos.RoleDetailResponse(
@@ -297,6 +306,9 @@ public class RoleAdminService {
                         .findById(id)
                         .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + id));
         if (applicationId != null && !applicationId.equals(role.getApplicationId())) {
+            throw new ResourceNotFoundException("Role not found in this application.");
+        }
+        if (applicationId != null && !ApplicationRbacScope.isApplicationScopedRole(role)) {
             throw new ResourceNotFoundException("Role not found in this application.");
         }
         return role;

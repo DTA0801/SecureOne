@@ -11,6 +11,7 @@ import com.secureone.auth.notify.EmailNotificationService;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.tenant.TenantUserRosterRepository;
+import com.secureone.auth.tenant.rbac.TenantRbacBootstrapService;
 import com.secureone.auth.user.UserAccountRepository;
 import java.util.HashMap;
 import java.util.List;
@@ -30,6 +31,7 @@ public class TenantAdminService {
     private final AuditService auditService;
     private final EmailNotificationService emailService;
     private final TenantUserRosterRepository tenantUserRoster;
+    private final TenantRbacBootstrapService tenantRbacBootstrap;
 
     public TenantAdminService(
             TenantRepository tenantRepository,
@@ -37,13 +39,15 @@ public class TenantAdminService {
             ApplicationRepository applicationRepository,
             AuditService auditService,
             EmailNotificationService emailService,
-            TenantUserRosterRepository tenantUserRoster) {
+            TenantUserRosterRepository tenantUserRoster,
+            TenantRbacBootstrapService tenantRbacBootstrap) {
         this.tenantRepository = tenantRepository;
         this.userAccountRepository = userAccountRepository;
         this.applicationRepository = applicationRepository;
         this.auditService = auditService;
         this.emailService = emailService;
         this.tenantUserRoster = tenantUserRoster;
+        this.tenantRbacBootstrap = tenantRbacBootstrap;
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +71,7 @@ public class TenantAdminService {
         tenant.setStatus(normalizeStatus(request.status(), "ACTIVE"));
         tenant.setSettings(planSettings(request.plan(), "free"));
         tenantRepository.save(tenant);
+        tenantRbacBootstrap.seedForTenant(tenant.getId());
         auditService.record(tenant.getId(), "admin", "tenant.created", "tenant", tenant.getId(), tenant.getName(), true);
         emailService.sendAdminNotification(null, "Tenant created", "New tenant: " + tenant.getName());
         return toResponse(tenant);

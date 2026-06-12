@@ -5,10 +5,6 @@ import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.admin.application.ApplicationUserAdminService;
 import com.secureone.auth.application.Application;
 import com.secureone.auth.application.ApplicationRepository;
-import com.secureone.auth.rbac.Role;
-import com.secureone.auth.rbac.RoleRepository;
-import com.secureone.auth.rbac.UserRole;
-import com.secureone.auth.rbac.UserRoleRepository;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.tenant.TenantUserRosterService;
@@ -34,28 +30,25 @@ public class AdminConsoleAccessService {
     private final UserAccountRepository users;
     private final TenantRepository tenants;
     private final ApplicationRepository applications;
-    private final RoleRepository roles;
-    private final UserRoleRepository userRoles;
     private final ApplicationUserAdminService applicationUsers;
     private final TenantUserRosterService tenantUserRoster;
+    private final ConsoleRbacMirrorService consoleRbacMirror;
 
     public AdminConsoleAccessService(
             AdminConsoleAccessRepository access,
             UserAccountRepository users,
             TenantRepository tenants,
             ApplicationRepository applications,
-            RoleRepository roles,
-            UserRoleRepository userRoles,
             ApplicationUserAdminService applicationUsers,
-            TenantUserRosterService tenantUserRoster) {
+            TenantUserRosterService tenantUserRoster,
+            ConsoleRbacMirrorService consoleRbacMirror) {
         this.access = access;
         this.users = users;
         this.tenants = tenants;
         this.applications = applications;
-        this.roles = roles;
-        this.userRoles = userRoles;
         this.applicationUsers = applicationUsers;
         this.tenantUserRoster = tenantUserRoster;
+        this.consoleRbacMirror = consoleRbacMirror;
     }
 
     public record ConsoleAccessAssignment(
@@ -191,7 +184,7 @@ public class AdminConsoleAccessService {
                         return access.save(row);
                     });
             for (Application app : applications.findByTenantIdOrderByCreatedAtDesc(tenantId)) {
-                syncRbacForApp(userId, app.getId(), "Tenant Admin");
+                consoleRbacMirror.grantMirrorRole(tenantId, app.getId(), userId, "Tenant Admin");
                 applicationUsers.grantAccess(app.getId(), userId);
             }
             return toAssignment(
@@ -221,7 +214,7 @@ public class AdminConsoleAccessService {
 
         String rbacRoleName =
                 roleType == AdminConsoleRoleType.APPLICATION_ADMIN ? "Application Admin" : "Tenant Admin";
-        syncRbacForApp(userId, app.getId(), rbacRoleName);
+        consoleRbacMirror.grantMirrorRole(tenantId, app.getId(), userId, rbacRoleName);
         applicationUsers.grantAccess(app.getId(), userId);
 
         return toAssignment(row, user, app.getName());
@@ -271,7 +264,7 @@ public class AdminConsoleAccessService {
     private void revokeRow(AdminConsoleAccess row) {
         if (row.getRoleType() == AdminConsoleRoleType.TENANT_SUPER_ADMIN) {
             for (Application app : applications.findByTenantIdOrderByCreatedAtDesc(row.getTenantId())) {
-                removeRbacForApp(row.getUserId(), app.getId(), "Tenant Admin");
+                consoleRbacMirror.revokeMirrorRole(row.getUserId(), app.getId(), "Tenant Admin");
             }
             access.delete(row);
             return;
@@ -280,8 +273,8 @@ public class AdminConsoleAccessService {
                 ? "Application Admin"
                 : "Tenant Admin";
         UUID applicationId = row.getApplicationId();
-        removeRbacForApp(row.getUserId(), applicationId, rbacRoleName);
         if (applicationId != null) {
+            consoleRbacMirror.revokeMirrorRole(row.getUserId(), applicationId, rbacRoleName);
             applicationUsers.revokeAccess(applicationId, row.getUserId());
         }
         access.delete(row);
@@ -322,25 +315,6 @@ public class AdminConsoleAccessService {
         if (applicationId == null) {
             throw new IllegalArgumentException("applicationId is required for " + roleType);
         }
-    }
-
-    private void syncRbacForApp(UUID userId, UUID applicationId, String roleName) {
-        Role role = roles.findByApplicationIdAndName(applicationId, roleName)
-                .orElseThrow(() -> new IllegalStateException(roleName + " role missing for application"));
-        boolean hasRole = userRoles.findByUserId(userId).stream()
-                .anyMatch(ur -> ur.getRoleId().equals(role.getId()));
-        if (!hasRole) {
-            UserRole link = new UserRole();
-            link.setUserId(userId);
-            link.setRoleId(role.getId());
-            userRoles.save(link);
-        }
-    }
-
-    private void removeRbacForApp(UUID userId, UUID applicationId, String roleName) {
-        roles.findByApplicationIdAndName(applicationId, roleName).ifPresent(role -> userRoles.findByUserId(userId).stream()
-                .filter(ur -> ur.getRoleId().equals(role.getId()))
-                .forEach(userRoles::delete));
     }
 
     private ConsoleAccessAssignment toAssignment(AdminConsoleAccess row, UserAccount user, String appName) {

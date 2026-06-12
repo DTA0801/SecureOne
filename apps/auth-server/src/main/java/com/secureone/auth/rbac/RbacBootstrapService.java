@@ -51,36 +51,10 @@ public class RbacBootstrapService {
         ensureRole(
                 tenantId,
                 applicationId,
-                "Tenant Admin",
-                "Full tenant administration",
-                false,
-                List.of(
-                        "user:read",
-                        "user:write",
-                        "user:delete",
-                        "role:read",
-                        "role:write",
-                        "app:read",
-                        "app:write",
-                        "settings:write",
-                        "audit:read",
-                        "session:read"),
-                permissionsByKey);
-        ensureRole(
-                tenantId,
-                applicationId,
                 "Member",
                 "Standard end-user access",
                 true,
                 List.of("user:read"),
-                permissionsByKey);
-        ensureRole(
-                tenantId,
-                applicationId,
-                "Application Admin",
-                "Manage users and roles for this application in SecureOne Admin",
-                false,
-                List.of("user:read", "user:write", "role:read", "app:read", "audit:read", "session:read"),
                 permissionsByKey);
         ensureRole(
                 tenantId,

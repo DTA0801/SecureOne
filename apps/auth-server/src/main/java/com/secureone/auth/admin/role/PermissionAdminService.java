@@ -4,6 +4,7 @@ import com.secureone.auth.admin.ConflictException;
 import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.audit.AuditService;
+import com.secureone.auth.rbac.ApplicationRbacScope;
 import com.secureone.auth.rbac.DefaultPermissionCatalog;
 import com.secureone.auth.rbac.Permission;
 import com.secureone.auth.rbac.PermissionRepository;
@@ -49,6 +50,7 @@ public class PermissionAdminService {
     public List<RoleAdminDtos.PermissionResponse> list(UUID applicationId) {
         requireApplication(applicationId);
         return permissionRepository.findByApplicationIdOrderByKeyAsc(applicationId).stream()
+                .filter(p -> ApplicationRbacScope.isApplicationScopedPermissionKey(p.getKey()))
                 .map(this::toSummary)
                 .toList();
     }

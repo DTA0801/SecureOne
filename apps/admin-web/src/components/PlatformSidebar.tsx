@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PLATFORM_NAV, TENANT_OPERATOR_NAV } from "./nav";
+import { PLATFORM_NAV, SUPER_ADMIN_NAV, TENANT_OPERATOR_NAV } from "./nav";
+import { PlatformAdminNav } from "./PlatformAdminNav";
 import { useAdminContext } from "./AdminContextProvider";
+import { isTenantSuperAdmin } from "@/lib/operator-access";
 import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { buildAppPath } from "@/lib/app-routes";
@@ -22,7 +24,10 @@ export function PlatformSidebar({
   const isTenantOperator =
     (ctx.operatorTier === "tenant" || ctx.operatorTier === "tenant_super") && !superAdmin;
   const navSource = isTenantOperator ? TENANT_OPERATOR_NAV : PLATFORM_NAV;
-  const items = navSource.filter((i) => superAdmin || !i.superAdminOnly);
+  const superAdminHrefs = new Set(SUPER_ADMIN_NAV.map((i) => i.href));
+  const items = navSource.filter(
+    (i) => (superAdmin || !i.superAdminOnly) && !(superAdmin && superAdminHrefs.has(i.href)),
+  );
   const defaultAppHref =
     applications.length > 0
       ? buildAppPath(applications[0].id, "users")
@@ -61,6 +66,18 @@ export function PlatformSidebar({
             </Link>
           );
         })}
+        {showPlatformAdmin && (
+          <div className="mt-3 border-t border-ui pt-3">
+            <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-faint">
+              Platform admin
+            </p>
+            <PlatformAdminNav
+              pathname={pathname}
+              variant={superAdmin ? "full" : "tenant-only"}
+              tenantId={ctx.tenantId}
+            />
+          </div>
+        )}
       </nav>
     </aside>
   );

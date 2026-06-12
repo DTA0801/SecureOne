@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { appNav, SUPER_ADMIN_NAV } from "./nav";
+import { appNav } from "./nav";
+import { PlatformAdminNav } from "./PlatformAdminNav";
+import { isTenantSuperAdmin } from "@/lib/operator-access";
 import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { buildAppPath } from "@/lib/app-routes";
@@ -23,7 +25,8 @@ export function AppSidebar({
     const section = item.href.split("/").pop() ?? "";
     return canAccessSection(superAdmin, app, section);
   });
-  const platformItems = superAdmin ? SUPER_ADMIN_NAV : [];
+  const tenantSuper = isTenantSuperAdmin(ctx);
+  const showPlatformAdmin = superAdmin || tenantSuper;
 
   return (
     <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-ui bg-ui-surface px-3 py-5">
@@ -58,31 +61,16 @@ export function AppSidebar({
         })}
       </nav>
 
-      {platformItems.length > 0 && (
+      {showPlatformAdmin && (
         <div className="shrink-0 border-t border-ui pt-4">
           <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-faint">
             Platform admin
           </p>
-          <nav className="flex flex-col gap-0.5">
-            {platformItems.map((item) => {
-              const active =
-                pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "rounded-lg px-2.5 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-brand font-medium text-on-brand"
-                      : "text-soft hover:bg-ui-elevated",
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          <PlatformAdminNav
+            pathname={pathname}
+            variant={superAdmin ? "full" : "tenant-only"}
+            tenantId={ctx.tenantId}
+          />
         </div>
       )}
     </aside>

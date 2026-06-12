@@ -1,3 +1,4 @@
+import { isApplicationScopedPermissionKey } from "@/lib/application-rbac-scope";
 import { ApiError, appScopeHeaders } from "./http";
 import { browserApiFetch as apiFetch } from "./browser-client";
 import type { Permission, PermissionDetail } from "@/lib/types";
@@ -59,7 +60,9 @@ async function listPermissionsScoped(applicationId: string): Promise<Permission[
     await apiFetch<PermissionDto[]>(`${appRbacBase(applicationId)}/permissions`, {
       headers: appScopeHeaders(applicationId),
     })
-  ).map(mapPermission);
+  )
+    .filter((dto) => isApplicationScopedPermissionKey(dto.key))
+    .map(mapPermission);
 }
 
 /** Legacy flat route (pre–app-scoped RBAC controller). */

@@ -13,10 +13,12 @@ export function ConsoleShell({
   children,
   superAdmin,
   applications,
+  tenantSuperAdmin = false,
 }: {
   children: React.ReactNode;
   superAdmin: boolean;
   applications: ApplicationContextItem[];
+  tenantSuperAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const { lastApplicationId, rememberApplicationId } = useLastApplicationId();
@@ -33,9 +35,9 @@ export function ConsoleShell({
     }
   }, [pathApplicationId, rememberApplicationId]);
 
-  // Super admins keep the application console in the sidebar while visiting platform pages.
+  // Platform and tenant super-admins keep the app sidebar while visiting platform/tenant pages.
   const showAppSidebar =
-    Boolean(activeApplicationId) && (superAdmin || inAppWorkspace);
+    Boolean(activeApplicationId) && (superAdmin || tenantSuperAdmin || inAppWorkspace);
 
   return (
     <div className="flex min-h-screen text-ui">
