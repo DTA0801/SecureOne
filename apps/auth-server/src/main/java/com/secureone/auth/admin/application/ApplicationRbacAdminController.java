@@ -1,5 +1,7 @@
 package com.secureone.auth.admin.application;
 
+import com.secureone.auth.admin.role.GroupAdminDtos;
+import com.secureone.auth.admin.role.GroupAdminService;
 import com.secureone.auth.admin.role.PermissionAdminDtos;
 import com.secureone.auth.admin.role.PermissionAdminService;
 import com.secureone.auth.admin.role.RoleAdminDtos;
@@ -29,10 +31,13 @@ public class ApplicationRbacAdminController {
 
     private final RoleAdminService roles;
     private final PermissionAdminService permissions;
+    private final GroupAdminService groups;
 
-    public ApplicationRbacAdminController(RoleAdminService roles, PermissionAdminService permissions) {
+    public ApplicationRbacAdminController(
+            RoleAdminService roles, PermissionAdminService permissions, GroupAdminService groups) {
         this.roles = roles;
         this.permissions = permissions;
+        this.groups = groups;
     }
 
     @GetMapping("/permissions")
@@ -112,5 +117,54 @@ public class ApplicationRbacAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteRole(@PathVariable UUID applicationId, @PathVariable UUID roleId) {
         roles.delete(roleId, applicationId);
+    }
+
+    @PostMapping("/roles/{roleId}/permissions")
+    public RoleAdminDtos.RoleDetailResponse assignRolePermission(
+            @PathVariable UUID applicationId,
+            @PathVariable UUID roleId,
+            @Valid @RequestBody GroupAdminDtos.RolePermissionPatchRequest request) {
+        return roles.assignPermission(roleId, applicationId, request.permissionId());
+    }
+
+    @DeleteMapping("/roles/{roleId}/permissions/{permissionId}")
+    public RoleAdminDtos.RoleDetailResponse removeRolePermission(
+            @PathVariable UUID applicationId, @PathVariable UUID roleId, @PathVariable UUID permissionId) {
+        return roles.removePermission(roleId, applicationId, permissionId);
+    }
+
+    @GetMapping("/groups")
+    public List<GroupAdminDtos.GroupSummaryResponse> listGroups(@PathVariable UUID applicationId) {
+        return groups.listGroups(applicationId);
+    }
+
+    @GetMapping("/groups/{groupId}")
+    public GroupAdminDtos.GroupDetailResponse getGroup(
+            @PathVariable UUID applicationId, @PathVariable UUID groupId) {
+        return groups.getGroup(groupId, applicationId);
+    }
+
+    @PostMapping("/groups")
+    @ResponseStatus(HttpStatus.CREATED)
+    public GroupAdminDtos.GroupDetailResponse createGroup(
+            @PathVariable UUID applicationId, @Valid @RequestBody GroupAdminDtos.GroupCreateRequest request) {
+        if (!applicationId.equals(request.applicationId())) {
+            throw new IllegalArgumentException("applicationId in body must match the URL.");
+        }
+        return groups.create(request);
+    }
+
+    @PutMapping("/groups/{groupId}")
+    public GroupAdminDtos.GroupDetailResponse updateGroup(
+            @PathVariable UUID applicationId,
+            @PathVariable UUID groupId,
+            @Valid @RequestBody GroupAdminDtos.GroupUpdateRequest request) {
+        return groups.update(groupId, applicationId, request);
+    }
+
+    @DeleteMapping("/groups/{groupId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteGroup(@PathVariable UUID applicationId, @PathVariable UUID groupId) {
+        groups.delete(groupId, applicationId);
     }
 }

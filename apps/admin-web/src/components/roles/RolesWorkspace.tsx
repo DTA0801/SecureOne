@@ -40,6 +40,7 @@ export function RolesWorkspace({
   applicationId,
   appName,
   capabilities,
+  initialSelectedRoleId,
 }: {
   roles: Role[];
   permissions: Permission[];
@@ -49,9 +50,14 @@ export function RolesWorkspace({
   applicationId: string;
   appName: string;
   capabilities: RolesApiCapabilities;
+  initialSelectedRoleId?: string;
 }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(roles[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialSelectedRoleId && roles.some((r) => r.id === initialSelectedRoleId)
+      ? initialSelectedRoleId
+      : roles[0]?.id ?? null,
+  );
   const [query, setQuery] = useState("");
   const [labelFilter, setLabelFilter] = useState<RoleLabel | "ALL">("ALL");
 
@@ -101,7 +107,11 @@ export function RolesWorkspace({
             {permissions.length} keys
           </a>
           {" · "}
-          Click a role to view users, permissions, and inheritance.
+          <a href={`/app/${applicationId}/groups`} className="font-medium text-brand hover:underline">
+            Groups
+          </a>
+          {" · "}
+          Click a role to edit permissions, inheritance, and assigned users. Built-in roles allow edits except rename.
         </p>
       </div>
 

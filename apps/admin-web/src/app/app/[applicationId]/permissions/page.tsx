@@ -7,6 +7,7 @@ import {
 } from "@/components/permissions/PermissionsWorkspace";
 import { resolveApplicationMeta } from "@/lib/api/app-workspace";
 import { listPermissions, probePermissionsApi } from "@/lib/api/permissions";
+import { listRoles } from "@/lib/api/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,15 @@ export default async function AppPermissionsPage({
   if (!appMeta) notFound();
 
   let permissions: Awaited<ReturnType<typeof listPermissions>> = [];
+  let roles: Awaited<ReturnType<typeof listRoles>> = [];
   let loadError: string | null = null;
   let apiAvailable = false;
   try {
     apiAvailable = await probePermissionsApi(applicationId);
-    permissions = await listPermissions(applicationId);
+    [permissions, roles] = await Promise.all([
+      listPermissions(applicationId),
+      listRoles({ applicationId }).catch(() => []),
+    ]);
   } catch (e) {
     permissions = [];
     const msg = e instanceof Error ? e.message : "Could not load permissions";
@@ -45,7 +50,7 @@ export default async function AppPermissionsPage({
           </Link>
         }
         title="Permission catalog"
-        description={`${appMeta.name} · manage the permission table used by RBAC`}
+        description={`${appMeta.name} · manage permissions and assign them to roles`}
         actions={
           <PermissionsWorkspaceHeaderActions
             applicationId={applicationId}
@@ -69,6 +74,7 @@ cd apps/auth-server
       )}
       <PermissionsWorkspace
         permissions={permissions}
+        roles={roles}
         applicationId={applicationId}
         appName={appMeta.name}
       />

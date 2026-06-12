@@ -126,6 +126,32 @@ export type RoleAssignedUser = {
   grantedAt: string | null;
 };
 
+export type RbacGroup = {
+  id: string;
+  tenantId: string;
+  applicationId: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  roleCount: number;
+  memberCount: number;
+  roleIds: string[];
+  memberUserIds: string[];
+};
+
+export type RbacGroupDetail = RbacGroup & {
+  roles: { id: string; name: string }[];
+  members: {
+    id: string;
+    email: string;
+    username: string;
+    displayName: string;
+    status: string;
+    emailVerified: boolean;
+    addedAt: string | null;
+  }[];
+};
+
 export type AuditEvent = {
   id: string;
   timestamp: string;

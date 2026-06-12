@@ -12,10 +12,13 @@ export const dynamic = "force-dynamic";
 
 export default async function AppRolesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ applicationId: string }>;
+  searchParams: Promise<{ roleId?: string }>;
 }) {
   const { applicationId } = await params;
+  const { roleId: initialRoleId } = await searchParams;
   const appMeta = await resolveApplicationMeta(applicationId);
   if (!appMeta) notFound();
 
@@ -43,7 +46,7 @@ export default async function AppRolesPage({
       <PageHeader
         breadcrumb={<Link href={`/app/${applicationId}/roles`} className="hover:underline">Roles</Link>}
         title="Role management"
-        description={`${appMeta.name} · enterprise RBAC with labels, hierarchy, and permissions`}
+        description={`${appMeta.name} · roles, direct permissions, composite inheritance, and group bundles`}
         actions={
           app && tenant ? (
             <RolesWorkspaceHeaderActions
@@ -67,6 +70,7 @@ export default async function AppRolesPage({
           applicationId={applicationId}
           appName={appMeta.name}
           capabilities={capabilities}
+          initialSelectedRoleId={initialRoleId}
         />
       ) : (
         <p className="text-sm text-muted">Unable to load application context.</p>

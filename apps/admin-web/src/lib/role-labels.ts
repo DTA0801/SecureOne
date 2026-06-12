@@ -7,12 +7,12 @@ export const ROLE_LABEL_META: Record<
 > = {
   SYSTEM: {
     title: "System",
-    description: "Platform-managed; name locked, cannot delete",
+    description: "Seeded role — name locked; permissions and description editable",
     tone: "danger",
   },
   BUILT_IN: {
     title: "Built-in",
-    description: "Default role template for new users",
+    description: "Default template — name locked; permissions and description editable",
     tone: "info",
   },
   COMPOSITE: {

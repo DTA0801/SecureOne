@@ -3,6 +3,7 @@ import type { ApplicationContextItem } from "@/lib/api/context";
 export const SECTION_PERMISSIONS: Record<string, string> = {
   users: "user:read",
   roles: "role:read",
+  groups: "role:read",
   permissions: "role:read",
   settings: "app:read",
   audit: "audit:read",

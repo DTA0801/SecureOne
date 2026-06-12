@@ -42,6 +42,26 @@ public class RoleRbacRepository {
         }
     }
 
+    public void addPermission(UUID roleId, UUID permissionId) {
+        jdbc.update(
+                "INSERT INTO role_permission (role_id, permission_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                roleId,
+                permissionId);
+    }
+
+    public void removePermission(UUID roleId, UUID permissionId) {
+        jdbc.update("DELETE FROM role_permission WHERE role_id = ? AND permission_id = ?", roleId, permissionId);
+    }
+
+    public boolean hasPermission(UUID roleId, UUID permissionId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM role_permission WHERE role_id = ? AND permission_id = ?",
+                Integer.class,
+                roleId,
+                permissionId);
+        return count != null && count > 0;
+    }
+
     public void replaceChildRoles(UUID parentRoleId, List<UUID> childRoleIds) {
         jdbc.update("DELETE FROM role_composite WHERE parent_role_id = ?", parentRoleId);
         for (UUID childId : childRoleIds) {

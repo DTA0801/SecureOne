@@ -19,11 +19,11 @@ export function useCloseOnSuccess(
       router.refresh();
       close();
     })();
-  }, [state.ok, state.createdRoleId, state.createdUserId, close, router, onSuccess, state]);
+  }, [state.ok, state.createdRoleId, state.createdGroupId, state.createdUserId, close, router, onSuccess, state]);
 }
 
-export function FormError({ state }: { state: FormState }) {
-  if (state.ok || !state.error) return null;
+export function FormError({ state }: { state?: FormState }) {
+  if (!state || state.ok || !state.error) return null;
   return (
     <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
       {state.error}

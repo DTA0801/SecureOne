@@ -11,8 +11,13 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { roleDeleteAction } from "@/lib/actions";
-import { getRole, listRoleUsers } from "@/lib/api/roles";
+import { assignRolePermissionApi, getRole, listRoleUsers, removeRolePermissionApi } from "@/lib/api/roles";
 import { initials, timeAgo } from "@/lib/format";
+import {
+  canDeleteRole,
+  canEditRoleDetails,
+  canRenameRole,
+} from "@/lib/role-management";
 import { ROLE_LABEL_META } from "@/lib/role-labels";
 import { statusTone } from "@/lib/status";
 import type {
@@ -52,12 +57,19 @@ export function RoleDetailPanel({
   onClose: () => void;
   onDeleted: () => void;
 }) {
+  const reloadDetail = () => {
+    getRole(roleId, applicationId, roleSummary)
+      .then(setDetail)
+      .catch(() => undefined);
+  };
   const [detail, setDetail] = useState<RoleDetail | null>(null);
   const [assignedUsers, setAssignedUsers] = useState<RoleAssignedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
+  const [permSaving, setPermSaving] = useState(false);
+  const [permError, setPermError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -112,6 +124,25 @@ export function RoleDetailPanel({
   const matrixPermissions =
     detail.permissions.length > 0 ? detail.permissions : permissions;
   const userCount = detail.userCount ?? roleSummary.userCount;
+  const editable = canEditRoleDetails(detail);
+  const canEditPermissions = editable && capabilities.permissions;
+  const showRenameHint = editable && !canRenameRole(detail);
+
+  async function togglePermission(permissionId: string, checked: boolean) {
+    if (!canEditPermissions) return;
+    setPermSaving(true);
+    setPermError(null);
+    try {
+      const updated = checked
+        ? await assignRolePermissionApi(applicationId, roleId, permissionId)
+        : await removeRolePermissionApi(applicationId, roleId, permissionId);
+      setDetail(updated);
+    } catch (e) {
+      setPermError(e instanceof Error ? e.message : "Could not update permission");
+    } finally {
+      setPermSaving(false);
+    }
+  }
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
@@ -134,7 +165,7 @@ export function RoleDetailPanel({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            {!detail.isSystem && (
+            {editable && (
               <RoleFormModal
                 role={detail}
                 roles={roles}
@@ -144,12 +175,13 @@ export function RoleDetailPanel({
                 tenantId={tenantId}
                 applicationId={applicationId}
                 lockToApplication
-                triggerLabel="Edit"
+                triggerLabel="Edit role"
                 triggerVariant="secondary"
                 triggerSize="sm"
+                onUpdated={reloadDetail}
               />
             )}
-            {!detail.isSystem && (
+            {canDeleteRole(detail) && (
               <ConfirmDialog
                 action={async (fd) => {
                   fd.set("applicationId", applicationId);
@@ -206,6 +238,12 @@ export function RoleDetailPanel({
         {tab === "overview" && (
           <div className="space-y-0">
             <p className="border-b border-ui px-5 py-3 text-xs text-faint">{labelMeta.description}</p>
+            {showRenameHint && (
+              <p className="border-b border-ui bg-ui-elevated/40 px-5 py-2.5 text-xs text-muted">
+                Built-in and system role names are locked. Use <strong className="text-ui">Edit role</strong> or
+                the Permissions tab to change description, inheritance, and permission grants.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-px bg-ui sm:grid-cols-4">
               <Stat label="Assigned users" value={String(userCount)} />
               <Stat
@@ -225,14 +263,34 @@ export function RoleDetailPanel({
                 </p>
                 <ul className="mt-2 flex flex-wrap gap-2">
                   {detail.childRoles.map((c) => (
-                    <li
-                      key={c.id}
-                      className="rounded-full border border-ui bg-ui-elevated px-3 py-1 text-sm text-ui"
-                    >
-                      {c.name}
+                    <li key={c.id}>
+                      <Link
+                        href={`/app/${applicationId}/roles?roleId=${c.id}`}
+                        className="rounded-full border border-ui bg-ui-elevated px-3 py-1 text-sm text-ui hover:border-brand"
+                      >
+                        {c.name}
+                      </Link>
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {detail.isComposite && editable && (
+              <div className="border-t border-ui px-5 py-3">
+                <RoleFormModal
+                  role={detail}
+                  roles={roles}
+                  permissions={matrixPermissions}
+                  tenants={tenants}
+                  applications={applications}
+                  tenantId={tenantId}
+                  applicationId={applicationId}
+                  lockToApplication
+                  triggerLabel="Edit inheritance"
+                  triggerVariant="ghost"
+                  triggerSize="sm"
+                  onUpdated={reloadDetail}
+                />
               </div>
             )}
             <div className="border-t border-ui px-5 py-4">
@@ -245,8 +303,23 @@ export function RoleDetailPanel({
         {tab === "permissions" && (
           <div className="p-5">
             <p className="mb-3 text-xs text-muted">
-              Direct grants on this role. Composite roles also inherit from child roles.
+              {canEditPermissions
+                ? "Toggle permissions directly — changes save immediately. Or use Edit role for bulk changes."
+                : "Direct grants on this role. Composite roles also inherit from child roles."}
             </p>
+            {!canEditPermissions && editable && !capabilities.permissions && (
+              <p className="mb-3 text-xs text-amber-800 dark:text-amber-200">
+                Permission catalog unavailable — restart auth-server with migration V11+.
+              </p>
+            )}
+            {permError && (
+              <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-800 dark:text-red-200">
+                {permError}
+              </p>
+            )}
+            {permSaving && (
+              <p className="mb-3 text-xs text-muted">Saving permission change…</p>
+            )}
             {matrixPermissions.length === 0 ? (
               <p className="text-sm text-muted">
                 No permissions in catalog.{" "}
@@ -259,8 +332,18 @@ export function RoleDetailPanel({
               <PermissionMatrix
                 permissions={matrixPermissions}
                 selectedIds={selected}
-                readOnly
+                readOnly={!canEditPermissions}
                 compact
+                onChange={
+                  canEditPermissions
+                    ? (ids) => {
+                        const added = [...ids].find((id) => !selected.has(id));
+                        const removed = [...selected].find((id) => !ids.has(id));
+                        if (added) void togglePermission(added, true);
+                        else if (removed) void togglePermission(removed, false);
+                      }
+                    : undefined
+                }
               />
             )}
           </div>

@@ -135,6 +135,7 @@ public class RoleAdminService {
         role.setDefaultRole(false);
         try {
             roleRepository.save(role);
+            roleRepository.flush();
         } catch (DataIntegrityViolationException ex) {
             throw new ConflictException("Role name already exists for this application: " + name);
         }
@@ -163,6 +164,7 @@ public class RoleAdminService {
         role.setComposite(request.isComposite());
         try {
             roleRepository.save(role);
+            roleRepository.flush();
         } catch (DataIntegrityViolationException ex) {
             throw new ConflictException("Role name already exists for this application: " + name);
         }
@@ -185,6 +187,41 @@ public class RoleAdminService {
         }
         roleRepository.delete(role);
         auditService.record(role.getTenantId(), "admin", "role.deleted", "role", id, role.getName(), true);
+    }
+
+    public RoleAdminDtos.RoleDetailResponse assignPermission(UUID roleId, UUID applicationId, UUID permissionId) {
+        Role role = requireRole(roleId, applicationId);
+        assertApplicationProductRole(role);
+        validatePermissions(role.getApplicationId(), List.of(permissionId));
+        if (!rbac.hasPermission(role.getId(), permissionId)) {
+            rbac.addPermission(role.getId(), permissionId);
+            auditService.record(
+                    role.getTenantId(),
+                    "admin",
+                    "role.permission.assigned",
+                    "role",
+                    role.getId(),
+                    permissionId.toString(),
+                    true);
+        }
+        return toDetail(role);
+    }
+
+    public RoleAdminDtos.RoleDetailResponse removePermission(UUID roleId, UUID applicationId, UUID permissionId) {
+        Role role = requireRole(roleId, applicationId);
+        assertApplicationProductRole(role);
+        if (rbac.hasPermission(role.getId(), permissionId)) {
+            rbac.removePermission(role.getId(), permissionId);
+            auditService.record(
+                    role.getTenantId(),
+                    "admin",
+                    "role.permission.removed",
+                    "role",
+                    role.getId(),
+                    permissionId.toString(),
+                    true);
+        }
+        return toDetail(role);
     }
 
     private void syncAssignments(Role role, List<UUID> permissionIds, List<UUID> childRoleIds) {
@@ -323,6 +360,12 @@ public class RoleAdminService {
     private void requireApplication(UUID applicationId) {
         if (!applicationRepository.existsById(applicationId)) {
             throw new ResourceNotFoundException("Application not found: " + applicationId);
+        }
+    }
+
+    private void assertApplicationProductRole(Role role) {
+        if (!ApplicationRbacScope.isApplicationScopedRole(role)) {
+            throw new ConflictException("Console operator roles cannot be modified from application RBAC.");
         }
     }
 }

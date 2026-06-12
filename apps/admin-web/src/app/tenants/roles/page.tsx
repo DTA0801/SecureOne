@@ -26,7 +26,7 @@ export default async function TenantRolesIndexPage() {
           </Link>
         }
         title="Roles & Permissions"
-        description="Select a tenant to manage governance roles, permission grants, and application scope."
+        description="Select a tenant to manage governance roles, console sections (including Groups), and permission grants."
       />
 
       <Table>

@@ -78,8 +78,9 @@ export function appNav(applicationId: string): NavItem[] {
   const base = `/app/${applicationId}`;
   return [
     { label: "Users", href: `${base}/users`, description: "Members of this application" },
-    { label: "Roles", href: `${base}/roles`, description: "RBAC for this application" },
-    { label: "Permissions", href: `${base}/permissions`, description: "Permission catalog (database)" },
+    { label: "Groups", href: `${base}/groups`, description: "Role bundles assigned to many users" },
+    { label: "Roles", href: `${base}/roles`, description: "RBAC roles for this application" },
+    { label: "Permissions", href: `${base}/permissions`, description: "Permission catalog and role assignment" },
     { label: "Settings", href: `${base}/settings`, description: "Auth & notifications overrides" },
     { label: "Audit log", href: `${base}/audit`, description: "Events for this application" },
     { label: "Application logs", href: `${base}/logs`, description: "Runtime logs — search by session or request" },

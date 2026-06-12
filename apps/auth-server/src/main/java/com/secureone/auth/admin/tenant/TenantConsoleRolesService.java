@@ -89,9 +89,9 @@ public class TenantConsoleRolesService {
     private static String description(AdminConsoleRoleType type) {
         return switch (type) {
             case APPLICATION_ADMIN ->
-                    "Manage users, roles, and settings for a single assigned OAuth application.";
+                    "Manage users, roles, groups, and settings for a single assigned OAuth application.";
             case TENANT_ADMIN ->
-                    "Manage users and console access across assigned applications within the tenant.";
+                    "Manage users, groups, roles, and console access across assigned applications within the tenant.";
             case TENANT_SUPER_ADMIN ->
                     "Full tenant console access across all applications, including operator management.";
         };

@@ -105,6 +105,7 @@ export const TENANT_CATALOG_PERMISSION_KEYS = new Set([
   "application:manage",
   "console:users",
   "console:roles",
+  "console:groups",
   "console:permissions",
   "console:settings",
   "console:audit",

@@ -58,7 +58,7 @@ export default async function TenantRolesPage({
           </>
         }
         title="Roles & Permissions"
-        description={`Console operator roles and custom tenant governance for ${tenant.name}.`}
+        description={`Console operator roles, Groups access, and custom tenant governance for ${tenant.name}.`}
         actions={
           <>
             <ButtonLink href={`/tenants/${tenant.id}`} variant="ghost" size="sm">

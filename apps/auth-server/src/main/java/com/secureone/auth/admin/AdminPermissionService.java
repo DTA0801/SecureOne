@@ -29,13 +29,24 @@ public class AdminPermissionService {
         }
         List<UUID> roleIds = jdbc.queryForList(
                 """
-                SELECT DISTINCT ur.role_id
-                FROM user_role ur
-                JOIN user_account u ON u.id = ur.user_id
-                JOIN role r ON r.id = ur.role_id
-                WHERE LOWER(u.email) = LOWER(?) AND r.application_id = ?
+                SELECT DISTINCT role_id FROM (
+                    SELECT ur.role_id
+                    FROM user_role ur
+                    JOIN user_account u ON u.id = ur.user_id
+                    JOIN role r ON r.id = ur.role_id
+                    WHERE LOWER(u.email) = LOWER(?) AND r.application_id = ?
+                    UNION
+                    SELECT gr.role_id
+                    FROM rbac_group_member gm
+                    JOIN rbac_group g ON g.id = gm.group_id
+                    JOIN rbac_group_role gr ON gr.group_id = g.id
+                    JOIN user_account u ON u.id = gm.user_id
+                    WHERE LOWER(u.email) = LOWER(?) AND g.application_id = ?
+                ) combined
                 """,
                 UUID.class,
+                email.trim(),
+                applicationId,
                 email.trim(),
                 applicationId);
         if (roleIds.isEmpty()) {

@@ -14,6 +14,7 @@ public final class AdminConsoleCapabilityCatalog {
                     EnumSet.of(
                             ConsoleFeature.USERS,
                             ConsoleFeature.ROLES,
+                            ConsoleFeature.GROUPS,
                             ConsoleFeature.SETTINGS,
                             ConsoleFeature.AUDIT,
                             ConsoleFeature.SESSIONS);
@@ -21,6 +22,7 @@ public final class AdminConsoleCapabilityCatalog {
                     EnumSet.of(
                             ConsoleFeature.USERS,
                             ConsoleFeature.ROLES,
+                            ConsoleFeature.GROUPS,
                             ConsoleFeature.PERMISSIONS,
                             ConsoleFeature.SETTINGS,
                             ConsoleFeature.AUDIT,

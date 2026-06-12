@@ -36,9 +36,9 @@ const ROLE_ORDER: AdminConsoleRoleType[] = [
 
 const ROLE_DESCRIPTIONS: Record<AdminConsoleRoleType, string> = {
   APPLICATION_ADMIN:
-    "Manage users, roles, and settings for a single assigned OAuth application.",
+    "Manage users, roles, groups, and settings for a single assigned OAuth application.",
   TENANT_ADMIN:
-    "Manage users and console access across assigned applications within the tenant.",
+    "Manage users, groups, roles, and console access across assigned applications within the tenant.",
   TENANT_SUPER_ADMIN:
     "Full tenant console access across all applications, including operator management.",
 };

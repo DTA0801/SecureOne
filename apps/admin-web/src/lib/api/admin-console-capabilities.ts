@@ -21,6 +21,7 @@ export type ConsoleCapabilityCatalog = {
 export const CONSOLE_FEATURE_LABELS: Record<string, string> = {
   users: "Users",
   roles: "Roles",
+  groups: "Groups",
   permissions: "Permissions",
   settings: "Settings",
   audit: "Audit log",
@@ -30,8 +31,8 @@ export const CONSOLE_FEATURE_LABELS: Record<string, string> = {
 
 /** Mirrors AdminConsoleCapabilityCatalog on the server (for roster display). */
 export const CONSOLE_ROLE_DEFAULT_FEATURES: Record<string, string[]> = {
-  APPLICATION_ADMIN: ["users", "roles", "settings", "audit", "sessions"],
-  TENANT_ADMIN: ["users", "roles", "permissions", "settings", "audit", "logs", "sessions"],
+  APPLICATION_ADMIN: ["users", "roles", "groups", "settings", "audit", "sessions"],
+  TENANT_ADMIN: ["users", "roles", "groups", "permissions", "settings", "audit", "logs", "sessions"],
   TENANT_SUPER_ADMIN: Object.keys(CONSOLE_FEATURE_LABELS),
 };
 

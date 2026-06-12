@@ -47,7 +47,7 @@ public class TenantRbacBootstrapService {
         ensureRole(
                 tenantId,
                 "Application Operator",
-                "Manage users and settings for assigned applications",
+                "Manage users, groups, and settings for assigned applications",
                 TenantPermissionCatalog.APPLICATION_OPERATOR,
                 byKey,
                 List.of());

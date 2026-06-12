@@ -15,6 +15,11 @@ import {
 } from "./api/permissions";
 import { createRoleApi, deleteRoleApi, updateRoleApi } from "./api/roles";
 import {
+  createGroupApi,
+  deleteGroupApi,
+  updateGroupApi,
+} from "./api/groups";
+import {
   createTenantApi,
   deleteTenantApi,
   updateTenantApi,
@@ -66,6 +71,7 @@ export type FormState = {
   ok: boolean;
   error?: string;
   createdRoleId?: string;
+  createdGroupId?: string;
   createdPermissionId?: string;
   createdUserId?: string;
   createdApplicationId?: string;
@@ -478,6 +484,77 @@ export async function roleDeleteAction(fd: FormData): Promise<void> {
   await deleteRoleApi(id, applicationId);
   revalidateRolePaths(applicationId);
   redirect(`/app/${applicationId}/roles`);
+}
+
+// ---- Groups ----
+
+function revalidateGroupPaths(applicationId?: string) {
+  if (applicationId) {
+    revalidatePath(`/app/${applicationId}/groups`);
+    revalidatePath(`/app/${applicationId}/roles`);
+  }
+}
+
+function idsFromForm(fd: FormData, key: string): string[] {
+  return filterValidUuids(list(fd, key));
+}
+
+export async function groupCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const name = str(fd, "name");
+  const tenantId = str(fd, "tenantId");
+  const applicationId = str(fd, "applicationId");
+  if (!name) return fail("Name is required.");
+  if (!tenantId || !applicationId) return fail("Tenant and application are required.");
+  if (!isValidUuid(tenantId) || !isValidUuid(applicationId)) {
+    return fail("Invalid tenant or application. Refresh the page and try again.");
+  }
+  try {
+    const created = await createGroupApi({
+      name,
+      tenantId,
+      applicationId,
+      description: str(fd, "description"),
+      roleIds: idsFromForm(fd, "roleIds"),
+      memberUserIds: idsFromForm(fd, "memberUserIds"),
+    });
+    revalidateGroupPaths(applicationId);
+    return ok({ createdGroupId: created.id });
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function groupUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  const name = str(fd, "name");
+  if (!id || !isValidUuid(id)) return fail("Missing group id.");
+  if (!name) return fail("Name is required.");
+  if (!applicationId || !isValidUuid(applicationId)) {
+    return fail("Invalid application. Refresh the page and try again.");
+  }
+  try {
+    await updateGroupApi(applicationId, id, {
+      name,
+      description: str(fd, "description"),
+      roleIds: idsFromForm(fd, "roleIds"),
+      memberUserIds: idsFromForm(fd, "memberUserIds"),
+    });
+    revalidateGroupPaths(applicationId);
+    return ok();
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function groupDeleteAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  const applicationId = str(fd, "applicationId");
+  if (!id || !isValidUuid(id)) throw new Error("Invalid group id");
+  if (!applicationId || !isValidUuid(applicationId)) throw new Error("Invalid application id");
+  await deleteGroupApi(applicationId, id);
+  revalidateGroupPaths(applicationId);
+  redirect(`/app/${applicationId}/groups`);
 }
 
 // ---- Permissions (catalog ↔ `permission` table) ----

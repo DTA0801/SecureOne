@@ -18,6 +18,7 @@ public final class TenantPermissionCatalog {
             new Entry("application:manage", "Create and configure applications"),
             new Entry("console:users", "Admin console — Users section"),
             new Entry("console:roles", "Admin console — Roles section"),
+            new Entry("console:groups", "Admin console — Groups section"),
             new Entry("console:permissions", "Admin console — Permissions section"),
             new Entry("console:settings", "Admin console — Settings section"),
             new Entry("console:audit", "Admin console — Audit log"),
@@ -33,6 +34,7 @@ public final class TenantPermissionCatalog {
             "application:manage",
             "console:users",
             "console:roles",
+            "console:groups",
             "console:permissions",
             "console:settings",
             "console:audit",
@@ -45,6 +47,7 @@ public final class TenantPermissionCatalog {
             "application:access",
             "console:users",
             "console:roles",
+            "console:groups",
             "console:settings",
             "console:audit",
             "console:sessions");

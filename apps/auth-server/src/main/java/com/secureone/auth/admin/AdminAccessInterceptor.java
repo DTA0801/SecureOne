@@ -34,6 +34,7 @@ public class AdminAccessInterceptor implements HandlerInterceptor {
     private static final Map<String, String> PATH_PERMISSIONS = Map.ofEntries(
             Map.entry("users", "user:read"),
             Map.entry("roles", "role:read"),
+            Map.entry("groups", "role:read"),
             Map.entry("permissions", "role:read"),
             Map.entry("audit", "audit:read"),
             Map.entry("logs", "logs:read"),
@@ -175,7 +176,7 @@ public class AdminAccessInterceptor implements HandlerInterceptor {
     private static String writePermission(String section, String method) {
         return switch (section) {
             case "users" -> "DELETE".equalsIgnoreCase(method) ? "user:delete" : "user:write";
-            case "roles", "permissions" -> "role:write";
+            case "roles", "groups", "permissions" -> "role:write";
             case "settings" -> "settings:write";
             default -> PATH_PERMISSIONS.getOrDefault(section, "app:read");
         };

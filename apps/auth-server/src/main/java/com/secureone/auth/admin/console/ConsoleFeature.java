@@ -7,6 +7,7 @@ import java.util.Optional;
 public enum ConsoleFeature {
     USERS("users"),
     ROLES("roles"),
+    GROUPS("groups"),
     PERMISSIONS("permissions"),
     SETTINGS("settings"),
     AUDIT("audit"),

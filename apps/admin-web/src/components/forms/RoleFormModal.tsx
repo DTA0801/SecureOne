@@ -9,6 +9,7 @@ import { FieldRow, Input, Select, Textarea } from "@/components/ui/Field";
 import { FormSection, FormFieldGrid } from "@/components/forms/FormSection";
 import { roleCreateAction, roleUpdateAction, type FormState } from "@/lib/actions";
 import { FormActions, FormError, useCloseOnSuccess } from "./form-utils";
+import { canRenameRole } from "@/lib/role-management";
 import type { Application, Permission, Role, RoleDetail, Tenant } from "@/lib/types";
 
 const initial: FormState = { ok: false };
@@ -23,6 +24,7 @@ export function RoleFormModal({
   applicationId,
   lockToApplication = false,
   onCreated,
+  onUpdated,
   triggerLabel,
   triggerVariant = "primary",
   triggerSize = "md",
@@ -36,6 +38,7 @@ export function RoleFormModal({
   applicationId: string;
   lockToApplication?: boolean;
   onCreated?: (roleId: string) => void;
+  onUpdated?: () => void;
   triggerLabel: React.ReactNode;
   triggerVariant?: "primary" | "secondary" | "ghost" | "danger";
   triggerSize?: "sm" | "md";
@@ -65,6 +68,7 @@ export function RoleFormModal({
           applicationId={applicationId}
           lockToApplication={lockToApplication}
           onCreated={onCreated}
+          onUpdated={onUpdated}
           close={close}
         />
       )}
@@ -82,6 +86,7 @@ function RoleForm({
   applicationId,
   lockToApplication,
   onCreated,
+  onUpdated,
   close,
 }: {
   role?: Role | RoleDetail;
@@ -93,6 +98,7 @@ function RoleForm({
   applicationId: string;
   lockToApplication: boolean;
   onCreated?: (roleId: string) => void;
+  onUpdated?: () => void;
   close: () => void;
 }) {
   const action = role ? roleUpdateAction : roleCreateAction;
@@ -119,12 +125,17 @@ function RoleForm({
   );
 
   useCloseOnSuccess(state, close, (s) => {
-    if (!s.createdRoleId) return;
-    onCreated?.(s.createdRoleId);
-    try {
-      sessionStorage.setItem("roles:lastCreated", s.createdRoleId);
-    } catch {
-      /* ignore */
+    if (s.createdRoleId) {
+      onCreated?.(s.createdRoleId);
+      try {
+        sessionStorage.setItem("roles:lastCreated", s.createdRoleId);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    if (role) {
+      onUpdated?.();
     }
   });
 
@@ -149,6 +160,13 @@ function RoleForm({
       {!role && lockToApplication && (
         <p className="rounded-lg border border-brand/20 bg-brand-muted/30 px-3 py-2.5 text-xs text-muted">
           Creating role for <strong className="text-ui">{applications[0]?.name ?? "this app"}</strong>
+        </p>
+      )}
+
+      {role && !canRenameRole(role) && (
+        <p className="rounded-lg border border-ui bg-ui-elevated/50 px-3 py-2.5 text-xs text-muted">
+          This role&apos;s <strong className="text-ui">name is locked</strong> (built-in / system). You can still
+          update description, permissions, and composite inheritance.
         </p>
       )}
 
@@ -191,13 +209,13 @@ function RoleForm({
             </FieldRow>
           </FormFieldGrid>
         )}
-        <FieldRow label="Name" hint="Unique per application">
+        <FieldRow label="Name" hint={role && !canRenameRole(role) ? "Locked for built-in / system roles" : "Unique per application"}>
           <Input
             name="name"
             defaultValue={role?.name}
             placeholder="e.g. Support Agent"
             required
-            disabled={role?.isSystem || pending}
+            disabled={(role && !canRenameRole(role)) || pending}
           />
         </FieldRow>
         <FieldRow label="Description">
@@ -301,7 +319,10 @@ function RoleForm({
         pending={pending}
         close={close}
         submitLabel={role ? "Save changes" : "Create role"}
-        submitDisabled={!canSubmit || (permissions.length === 0 && !isComposite)}
+        submitDisabled={
+          !canSubmit ||
+          (!role && permissions.length === 0 && !isComposite)
+        }
         sticky
       />
     </form>

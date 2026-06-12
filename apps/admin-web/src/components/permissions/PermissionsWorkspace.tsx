@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getPermission } from "@/lib/api/permissions";
-import type { PermissionDetail } from "@/lib/types";
+import { PermissionRoleMatrix } from "@/components/permissions/PermissionRoleMatrix";
+import type { PermissionDetail, Role } from "@/lib/types";
 import { PermissionFormModal } from "@/components/permissions/PermissionFormModal";
 import { SeedDefaultsButton } from "@/components/permissions/SeedDefaultsButton";
 import { Badge } from "@/components/ui/Badge";
@@ -37,10 +38,12 @@ export function PermissionsWorkspaceHeaderActions({
 
 export function PermissionsWorkspace({
   permissions,
+  roles,
   applicationId,
   appName,
 }: {
   permissions: Permission[];
+  roles: Role[];
   applicationId: string;
   appName: string;
 }) {
@@ -78,8 +81,11 @@ export function PermissionsWorkspace({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 rounded-xl border border-ui bg-ui-surface/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted">
-          <strong className="text-ui">Database catalog</strong> — table{" "}
-          <code className="text-xs">permission</code>. Assign keys on{" "}
+          <strong className="text-ui">Permission catalog</strong> — assign keys to roles below or from{" "}
+          <Link href={`/app/${applicationId}/groups`} className="text-brand hover:underline">
+            Groups
+          </Link>
+          {" · "}
           <Link href={`/app/${applicationId}/roles`} className="text-brand hover:underline">
             Roles
           </Link>
@@ -176,6 +182,7 @@ export function PermissionsWorkspace({
           {selected ? (
             <PermissionDetailPanel
               permission={selected}
+              roles={roles}
               applicationId={applicationId}
               onDeleted={() => setSelectedId(null)}
             />
@@ -194,14 +201,17 @@ export function PermissionsWorkspace({
 
 function PermissionDetailPanel({
   permission,
+  roles,
   applicationId,
   onDeleted,
 }: {
   permission: Permission;
+  roles: Role[];
   applicationId: string;
   onDeleted: () => void;
 }) {
   const [detail, setDetail] = useState<PermissionDetail | null>(null);
+  const [tab, setTab] = useState<"details" | "roles">("roles");
 
   useEffect(() => {
     getPermission(applicationId, permission.id)
@@ -209,8 +219,9 @@ function PermissionDetailPanel({
       .catch(() => setDetail({ ...permission, roles: [], roleCount: permission.roleCount ?? 0 }));
   }, [applicationId, permission]);
 
-  const roles = detail?.roles ?? [];
+  const assignedRoles = detail?.roles ?? [];
   const roleCount = detail?.roleCount ?? permission.roleCount ?? 0;
+  const assignedIds = new Set(assignedRoles.map((r) => r.id));
 
   return (
     <Card padded={false}>
@@ -254,41 +265,67 @@ function PermissionDetailPanel({
         </div>
       </div>
 
-      <dl className="grid gap-px border-b border-ui bg-ui sm:grid-cols-2">
-        <DbField label="id (PK)" value={permission.id} mono />
-        <DbField label="application_id" value={permission.applicationId ?? applicationId} mono />
-        <DbField label="key" value={permission.key} mono />
-        <DbField label="description" value={permission.description || "NULL"} />
-      </dl>
+      <nav className="flex gap-1 border-b border-ui px-5" aria-label="Permission sections">
+        {(
+          [
+            { id: "roles" as const, label: "Role assignment", count: roleCount },
+            { id: "details" as const, label: "Details" },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`relative px-3 py-2 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? "text-brand after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-brand"
+                : "text-muted hover:text-ui"
+            }`}
+          >
+            {t.label}
+            {"count" in t && t.count !== undefined && (
+              <span className="ml-1.5 rounded-full bg-ui-elevated px-1.5 py-0.5 text-[10px] font-semibold text-faint">
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
 
-      {roles.length > 0 && (
-        <div className="border-b border-ui px-5 py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Assigned to roles ({roleCount})
-          </p>
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {roles.map((r) => (
-              <li key={r.id}>
-                <Link
-                  href={`/app/${applicationId}/roles`}
-                  className="rounded-full border border-ui bg-ui-elevated px-3 py-1 text-sm text-ui hover:border-brand"
-                >
-                  {r.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
+      {tab === "roles" && (
+        <div className="p-5">
+          <PermissionRoleMatrix
+            permission={permission}
+            roles={roles}
+            assignedRoleIds={assignedIds}
+            applicationId={applicationId}
+            onChanged={() => {
+              getPermission(applicationId, permission.id)
+                .then(setDetail)
+                .catch(() => undefined);
+            }}
+          />
         </div>
       )}
 
-      <div className="p-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">SQL reference</p>
-        <pre className="mt-2 overflow-x-auto rounded-lg border border-ui bg-ui-elevated p-3 text-xs text-muted">
+      {tab === "details" && (
+        <>
+          <dl className="grid gap-px border-b border-ui bg-ui sm:grid-cols-2">
+            <DbField label="id (PK)" value={permission.id} mono />
+            <DbField label="application_id" value={permission.applicationId ?? applicationId} mono />
+            <DbField label="key" value={permission.key} mono />
+            <DbField label="description" value={permission.description || "NULL"} />
+          </dl>
+          <div className="p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">SQL reference</p>
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-ui bg-ui-elevated p-3 text-xs text-muted">
 {`INSERT INTO permission (id, application_id, key, description)
 VALUES (gen_random_uuid(), '${applicationId}', '${permission.key}', '…')
 ON CONFLICT (application_id, key) DO NOTHING;`}
-        </pre>
-      </div>
+            </pre>
+          </div>
+        </>
+      )}
     </Card>
   );
 }

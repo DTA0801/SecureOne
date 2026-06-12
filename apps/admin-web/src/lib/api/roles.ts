@@ -240,3 +240,36 @@ export async function deleteRoleApi(id: string, applicationId?: string): Promise
     headers: appScopeHeaders(applicationId),
   });
 }
+
+export async function assignRolePermissionApi(
+  applicationId: string,
+  roleId: string,
+  permissionId: string,
+): Promise<RoleDetail> {
+  return mapDetail(
+    await apiFetch<RoleDetailDto>(
+      `${appRbacBase(applicationId)}/roles/${roleId}/permissions`,
+      {
+        method: "POST",
+        headers: appScopeHeaders(applicationId),
+        body: JSON.stringify({ permissionId }),
+      },
+    ),
+  );
+}
+
+export async function removeRolePermissionApi(
+  applicationId: string,
+  roleId: string,
+  permissionId: string,
+): Promise<RoleDetail> {
+  return mapDetail(
+    await apiFetch<RoleDetailDto>(
+      `${appRbacBase(applicationId)}/roles/${roleId}/permissions/${permissionId}`,
+      {
+        method: "DELETE",
+        headers: appScopeHeaders(applicationId),
+      },
+    ),
+  );
+}
