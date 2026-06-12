@@ -52,7 +52,7 @@ Public flows do not require Swagger authorization:
 - `GET /api/v1/applications/{applicationId}` — client manifest (appearance, auth methods, signup block)
 - `GET/POST /api/v1/applications/{applicationId}/signup` — self-registration when **Self Registration** is enabled
 
-See [Settings governance — Self-registration](10-settings-governance.md#self-registration-application-end-users).
+See [Settings governance — Self-registration](10-settings-governance.md#self-registration-application-end-users) and [Authentication UI integration](13-auth-ui-integration.md) (hosted vs custom UI, magic link, OAuth, session login).
 
 ## Swagger UI: "No API definition provided"
 

@@ -35,6 +35,16 @@ public class UserCredential {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Null when the active policy had expiryDays = 0 at set time. */
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
+    @Column(name = "expiry_warning_sent_at")
+    private Instant expiryWarningSentAt;
+
+    @Column(name = "expiry_expired_notice_sent_at")
+    private Instant expiryExpiredNoticeSentAt;
+
     @PrePersist
     void onCreate() {
         if (id == null) {

@@ -1,5 +1,6 @@
 package com.secureone.auth.authn;
 
+import com.secureone.auth.account.PasswordExpiryService;
 import com.secureone.auth.platform.AuthSettingsService;
 import com.secureone.auth.user.UserAccount;
 import com.secureone.auth.user.UserCredentialRepository;
@@ -20,16 +21,19 @@ public class TenantPasswordAuthenticationProvider implements AuthenticationProvi
     private final UserCredentialRepository credentials;
     private final PasswordEncoder passwordEncoder;
     private final AuthSettingsService authSettings;
+    private final PasswordExpiryService passwordExpiry;
 
     public TenantPasswordAuthenticationProvider(
             TenantUserDetailsService userDetailsService,
             UserCredentialRepository credentials,
             PasswordEncoder passwordEncoder,
-            AuthSettingsService authSettings) {
+            AuthSettingsService authSettings,
+            PasswordExpiryService passwordExpiry) {
         this.userDetailsService = userDetailsService;
         this.credentials = credentials;
         this.passwordEncoder = passwordEncoder;
         this.authSettings = authSettings;
+        this.passwordExpiry = passwordExpiry;
     }
 
     @Override
@@ -56,6 +60,7 @@ public class TenantPasswordAuthenticationProvider implements AuthenticationProvi
         if (!passwordEncoder.matches(password, cred.getPasswordHash())) {
             throw new BadCredentialsException("Password does not match");
         }
+        passwordExpiry.enforceLoginAllowed(account, cred, null);
         return new UsernamePasswordAuthenticationToken(
                 user, password, AuthenticationAuthorities.withPasswordFactor(user.getAuthorities()));
     }

@@ -6,6 +6,7 @@ import { ApplicationAppearanceSettings } from "@/components/settings/Application
 import { AppExposureSettings } from "@/components/settings/AppExposureSettings";
 import { AuthenticationSettingsPanel } from "@/components/settings/AuthenticationSettingsPanel";
 import { NotificationsSettings } from "@/components/settings/NotificationsSettings";
+import { PlatformNotificationsSettings } from "@/components/settings/PlatformNotificationsSettings";
 import { ApplicationIntegrationSettings } from "@/components/settings/ApplicationIntegrationSettings";
 import { PublicManifestSettings } from "@/components/settings/PublicManifestSettings";
 import { SettingsScopeBanner } from "@/components/settings/SettingsScopeBanner";
@@ -286,11 +287,12 @@ export function SettingsTabs({
       {tab === "integration" && applicationId && (
         <ApplicationIntegrationSettings applicationId={applicationId} onOpenTab={setTab} />
       )}
-      {tab === "notifications" && (
+      {tab === "notifications" && scopeMode === "platform" && <PlatformNotificationsSettings />}
+      {tab === "notifications" && applicationId && (
         <NotificationsSettings
-          key={applicationId ?? "platform"}
+          key={applicationId}
           applicationId={applicationId}
-          settingsReady={exposureReady || scopeMode === "platform"}
+          settingsReady={exposureReady}
         />
       )}
       {exposureReady && tab === "appearance" && applicationId && (

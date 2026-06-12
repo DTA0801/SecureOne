@@ -177,16 +177,36 @@ export function AuthenticationSettingsPanel({
         />
       )}
 
-      {tab === "password" && applicationId && (
+      {tab === "password" && applicationId && passwordPolicy && (
         <p className="mb-4 rounded-lg border border-ui bg-surface px-4 py-3 text-sm text-muted">
-          These rules apply when users set or reset passwords for this application. They can also be
-          exposed on the public API when password policy is included in the manifest.
+          {passwordPolicy.inheritsPlatformDefaults !== false ? (
+            <>
+              This application inherits the <strong>platform password policy</strong>. Saving any field
+              below creates an application-only override; platform changes will no longer apply until you
+              reset this section.
+            </>
+          ) : (
+            <>
+              This application uses its <strong>own password policy override</strong>. These rules apply
+              when users set or reset passwords for this application and can be exposed on the public API.
+            </>
+          )}
+        </p>
+      )}
+
+      {tab === "password" && !applicationId && (
+        <p className="mb-4 rounded-lg border border-ui bg-surface px-4 py-3 text-sm text-muted">
+          Platform defaults for password complexity, expiry, and history. Applications inherit these
+          values until an app admin saves an override.
         </p>
       )}
 
       {tab === "password" && passwordPolicy && (
         <Card padded={false}>
-          <CardHeader title="Password policy" description="Enforced on set-password and reset flows" />
+          <CardHeader
+            title="Password policy"
+            description="Enforced on signup, set-password, reset, and admin set-password flows"
+          />
           <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2">
             <FieldRow label="Minimum length">
               <Input
@@ -199,7 +219,18 @@ export function AuthenticationSettingsPanel({
                 }}
               />
             </FieldRow>
-            <FieldRow label="Password history">
+            <FieldRow label="Password expiry (days)" hint="0 = never expires">
+              <Input
+                type="number"
+                value={passwordPolicy.expiryDays}
+                onChange={(e) => {
+                  const next = { ...passwordPolicy, expiryDays: Number(e.target.value) };
+                  setPasswordPolicy(next);
+                  scheduleSave(() => savePasswordPolicyAction(next, applicationId), "password-policy");
+                }}
+              />
+            </FieldRow>
+            <FieldRow label="Password history" hint="Block reuse of the last N passwords (0 = off)">
               <Input
                 type="number"
                 value={passwordPolicy.historyCount}
@@ -210,7 +241,7 @@ export function AuthenticationSettingsPanel({
                 }}
               />
             </FieldRow>
-            <FieldRow label="Hash algorithm">
+            <FieldRow label="Hash algorithm" hint="bcrypt only (stored on each credential)">
               <Input value={passwordPolicy.hashAlgorithm} disabled />
             </FieldRow>
             <div className="md:col-span-2 space-y-2">
@@ -327,10 +358,8 @@ function MfaTabToggle({
 }
 
 const FLAG_GROUPS: { title: string; categories: string[] }[] = [
-  { title: "OAuth & tokens", categories: ["oauth"] },
   { title: "Identity & sign-in", categories: ["identity"] },
   { title: "Notifications", categories: ["notifications"] },
-  { title: "Provisioning", categories: ["provisioning"] },
 ];
 
 function flagCategory(flag: FeatureFlag): string {
@@ -449,10 +478,18 @@ function FlagList({
                   <code className="font-mono text-[10px] text-faint">{f.key}</code>
                 </div>
                 <p className="text-xs text-muted">{f.description}</p>
+                {f.platformEnabled === false && (
+                  <p className="mt-1 text-xs text-faint">
+                    Enable this capability under Platform → Settings → Feature flags before turning it on
+                    for this application.
+                  </p>
+                )}
               </div>
               <Toggle
                 checked={f.enabled}
+                disabled={f.platformEnabled === false}
                 onChange={(enabled) => {
+                  if (f.platformEnabled === false) return;
                   const next = flags.map((x, i) => (i === idx ? { ...x, enabled } : x));
                   onChange(next);
                 }}

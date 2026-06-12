@@ -272,10 +272,9 @@ public class ApplicationSettingsService {
     public Map<String, Object> getNotifications(UUID applicationId) {
         requireExposed("notifications");
         requireApplication(applicationId);
-        Map<String, Object> merged = new HashMap<>(platformSettings.get("notifications"));
-        getAppMap(applicationId, "notifications").ifPresent(merged::putAll);
+        Map<String, Object> merged = ApplicationNotificationDefaults.mergeNotifications(
+                getAppMap(applicationId, "notifications").orElse(null));
         merged.put("scope", "application");
-        merged.put("inheritsPlatformDefaults", !hasOverride(applicationId, "notifications"));
         merged.put("smtpConfigured", smtpSettings.isConfigured(applicationId));
         return merged;
     }
@@ -283,7 +282,7 @@ public class ApplicationSettingsService {
     public Map<String, Object> saveNotifications(UUID applicationId, Map<String, Object> body) {
         requireExposed("notifications");
         requireApplication(applicationId);
-        saveAppMap(applicationId, "notifications", body);
+        saveAppMap(applicationId, "notifications", ApplicationNotificationDefaults.sanitizeNotifications(body));
         return getNotifications(applicationId);
     }
 
@@ -291,10 +290,9 @@ public class ApplicationSettingsService {
     public Map<String, Object> getEmail(UUID applicationId) {
         requireExposed("email");
         requireApplication(applicationId);
-        Map<String, Object> merged = new HashMap<>(platformSettings.get("email"));
-        getAppMap(applicationId, "email").ifPresent(merged::putAll);
+        Map<String, Object> merged =
+                ApplicationNotificationDefaults.mergeEmail(getAppMap(applicationId, "email").orElse(null));
         merged.put("scope", "application");
-        merged.put("inheritsPlatformDefaults", !hasOverride(applicationId, "email"));
         merged.put("smtpConfigured", smtpSettings.isConfigured(applicationId));
         return merged;
     }
@@ -302,7 +300,7 @@ public class ApplicationSettingsService {
     public Map<String, Object> saveEmail(UUID applicationId, Map<String, Object> body) {
         requireExposed("email");
         requireApplication(applicationId);
-        saveAppMap(applicationId, "email", body);
+        saveAppMap(applicationId, "email", ApplicationNotificationDefaults.sanitizeEmail(body));
         return getEmail(applicationId);
     }
 
@@ -399,10 +397,13 @@ public class ApplicationSettingsService {
     public Map<String, Object> getPasswordPolicy(UUID applicationId) {
         requireExposed("password-policy");
         requireApplication(applicationId);
-        Map<String, Object> merged = new HashMap<>(authSettings.getPasswordPolicy());
-        getAppMap(applicationId, "password_policy").ifPresent(merged::putAll);
+        boolean inherits = !hasOverride(applicationId, "password_policy");
+        Map<String, Object> merged = inherits
+                ? new HashMap<>(authSettings.getPasswordPolicy())
+                : new HashMap<>(PasswordPolicySanitizer.sanitize(
+                        getAppMap(applicationId, "password_policy").orElse(Map.of())));
         merged.put("scope", "application");
-        merged.put("inheritsPlatformDefaults", !hasOverride(applicationId, "password_policy"));
+        merged.put("inheritsPlatformDefaults", inherits);
         return merged;
     }
 
@@ -417,14 +418,17 @@ public class ApplicationSettingsService {
     public List<Map<String, Object>> getFeatureFlags(UUID applicationId) {
         requireExposed("feature-flags");
         requireApplication(applicationId);
-        return FeatureFlagMerge.merge(
-                authSettings.getFeatureFlags(), getAppRaw(applicationId, "feature_flags"));
+        List<Map<String, Object>> platform = authSettings.getFeatureFlags();
+        return FeatureFlagMerge.forApplicationAdmin(platform, getAppRaw(applicationId, "feature_flags"));
     }
 
     public List<Map<String, Object>> saveFeatureFlags(UUID applicationId, List<Map<String, Object>> body) {
         requireExposed("feature-flags");
         requireApplication(applicationId);
-        saveAppRaw(applicationId, "feature_flags", FeatureFlagSanitizer.sanitize(stripMeta(new ArrayList<>(body))));
+        List<Map<String, Object>> platform = authSettings.getFeatureFlags();
+        List<Map<String, Object>> sanitized = FeatureFlagSanitizer.sanitize(stripMeta(copyList(body)));
+        sanitized = FeatureFlagMerge.clampAppOverridesToPlatform(platform, sanitized);
+        saveAppRaw(applicationId, "feature_flags", sanitized);
         return getFeatureFlags(applicationId);
     }
 
@@ -453,8 +457,6 @@ public class ApplicationSettingsService {
         requireApplication(applicationId);
         Map<String, String> sources = new LinkedHashMap<>();
         Map<String, String> sections = new LinkedHashMap<>();
-        sections.put("notifications", "notifications");
-        sections.put("email", "email");
         sections.put("auth-methods", "auth_methods");
         sections.put("password-policy", "password_policy");
         sections.put("feature-flags", "feature_flags");
@@ -523,11 +525,10 @@ public class ApplicationSettingsService {
             return;
         }
         switch (settingKey) {
-            case "notifications" -> saveAppMap(applicationId, settingKey, new HashMap<>(platformSettings.get("notifications")));
-            case "email" -> saveAppMap(applicationId, settingKey, new HashMap<>(platformSettings.get("email")));
             case "auth_methods" -> saveAppRaw(
                     applicationId, settingKey, stripMeta(copyList(authSettings.getAuthMethods())));
-            case "password_policy" -> saveAppMap(applicationId, settingKey, new HashMap<>(authSettings.getPasswordPolicy()));
+            case "password_policy" -> saveAppMap(
+                    applicationId, settingKey, PasswordPolicySanitizer.sanitize(authSettings.getPasswordPolicy()));
             case "feature_flags" -> saveAppRaw(
                     applicationId, settingKey, stripMeta(copyList(authSettings.getFeatureFlags())));
             case "appearance" -> saveAppMap(applicationId, settingKey, new HashMap<>(platformSettings.get("appearance")));
@@ -636,6 +637,7 @@ public class ApplicationSettingsService {
         for (Map<String, Object> row : body) {
             row.remove("inheritsPlatformDefaults");
             row.remove("scope");
+            row.remove("platformEnabled");
         }
         return body;
     }
@@ -650,16 +652,18 @@ public class ApplicationSettingsService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> resolveFeatureFlags(UUID applicationId) {
         requireApplication(applicationId);
-        return FeatureFlagMerge.merge(
+        return FeatureFlagMerge.resolveEffective(
                 authSettings.getFeatureFlags(), getAppRaw(applicationId, "feature_flags"));
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> resolvePasswordPolicy(UUID applicationId) {
         requireApplication(applicationId);
-        Map<String, Object> merged = new HashMap<>(authSettings.getPasswordPolicy());
-        getAppMap(applicationId, "password_policy").ifPresent(merged::putAll);
-        return merged;
+        if (hasOverride(applicationId, "password_policy")) {
+            return PasswordPolicySanitizer.sanitize(
+                    getAppMap(applicationId, "password_policy").orElse(Map.of()));
+        }
+        return authSettings.getPasswordPolicy();
     }
 
     @Transactional(readOnly = true)

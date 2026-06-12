@@ -108,6 +108,27 @@ public class EmailTemplateService {
         return new RenderedEmail(subject, bodyText, bodyHtml, cc, bcc);
     }
 
+    public RenderedEmail renderPlatform(String templateKey, Map<String, String> variables) {
+        Map<String, Object> template = getPlatformTemplate(templateKey);
+        if (Boolean.FALSE.equals(template.get("enabled"))) {
+            throw new IllegalStateException("Email template is disabled: " + templateKey);
+        }
+        String subject = EmailTemplateRenderer.render(string(template, "subject", ""), variables);
+        String bodyText = EmailTemplateRenderer.render(string(template, "bodyText", ""), variables);
+        String bodyHtml = EmailTemplateRenderer.render(string(template, "bodyHtml", ""), variables);
+        return new RenderedEmail(subject, bodyText, bodyHtml, List.of(), List.of());
+    }
+
+    private Map<String, Object> getPlatformTemplate(String key) {
+        Object template = EmailTemplateDefaults.platformDefaults().get(key);
+        if (!(template instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException("Unknown email template: " + key);
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> typed = (Map<String, Object>) map;
+        return typed;
+    }
+
     private Map<String, Object> loadMap(UUID applicationId) {
         return appSettings
                 .findByApplicationIdAndKey(applicationId, SETTINGS_KEY)

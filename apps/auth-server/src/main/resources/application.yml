@@ -54,6 +54,9 @@ secureone:
   # When MailHog/SMTP is down, log verification/reset links to the auth-server console (dev only).
   mail:
     log-links-when-smtp-unavailable: ${SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE:true}
+  password-expiry:
+    scheduler-enabled: ${SECUREONE_PASSWORD_EXPIRY_SCHEDULER:true}
+    check-cron: ${SECUREONE_PASSWORD_EXPIRY_CRON:0 0 */6 * * *}
 
 management:
   endpoints:

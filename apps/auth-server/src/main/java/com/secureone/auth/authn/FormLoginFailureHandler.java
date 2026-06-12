@@ -45,7 +45,10 @@ public class FormLoginFailureHandler extends SimpleUrlAuthenticationFailureHandl
             throws IOException, ServletException {
         String authorizeUrl =
                 OAuthLoginRedirectSupport.resolvePendingAuthorizeUrl(request, response, requestCache);
-        setDefaultFailureUrl(OAuthLoginRedirectSupport.appendContinueToLoginUrl("/login.html?error", authorizeUrl));
+        String errorParam = exception instanceof org.springframework.security.authentication.CredentialsExpiredException
+                ? "error=expired"
+                : "error";
+        setDefaultFailureUrl(OAuthLoginRedirectSupport.appendContinueToLoginUrl("/login.html?" + errorParam, authorizeUrl));
 
         LoginAttemptDiagnostics.Snapshot snapshot = LoginAttemptDiagnostics.capture(request);
         String username = snapshot.usernameField();

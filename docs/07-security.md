@@ -33,7 +33,7 @@ Security is the product. This document lists non-negotiables and scalability pra
 1. **Cross-tenant data leakage** — the #1 multi-tenant IAM bug class. Dedicated isolation test suite.
 2. **Token handling** — rotation, reuse detection, revocation, signature/JWKS validation.
 3. **Privilege escalation** — user → admin → platform-admin boundaries.
-4. **Account recovery** — password reset & email verification token misuse.
+4. **Account recovery** — password reset & email verification token misuse; **password expiry** — automated reset emails, login block when `expires_at` is past, and `expiryDays = 0` for non-expiring passwords (see [settings governance — password expiry](10-settings-governance.md#password-expiry-notifications)).
 
 ## Scalability practices
 

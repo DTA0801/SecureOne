@@ -13,6 +13,18 @@ export function buildPasswordRequirements(policy: PasswordPolicy): PasswordRequi
   if (policy.requireSymbol) {
     rules.push({ key: "symbol", label: "One symbol (!@#$… )" });
   }
+  if (policy.historyCount > 0) {
+    rules.push({
+      key: "history",
+      label: `Must not match your last ${policy.historyCount} password(s)`,
+    });
+  }
+  if (policy.expiryDays > 0) {
+    rules.push({
+      key: "expiry",
+      label: `Password expires after ${policy.expiryDays} day(s)`,
+    });
+  }
   return rules;
 }
 

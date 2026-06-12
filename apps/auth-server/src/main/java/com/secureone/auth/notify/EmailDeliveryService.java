@@ -27,6 +27,29 @@ public class EmailDeliveryService {
         this.mailSenderProvider = mailSenderProvider;
     }
 
+    public boolean isConfigured(UUID applicationId) {
+        return mailSenderProvider.getIfConfigured(applicationId).isPresent();
+    }
+
+    public boolean isPlatformConfigured() {
+        return mailSenderProvider.getPlatformIfConfigured().isPresent();
+    }
+
+    public void sendPlatform(
+            Map<String, Object> emailSettings,
+            String to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String text,
+            String html) {
+        JavaMailSender mailSender = mailSenderProvider
+                .getPlatformIfConfigured()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Platform SMTP is not configured. Open Platform settings → Notifications and save SMTP settings."));
+        sendWithSender(mailSender, emailSettings, to, cc, bcc, subject, text, html, null);
+    }
+
     public void send(
             UUID applicationId,
             Map<String, Object> emailSettings,
@@ -40,6 +63,19 @@ public class EmailDeliveryService {
                 .getIfConfigured(applicationId)
                 .orElseThrow(() -> new IllegalStateException(
                         "SMTP is not configured. Open Application settings → Notifications and save SMTP settings."));
+        sendWithSender(mailSender, emailSettings, to, cc, bcc, subject, text, html, applicationId);
+    }
+
+    private void sendWithSender(
+            JavaMailSender mailSender,
+            Map<String, Object> emailSettings,
+            String to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String text,
+            String html,
+            UUID applicationId) {
         String fromAddress = normalize(string(emailSettings, "fromAddress", "noreply@secureone.local"));
         String fromName = string(emailSettings, "fromName", "SecureOne");
         String replyTo = string(emailSettings, "replyTo", "");
@@ -64,12 +100,16 @@ public class EmailDeliveryService {
         try {
             MimeMessage message = buildMessage(mailSender, fromName, fromAddress, replyTo, primaryTo, ccList, envelopeBcc, subject, text, html);
             mailSender.send(message);
-            log.debug(
-                    "Email sent application={} to={} cc={} bcc={}",
-                    applicationId,
-                    primaryTo,
-                    ccList,
-                    envelopeBcc);
+            if (applicationId != null) {
+                log.debug(
+                        "Email sent application={} to={} cc={} bcc={}",
+                        applicationId,
+                        primaryTo,
+                        ccList,
+                        envelopeBcc);
+            } else {
+                log.debug("Platform email sent to={} cc={} bcc={}", primaryTo, ccList, envelopeBcc);
+            }
 
             for (String copyTo : senderCopies) {
                 MimeMessage copy = buildMessage(
@@ -84,15 +124,15 @@ public class EmailDeliveryService {
                         text,
                         html);
                 mailSender.send(copy);
-                log.debug("Sender copy delivered application={} to={}", applicationId, copyTo);
+                if (applicationId != null) {
+                    log.debug("Sender copy delivered application={} to={}", applicationId, copyTo);
+                } else {
+                    log.debug("Platform sender copy delivered to={}", copyTo);
+                }
             }
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to send email via SMTP: " + ex.getMessage(), ex);
         }
-    }
-
-    public boolean isConfigured(UUID applicationId) {
-        return mailSenderProvider.getIfConfigured(applicationId).isPresent();
     }
 
     private static MimeMessage buildMessage(

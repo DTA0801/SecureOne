@@ -2,6 +2,9 @@ package com.secureone.auth.account;
 
 import com.secureone.auth.user.UserCredential;
 import com.secureone.auth.user.UserCredentialRepository;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,6 +40,7 @@ public class UserPasswordService {
         var cred = credentials
                 .findFirstByUserIdAndCurrentTrueOrderByCreatedAtDescIdDesc(userId)
                 .orElseThrow(() -> new BadCredentialsException("No password credential on file"));
+        policy.assertNotExpired(cred);
         if (!passwordEncoder.matches(currentPassword, cred.getPasswordHash())) {
             throw new BadCredentialsException("Current password is incorrect");
         }
@@ -44,19 +48,41 @@ public class UserPasswordService {
     }
 
     public void setPassword(UUID userId, String plainPassword, UUID applicationId) {
-        policy.validate(plainPassword, applicationId);
+        policy.validateForSetPassword(userId, plainPassword, applicationId);
+        String algorithm = policy.hashAlgorithm(applicationId);
+        Instant expiresAt = policy.expiresAtForNewCredential(applicationId);
+
         credentials.clearCurrentForUser(userId);
         credentials.flush();
+
         UserCredential cred = new UserCredential();
         cred.setUserId(userId);
         cred.setPasswordHash(passwordEncoder.encode(plainPassword));
-        cred.setAlgorithm("bcrypt");
+        cred.setAlgorithm(algorithm);
+        cred.setExpiresAt(expiresAt);
         cred.setCurrent(true);
         credentials.saveAndFlush(cred);
+
+        pruneHistory(userId, policy.historyRetentionCount(applicationId));
     }
 
     public void removePassword(UUID userId) {
         credentials.findByUserId(userId).forEach(credentials::delete);
         credentials.flush();
+    }
+
+    private void pruneHistory(UUID userId, int historyCount) {
+        List<UserCredential> rows = credentials.findByUserIdOrderByCreatedAtDescIdDesc(userId);
+        int keep = Math.max(1, historyCount > 0 ? historyCount : 1);
+        if (rows.size() <= keep) {
+            return;
+        }
+        List<UUID> deleteIds = new ArrayList<>();
+        for (int i = keep; i < rows.size(); i++) {
+            deleteIds.add(rows.get(i).getId());
+        }
+        if (!deleteIds.isEmpty()) {
+            credentials.deleteByUserIdAndIdIn(userId, deleteIds);
+        }
     }
 }

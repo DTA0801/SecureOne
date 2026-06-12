@@ -1,8 +1,11 @@
 package com.secureone.auth.platform;
 
+import com.secureone.auth.application.FeatureFlagSanitizer;
+import com.secureone.auth.application.PasswordPolicySanitizer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,11 +32,12 @@ public class AuthSettingsService {
     }
 
     public Map<String, Object> getPasswordPolicy() {
-        return readMap("password_policy", defaultPasswordPolicy());
+        return PasswordPolicySanitizer.sanitize(readMap("password_policy", defaultPasswordPolicy()));
     }
 
     public Map<String, Object> savePasswordPolicy(Map<String, Object> body) {
-        settings.save("password_policy", new LinkedHashMap<>(body));
+        Map<String, Object> sanitized = PasswordPolicySanitizer.sanitize(body);
+        settings.save("password_policy", sanitized);
         return getPasswordPolicy();
     }
 
@@ -44,7 +48,7 @@ public class AuthSettingsService {
     }
 
     public List<Map<String, Object>> saveFeatureFlags(List<Map<String, Object>> body) {
-        settings.save("feature_flags", new ArrayList<>(body));
+        settings.save("feature_flags", new ArrayList<>(FeatureFlagSanitizer.sanitize(deepCopyList(body))));
         return getFeatureFlags();
     }
 
@@ -109,6 +113,14 @@ public class AuthSettingsService {
                 "expiryDays", 0,
                 "historyCount", 5,
                 "hashAlgorithm", "bcrypt"));
+    }
+
+    private static List<Map<String, Object>> deepCopyList(List<Map<String, Object>> body) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : body) {
+            out.add(row != null ? new HashMap<>(row) : new HashMap<>());
+        }
+        return out;
     }
 
 }

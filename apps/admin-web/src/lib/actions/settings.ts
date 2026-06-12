@@ -4,12 +4,14 @@ import {
   fetchAppearancePrefs,
   fetchEmailSettings,
   fetchNotificationSettings,
+  fetchPlatformSmtp,
   saveAppearancePrefs,
   saveEmailSettings,
   saveNotificationSettings,
   type EmailSettings,
   type EmailTemplatesMap,
   type NotificationSettings,
+  type PlatformNotificationSettings,
   type SmtpSettings,
   type TestEmailRequest,
 } from "@/lib/api/settings";
@@ -104,36 +106,69 @@ export async function loadAdminRecipientOptionsAction(): Promise<{
   }
 }
 
-export async function loadNotificationsAction(applicationId?: string): Promise<{
-  notifications: NotificationSettings;
+export async function loadPlatformNotificationsAction(): Promise<{
+  notifications: PlatformNotificationSettings;
   email: EmailSettings;
-  inheritsPlatformDefaults?: boolean;
+  smtp: SmtpSettings;
   error?: string;
 }> {
   try {
-    if (applicationId) {
-      const {
-        fetchApplicationNotifications,
-        fetchApplicationEmail,
-      } = await import("@/lib/api/application-settings");
-      const notifications = await fetchApplicationNotifications(applicationId);
-      let email: EmailSettings = {};
-      try {
-        email = await fetchApplicationEmail(applicationId);
-      } catch {
-        email = await fetchEmailSettings();
-      }
-      const inherits =
-        Boolean(
-          (notifications as { inheritsPlatformDefaults?: boolean }).inheritsPlatformDefaults,
-        ) &&
-        Boolean((email as { inheritsPlatformDefaults?: boolean }).inheritsPlatformDefaults);
-      return { notifications, email, inheritsPlatformDefaults: inherits };
-    }
-    const [notifications, email] = await Promise.all([
+    const [notifications, email, smtp] = await Promise.all([
       fetchNotificationSettings(),
       fetchEmailSettings(),
+      fetchPlatformSmtp(),
     ]);
+    return { notifications, email, smtp };
+  } catch (e) {
+    return { notifications: {}, email: {}, smtp: {}, error: formatSettingsError(e) };
+  }
+}
+
+export async function savePlatformNotificationsAction(input: {
+  notifications: PlatformNotificationSettings & { adminRecipients?: string[] };
+  email: EmailSettings;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { smtpConfigured: _m, ...notifications } = input.notifications as PlatformNotificationSettings &
+      Record<string, unknown>;
+    const { smtpConfigured: _em, ...email } = input.email as EmailSettings & Record<string, unknown>;
+    await saveNotificationSettings(notifications);
+    await saveEmailSettings(email);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function savePlatformSmtpAction(
+  body: SmtpSettings,
+): Promise<{ ok: boolean; smtp?: SmtpSettings; error?: string }> {
+  try {
+    const { savePlatformSmtp } = await import("@/lib/api/settings");
+    const smtp = await savePlatformSmtp(body);
+    return { ok: true, smtp };
+  } catch (e) {
+    return { ok: false, error: formatSettingsError(e) };
+  }
+}
+
+export async function loadNotificationsAction(applicationId: string): Promise<{
+  notifications: NotificationSettings;
+  email: EmailSettings;
+  error?: string;
+}> {
+  try {
+    const {
+      fetchApplicationNotifications,
+      fetchApplicationEmail,
+    } = await import("@/lib/api/application-settings");
+    const notifications = await fetchApplicationNotifications(applicationId);
+    let email: EmailSettings = {};
+    try {
+      email = await fetchApplicationEmail(applicationId);
+    } catch {
+      email = {};
+    }
     return { notifications, email };
   } catch (e) {
     return { notifications: {}, email: {}, error: formatSettingsError(e) };
@@ -255,35 +290,30 @@ export async function saveNotificationsAction(
     notifications: NotificationSettings & { adminRecipients?: string[] };
     email: EmailSettings;
   },
-  applicationId?: string,
+  applicationId: string,
   sections?: { saveNotifications?: boolean; saveEmail?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    if (applicationId) {
-      const {
-        saveApplicationNotifications,
-        saveApplicationEmail,
-      } = await import("@/lib/api/application-settings");
-      const { scope: _s, inheritsPlatformDefaults: _i, smtpConfigured: _m, ...notifications } =
-        input.notifications as NotificationSettings & Record<string, unknown>;
-      const { scope: _es, inheritsPlatformDefaults: _ei, smtpConfigured: _em, ...email } =
-        input.email as EmailSettings & Record<string, unknown>;
-      const saveNotif = sections?.saveNotifications !== false;
-      const saveMail = sections?.saveEmail !== false;
-      if (saveNotif) {
-        await saveApplicationNotifications(applicationId, notifications);
-      }
-      if (saveMail) {
-        try {
-          await saveApplicationEmail(applicationId, email);
-        } catch (e) {
-          if (!(e instanceof ApiError) || e.status !== 404) throw e;
-        }
-      }
-      return { ok: true };
+    const {
+      saveApplicationNotifications,
+      saveApplicationEmail,
+    } = await import("@/lib/api/application-settings");
+    const { scope: _s, smtpConfigured: _m, ...notifications } =
+      input.notifications as NotificationSettings & Record<string, unknown>;
+    const { scope: _es, smtpConfigured: _em, ...email } =
+      input.email as EmailSettings & Record<string, unknown>;
+    const saveNotif = sections?.saveNotifications !== false;
+    const saveMail = sections?.saveEmail !== false;
+    if (saveNotif) {
+      await saveApplicationNotifications(applicationId, notifications);
     }
-    await saveNotificationSettings(input.notifications);
-    await saveEmailSettings(input.email);
+    if (saveMail) {
+      try {
+        await saveApplicationEmail(applicationId, email);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 404) throw e;
+      }
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: formatSettingsError(e) };

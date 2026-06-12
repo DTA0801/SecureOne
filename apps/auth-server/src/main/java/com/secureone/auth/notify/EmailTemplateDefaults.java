@@ -132,6 +132,20 @@ public final class EmailTemplateDefaults {
                 Did not make this change? Contact your administrator immediately to protect your account.""",
                 htmlPasswordChanged(),
                 List.of("userName", "userEmail", "tenantName", "appName")));
+        templates.put("password_expiring_soon", template(
+                "Password expiring soon",
+                "Warning before password expiry per policy",
+                "Your {{appName}} password expires on {{expiryDate}}",
+                """
+                Hello {{userName}},
+
+                Your {{appName}} password for {{userEmail}} will expire on {{expiryDate}}.
+
+                To avoid being locked out, sign in and change your password before it expires, or use your application's forgot-password flow if you need help.
+
+                If you recently changed your password, you can ignore this reminder.""",
+                htmlPasswordExpiringSoon(),
+                List.of("userName", "userEmail", "expiryDate", "tenantName", "appName")));
         templates.put("admin_notification", template(
                 "Admin notification",
                 "General platform alerts to admin recipients",
@@ -432,6 +446,43 @@ public final class EmailTemplateDefaults {
                         <tr>
                           <td style="padding:20px 32px;background-color:#f0fdf4;border-top:1px solid #bbf7d0;">
                             <p style="margin:0;font-size:12px;line-height:1.6;color:#166534;">This account status notification was sent by {{appName}}.</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>""";
+    }
+
+    private static String htmlPasswordExpiringSoon() {
+        return """
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;margin:0;padding:0;background-color:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#172033;">
+                  <tr>
+                    <td align="center" style="padding:32px 16px;">
+                      <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:100%;max-width:640px;background-color:#ffffff;border:1px solid #fde68a;border-radius:14px;overflow:hidden;box-shadow:0 18px 45px rgba(146,64,14,0.10);">
+                        <tr>
+                          <td style="padding:28px 32px;background-color:#92400e;color:#ffffff;">
+                            <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#fde68a;">Password policy</div>
+                            <h1 style="margin:10px 0 0;font-size:24px;line-height:1.3;font-weight:700;">Your password expires soon</h1>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:32px;">
+                            <p style="margin:0 0 18px;font-size:16px;line-height:1.65;color:#334155;">Hello {{userName}},</p>
+                            <p style="margin:0 0 22px;font-size:16px;line-height:1.65;color:#334155;">Your {{appName}} password for <strong style="color:#0f172a;">{{userEmail}}</strong> will expire on <strong style="color:#0f172a;">{{expiryDate}}</strong>.</p>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;background-color:#fffbeb;border:1px solid #fde68a;border-radius:12px;">
+                              <tr>
+                                <td style="padding:18px 20px;">
+                                  <p style="margin:0;font-size:14px;line-height:1.6;color:#92400e;"><strong>Action recommended:</strong> Change your password before the expiry date to avoid being locked out.</p>
+                                </td>
+                              </tr>
+                            </table>
+                            <p style="margin:0;font-size:14px;line-height:1.6;color:#64748b;">If you recently changed your password, you can ignore this reminder.</p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:20px 32px;background-color:#fffbeb;border-top:1px solid #fde68a;">
+                            <p style="margin:0;font-size:12px;line-height:1.6;color:#92400e;">This reminder was sent by {{appName}} for {{tenantName}}.</p>
                           </td>
                         </tr>
                       </table>

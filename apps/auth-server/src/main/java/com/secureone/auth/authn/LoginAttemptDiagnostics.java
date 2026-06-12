@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import org.slf4j.MDC;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -52,6 +53,9 @@ public final class LoginAttemptDiagnostics {
     }
 
     public static String classify(AuthenticationException exception, Snapshot snapshot) {
+        if (exception instanceof CredentialsExpiredException) {
+            return "password_expired";
+        }
         if (exception instanceof DisabledException) {
             return "auth_method_disabled";
         }

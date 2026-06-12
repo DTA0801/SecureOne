@@ -5,18 +5,28 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { FieldRow, Input, Select } from "@/components/ui/Field";
 import { Toggle } from "@/components/ui/Toggle";
-import { saveSmtpAction } from "@/lib/actions/settings";
+import { savePlatformSmtpAction, saveSmtpAction } from "@/lib/actions/settings";
 import type { SmtpSettings } from "@/lib/api/settings";
 
-export function SmtpSettingsCard({
-  applicationId,
-  smtp,
-  onSaved,
-}: {
-  applicationId: string;
-  smtp: SmtpSettings;
-  onSaved: (next: SmtpSettings) => void;
-}) {
+type SmtpSettingsCardProps =
+  | {
+      scope: "platform";
+      smtp: SmtpSettings;
+      onSaved: (next: SmtpSettings) => void;
+      applicationId?: never;
+    }
+  | {
+      scope?: "application";
+      applicationId: string;
+      smtp: SmtpSettings;
+      onSaved: (next: SmtpSettings) => void;
+    };
+
+export function SmtpSettingsCard(props: SmtpSettingsCardProps) {
+  const { smtp, onSaved } = props;
+  const isPlatform = props.scope === "platform";
+  const applicationId = props.scope === "application" || props.scope === undefined ? props.applicationId : undefined;
+
   const [draft, setDraft] = useState<SmtpSettings>(smtp);
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
@@ -33,7 +43,9 @@ export function SmtpSettingsCard({
     if (password.trim()) {
       payload.password = password;
     }
-    const result = await saveSmtpAction(applicationId, payload);
+    const result = isPlatform
+      ? await savePlatformSmtpAction(payload)
+      : await saveSmtpAction(applicationId!, payload);
     if (result.ok && result.smtp) {
       onSaved(result.smtp);
       setPassword("");
@@ -48,7 +60,11 @@ export function SmtpSettingsCard({
     <Card padded={false}>
       <CardHeader
         title="SMTP server"
-        description="Per-application SMTP (password encrypted at rest). Gmail: smtp.gmail.com, port 465, SSL."
+        description={
+          isPlatform
+            ? "Platform operator alert delivery (password encrypted at rest). Gmail: smtp.gmail.com, port 465, SSL."
+            : "Application SMTP for user and app admin emails (password encrypted at rest)."
+        }
       />
       {message && <p className="px-5 text-sm text-brand">{message}</p>}
       <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
@@ -87,7 +103,7 @@ export function SmtpSettingsCard({
         </FieldRow>
         <FieldRow
           label="Password"
-          hint={draft.passwordConfigured ? "Leave blank to keep current app password" : "Gmail App Password"}
+          hint={draft.passwordConfigured ? "Leave blank to keep current password" : "Gmail App Password"}
         >
           <Input
             type="password"

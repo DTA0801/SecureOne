@@ -2,6 +2,8 @@ package com.secureone.auth.admin.settings;
 
 import com.secureone.auth.application.TokenPolicyDefaults;
 import com.secureone.auth.notify.EmailNotificationService;
+import com.secureone.auth.notify.PlatformMailSenderProvider;
+import com.secureone.auth.notify.PlatformSmtpSettingsService;
 import com.secureone.auth.platform.AuthSettingsService;
 import com.secureone.auth.platform.PlatformSettingsService;
 import com.secureone.auth.platform.SettingsExposureService;
@@ -25,16 +27,22 @@ public class SettingsAdminController {
 
     private final EmailNotificationService emailService;
     private final PlatformSettingsService platformSettings;
+    private final PlatformSmtpSettingsService platformSmtp;
+    private final PlatformMailSenderProvider mailSenderProvider;
     private final AuthSettingsService authSettings;
     private final SettingsExposureService exposure;
 
     public SettingsAdminController(
             EmailNotificationService emailService,
             PlatformSettingsService platformSettings,
+            PlatformSmtpSettingsService platformSmtp,
+            PlatformMailSenderProvider mailSenderProvider,
             AuthSettingsService authSettings,
             SettingsExposureService exposure) {
         this.emailService = emailService;
         this.platformSettings = platformSettings;
+        this.platformSmtp = platformSmtp;
+        this.mailSenderProvider = mailSenderProvider;
         this.authSettings = authSettings;
         this.exposure = exposure;
     }
@@ -53,28 +61,40 @@ public class SettingsAdminController {
     @GetMapping("/notifications")
     public Map<String, Object> getNotifications() {
         Map<String, Object> body = new HashMap<>(emailService.getNotificationSettings());
-        body.put("smtpConfigured", false);
+        body.put("smtpConfigured", platformSmtp.isConfigured());
         return body;
     }
 
     @PutMapping("/notifications")
     public Map<String, Object> updateNotifications(@RequestBody Map<String, Object> body) {
         Map<String, Object> saved = emailService.saveNotificationSettings(body);
-        saved.put("smtpConfigured", false);
+        saved.put("smtpConfigured", platformSmtp.isConfigured());
         return saved;
     }
 
     @GetMapping("/email")
     public Map<String, Object> getEmail() {
         Map<String, Object> body = new HashMap<>(emailService.getEmailSettings());
-        body.put("smtpConfigured", false);
+        body.put("smtpConfigured", platformSmtp.isConfigured());
         return body;
     }
 
     @PutMapping("/email")
     public Map<String, Object> updateEmail(@RequestBody Map<String, Object> body) {
         Map<String, Object> saved = emailService.saveEmailSettings(body);
-        saved.put("smtpConfigured", false);
+        saved.put("smtpConfigured", platformSmtp.isConfigured());
+        return saved;
+    }
+
+    @GetMapping("/smtp")
+    public Map<String, Object> getSmtp() {
+        return platformSmtp.getPublicSettings();
+    }
+
+    @PutMapping("/smtp")
+    public Map<String, Object> updateSmtp(@RequestBody Map<String, Object> body) {
+        Map<String, Object> saved = platformSmtp.save(body);
+        mailSenderProvider.invalidatePlatform();
         return saved;
     }
 

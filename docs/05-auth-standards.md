@@ -35,6 +35,8 @@ See [Enterprise Capabilities](10-enterprise.md) for the full enterprise feature 
 
 > The Authorization Code flow with PKCE is the default for all interactive clients. The legacy Implicit and Resource Owner Password grants are **not** supported.
 
+For how integrated applications choose **hosted SecureOne pages vs a custom login UI** (magic link, session login, email links), see [Authentication UI integration](13-auth-ui-integration.md).
+
 ## Tokens
 
 - **Access token:** short-lived (5–15 min) **JWT**, signed with **RS256 or ES256**, published via **JWKS** with key rotation (multiple active keys overlap during rotation).

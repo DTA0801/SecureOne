@@ -33,11 +33,14 @@ export function normalizePasswordPolicy(raw: unknown): PasswordPolicy {
       typeof r.hashAlgorithm === "string" && r.hashAlgorithm.trim()
         ? r.hashAlgorithm
         : DEFAULT_PASSWORD_POLICY.hashAlgorithm,
+    inheritsPlatformDefaults:
+      typeof r.inheritsPlatformDefaults === "boolean" ? r.inheritsPlatformDefaults : undefined,
   };
 }
 
 export function passwordPolicyPayload(policy: PasswordPolicy): PasswordPolicy {
-  return normalizePasswordPolicy(policy);
+  const { inheritsPlatformDefaults: _i, requirements: _r, ...payload } = policy;
+  return normalizePasswordPolicy(payload);
 }
 
 export function normalizeFeatureFlags(raw: unknown): FeatureFlag[] {
@@ -63,11 +66,13 @@ export function normalizeFeatureFlags(raw: unknown): FeatureFlag[] {
           : typeof row.category === "string"
             ? row.category
             : undefined,
+      platformEnabled:
+        row.platformEnabled === undefined ? undefined : coerceBool(row.platformEnabled, false),
     });
   }
   return out;
 }
 
 export function featureFlagsPayload(flags: FeatureFlag[]): FeatureFlag[] {
-  return normalizeFeatureFlags(flags);
+  return normalizeFeatureFlags(flags).map(({ platformEnabled: _ignored, ...flag }) => flag);
 }

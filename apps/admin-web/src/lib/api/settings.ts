@@ -15,6 +15,14 @@ export async function saveAppearancePrefs(prefs: UiPreferences): Promise<void> {
 
 export type RecipientGroups = Record<string, string[]>;
 
+export type PlatformNotificationSettings = {
+  emailEnabled?: boolean;
+  auditAlertsEnabled?: boolean;
+  securityAlertsEnabled?: boolean;
+  adminRecipients?: string[];
+  smtpConfigured?: boolean;
+};
+
 export type NotificationSettings = {
   emailEnabled?: boolean;
   /** End-user mail: verify email, password reset, password changed */
@@ -69,8 +77,19 @@ export type TestEmailRequest = {
   customData?: Record<string, string>;
 };
 
-export async function fetchNotificationSettings(): Promise<NotificationSettings> {
-  return apiFetch<NotificationSettings>("/api/admin/v1/settings/notifications");
+export async function fetchNotificationSettings(): Promise<PlatformNotificationSettings> {
+  return apiFetch<PlatformNotificationSettings>("/api/admin/v1/settings/notifications");
+}
+
+export async function fetchPlatformSmtp(): Promise<SmtpSettings> {
+  return apiFetch<SmtpSettings>("/api/admin/v1/settings/smtp");
+}
+
+export async function savePlatformSmtp(body: SmtpSettings): Promise<SmtpSettings> {
+  return apiFetch<SmtpSettings>("/api/admin/v1/settings/smtp", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function fetchEmailSettings(): Promise<EmailSettings> {
@@ -78,7 +97,7 @@ export async function fetchEmailSettings(): Promise<EmailSettings> {
 }
 
 export async function saveNotificationSettings(
-  body: NotificationSettings & { adminRecipients?: string[] },
+  body: PlatformNotificationSettings & { adminRecipients?: string[] },
 ): Promise<void> {
   await apiFetch("/api/admin/v1/settings/notifications", {
     method: "PUT",

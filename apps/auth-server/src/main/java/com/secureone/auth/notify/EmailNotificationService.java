@@ -2,8 +2,14 @@ package com.secureone.auth.notify;
 
 import com.secureone.auth.notify.ApplicationEmailContextFactory.ApplicationEmailContext;
 import com.secureone.auth.notify.EmailTemplateService.RenderedEmail;
+import com.secureone.auth.platform.PlatformNotificationDefaults;
 import com.secureone.auth.platform.PlatformSettingsService;
 import com.secureone.auth.user.UserAccount;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -22,6 +28,7 @@ public class EmailNotificationService {
     private static final Logger log = LoggerFactory.getLogger(EmailNotificationService.class);
 
     private final PlatformSettingsService settings;
+    private final PlatformSmtpSettingsService platformSmtp;
     private final ApplicationEmailContextFactory emailContext;
     private final EmailTemplateService templates;
     private final EmailDeliveryService delivery;
@@ -29,11 +36,13 @@ public class EmailNotificationService {
 
     public EmailNotificationService(
             PlatformSettingsService settings,
+            PlatformSmtpSettingsService platformSmtp,
             ApplicationEmailContextFactory emailContext,
             EmailTemplateService templates,
             EmailDeliveryService delivery,
             @Value("${secureone.mail.log-links-when-smtp-unavailable:true}") boolean logLinksWhenUnavailable) {
         this.settings = settings;
+        this.platformSmtp = platformSmtp;
         this.emailContext = emailContext;
         this.templates = templates;
         this.delivery = delivery;
@@ -52,19 +61,23 @@ public class EmailNotificationService {
     }
 
     public Map<String, Object> getNotificationSettings() {
-        return getSetting("notifications");
+        return PlatformNotificationDefaults.mergeNotifications(settings.get("notifications"));
     }
 
     public Map<String, Object> getEmailSettings() {
-        return getSetting("email");
+        return PlatformNotificationDefaults.mergeEmail(settings.get("email"));
     }
 
     public Map<String, Object> saveNotificationSettings(Map<String, Object> value) {
-        return saveSetting("notifications", value);
+        Map<String, Object> sanitized = PlatformNotificationDefaults.sanitizeNotifications(value);
+        settings.save("notifications", sanitized);
+        return sanitized;
     }
 
     public Map<String, Object> saveEmailSettings(Map<String, Object> value) {
-        return saveSetting("email", value);
+        Map<String, Object> sanitized = PlatformNotificationDefaults.sanitizeEmail(value);
+        settings.save("email", sanitized);
+        return sanitized;
     }
 
     public void sendTestEmail(
@@ -96,6 +109,10 @@ public class EmailNotificationService {
     }
 
     public void sendAdminNotification(UUID applicationId, UserAccount user, String subject, String body) {
+        if (applicationId == null && user == null) {
+            sendPlatformAdminNotification(subject, body);
+            return;
+        }
         UUID appId = emailContext.resolveApplicationId(applicationId, user);
         if (appId == null) {
             log.warn("Skipping admin notification (no application SMTP context): {}", subject);
@@ -103,6 +120,9 @@ public class EmailNotificationService {
         }
         ApplicationEmailContext ctx = emailContext.context(appId);
         if (!Boolean.TRUE.equals(ctx.notifications().get("emailEnabled"))) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(ctx.notifications().get("auditAlertsEnabled"))) {
             return;
         }
         Map<String, String> vars = baseVariables(ctx);
@@ -117,9 +137,13 @@ public class EmailNotificationService {
     }
 
     public void sendAdminSecurityAlert(UUID applicationId, UserAccount user, String subject, String body) {
+        if (applicationId == null && user == null) {
+            sendPlatformSecurityAlert(subject, body);
+            return;
+        }
         UUID appId = emailContext.resolveApplicationId(applicationId, user);
         if (appId == null) {
-            log.warn("Skipping admin security alert (no application SMTP context): {}", subject);
+            sendPlatformSecurityAlert(subject, body);
             return;
         }
         ApplicationEmailContext ctx = emailContext.context(appId);
@@ -154,6 +178,15 @@ public class EmailNotificationService {
         UUID appId = emailContext.resolveApplicationId(applicationId, user);
         ensureUserTransactionalEmailEnabled(appId);
         sendUserTemplate(appId, user, "password_reset", resetLink);
+    }
+
+    public void sendPasswordExpiringSoon(UUID applicationId, UserAccount user, java.time.Instant expiresAt) {
+        UUID appId = emailContext.resolveApplicationId(applicationId, user);
+        ensureUserTransactionalEmailEnabled(appId);
+        ApplicationEmailContext ctx = emailContext.context(appId);
+        Map<String, String> vars = userVariables(ctx, user, null);
+        vars.put("expiryDate", formatExpiryDate(expiresAt));
+        sendTemplated(ctx, user.getEmail(), "password_expiring_soon", vars, List.of(), List.of());
     }
 
     public void sendMagicLink(UUID applicationId, UserAccount user, String magicLink) {
@@ -341,6 +374,91 @@ public class EmailNotificationService {
         }
     }
 
+    private void sendPlatformAdminNotification(String subject, String body) {
+        Map<String, Object> notifications = getNotificationSettings();
+        if (!Boolean.TRUE.equals(notifications.get("emailEnabled"))) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(notifications.get("auditAlertsEnabled"))) {
+            return;
+        }
+        sendPlatformTemplated("admin_notification", notifications, subject, body);
+    }
+
+    private void sendPlatformSecurityAlert(String subject, String body) {
+        Map<String, Object> notifications = getNotificationSettings();
+        if (!Boolean.TRUE.equals(notifications.get("emailEnabled"))) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(notifications.get("securityAlertsEnabled"))) {
+            return;
+        }
+        sendPlatformTemplated("admin_security_alert", notifications, subject, body);
+    }
+
+    private void sendPlatformTemplated(
+            String templateKey, Map<String, Object> notifications, String subject, String body) {
+        List<String> recipients = adminRecipientEmails(notifications);
+        if (recipients.isEmpty()) {
+            log.warn("No platform admin recipients configured — add recipients under Platform settings → Notifications");
+            return;
+        }
+        if (!platformSmtp.isConfigured() && !logLinksWhenUnavailable) {
+            log.warn("Platform SMTP not configured — skipping platform alert: {}", subject);
+            return;
+        }
+        Map<String, Object> email = getEmailSettings();
+        Map<String, String> vars = new HashMap<>();
+        vars.put("appName", string(email, "fromName", "SecureOne"));
+        vars.put("tenantName", "SecureOne");
+        vars.put("subject", subject);
+        vars.put("body", body);
+        RenderedEmail rendered = templates.renderPlatform(templateKey, vars);
+        for (String recipient : recipients) {
+            sendPlatformOrLog(email, recipient, rendered.cc(), rendered.bcc(), rendered.subject(), rendered.bodyText(), rendered.bodyHtml());
+        }
+    }
+
+    private void sendPlatformOrLog(
+            Map<String, Object> email,
+            String to,
+            List<String> cc,
+            List<String> bcc,
+            String subject,
+            String text,
+            String html) {
+        if (!platformSmtp.isConfigured()) {
+            if (logLinksWhenUnavailable) {
+                log.warn(
+                        """
+                        Platform SMTP unavailable — email logged to console instead of sent.
+                        To: {}
+                        Subject: {}
+                        Body:
+                        {}
+                        """,
+                        to,
+                        subject,
+                        text);
+            }
+            return;
+        }
+        try {
+            delivery.sendPlatform(email, to, cc, bcc, subject, text, html);
+        } catch (Exception ex) {
+            if (logLinksWhenUnavailable) {
+                log.warn(
+                        "Platform SMTP send failed ({}). Email logged to console instead.\nTo: {}\nSubject: {}\nBody:\n{}",
+                        ex.getMessage(),
+                        to,
+                        subject,
+                        text);
+                return;
+            }
+            throw ex;
+        }
+    }
+
     private void requireMail(ApplicationEmailContext ctx) {
         if (!ctx.smtpConfigured()) {
             throw new IllegalStateException(
@@ -349,17 +467,14 @@ public class EmailNotificationService {
         }
     }
 
-    private Map<String, Object> getSetting(String key) {
-        return settings.get(key);
-    }
-
-    private Map<String, Object> saveSetting(String key, Map<String, Object> value) {
-        return settings.saveMap(key, value);
-    }
-
-    private static String string(Map<String, Object> map, String key, String defaultValue) {
-        Object v = map.get(key);
-        return v != null ? v.toString() : defaultValue;
+    private static String formatExpiryDate(Instant expiresAt) {
+        if (expiresAt == null) {
+            return "";
+        }
+        return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+                .withLocale(Locale.ENGLISH)
+                .withZone(ZoneOffset.UTC)
+                .format(expiresAt);
     }
 
     private static String displayName(UserAccount user) {
@@ -367,5 +482,10 @@ public class EmailNotificationService {
             return user.getDisplayName().trim();
         }
         return user.getEmail();
+    }
+
+    private static String string(Map<String, Object> map, String key, String defaultValue) {
+        Object v = map.get(key);
+        return v != null ? v.toString() : defaultValue;
     }
 }

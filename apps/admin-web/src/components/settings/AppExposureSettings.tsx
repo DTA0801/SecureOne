@@ -20,12 +20,12 @@ const SECTIONS: { key: string; label: string; description: string }[] = [
   {
     key: "notifications",
     label: "Notifications",
-    description: "Email alerts, admin recipients, and security notifications for this app.",
+    description: "Application email alerts, user mail, SMTP, and templates (independent from platform alerts).",
   },
   {
     key: "email",
     label: "Email sender",
-    description: "From name, address, and reply-to overrides per application.",
+    description: "From name, address, and reply-to for this application's outbound mail.",
   },
   {
     key: "auth-methods",

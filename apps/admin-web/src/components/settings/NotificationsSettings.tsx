@@ -10,7 +10,6 @@ import { FieldRow, Input } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { Toggle } from "@/components/ui/Toggle";
 import {
-  loadAdminRecipientOptionsAction,
   loadApplicationSmtpAndTemplatesAction,
   loadNotificationsAction,
   saveNotificationsAction,
@@ -53,7 +52,6 @@ function serializeNotificationsDraft(
   } as Record<string, unknown>;
   delete payload.inheritsPlatformDefaults;
   delete payload.scope;
-  delete payload.smtpConfigured;
   return JSON.stringify({
     notifications: payload,
     email: normalizeEmailFields(email),
@@ -79,7 +77,7 @@ export function NotificationsSettings({
   applicationId,
   settingsReady = true,
 }: {
-  applicationId?: string;
+  applicationId: string;
   /** When false (app exposure still loading), block edits but keep mounted to avoid reload loops. */
   settingsReady?: boolean;
 }) {
@@ -134,34 +132,15 @@ export function NotificationsSettings({
     }
 
     async function fetchBundle(): Promise<NotificationsBundle> {
-      if (applicationId) {
-        const { ensureApplicationPolicyScopes } = await import("@/lib/api/ensure-application-policy");
-        await ensureApplicationPolicyScopes(applicationId, ["notifications", "email"]);
-      }
-      const recipientsPromise = applicationId
-        ? Promise.resolve({
-            adminOptions: [] as AdminRecipientOption[],
-            allUsers: [] as RecipientUserOption[],
-            error: undefined as string | undefined,
-          })
-        : loadAdminRecipientOptionsAction();
-      const smtpPromise = applicationId
-        ? loadApplicationSmtpAndTemplatesAction(applicationId)
-        : Promise.resolve({
-            smtp: {},
-            templates: {},
-            emailTestUiEnabled: false,
-            error: undefined as string | undefined,
-          });
+      const { ensureApplicationPolicyScopes } = await import("@/lib/api/ensure-application-policy");
+      await ensureApplicationPolicyScopes(applicationId, ["notifications", "email"]);
 
       const [
         { notifications: n, email: e, error },
-        { adminOptions: admins, allUsers: users, error: optionsError },
         { smtp: smtpLoaded, templates: templatesLoaded, emailTestUiEnabled: testUi, error: smtpError },
       ] = await Promise.all([
         loadNotificationsAction(applicationId),
-        recipientsPromise,
-        smtpPromise,
+        loadApplicationSmtpAndTemplatesAction(applicationId),
       ]);
 
       const adminRecipients = (n.adminRecipients ?? []).map((x) => x.trim().toLowerCase());
@@ -171,10 +150,10 @@ export function NotificationsSettings({
         smtp: smtpLoaded,
         templates: templatesLoaded,
         emailTestUiEnabled: testUi,
-        adminOptions: admins,
-        allUsers: users,
+        adminOptions: [],
+        allUsers: [],
         adminRecipients,
-        errors: [error, optionsError, smtpError].filter(Boolean).join(" "),
+        errors: [error, smtpError].filter(Boolean).join(" "),
       };
     }
 
@@ -221,7 +200,7 @@ export function NotificationsSettings({
         email: emailRef.current,
       },
       applicationId,
-      applicationId ? { saveNotifications: true, saveEmail: true } : undefined,
+      { saveNotifications: true, saveEmail: true },
     );
     if (result.ok) {
       const nextNotifications = { ...notificationsRef.current, adminRecipients: selectedEmailsRef.current };
@@ -269,11 +248,9 @@ export function NotificationsSettings({
         <CardHeader
           title="Notification channels"
           description={
-            applicationId
-              ? smtpReady
-                ? "SMTP is configured for this application. Changes auto-save."
-                : "Configure SMTP below. Gmail: smtp.gmail.com, port 465, SSL + App Password."
-              : "Platform defaults for notification toggles. SMTP is configured per application."
+            smtpReady
+              ? "Application email and alert settings. Changes auto-save."
+              : "Configure SMTP below. Gmail: smtp.gmail.com, port 465, SSL + App Password."
           }
         />
         <ul
@@ -281,7 +258,7 @@ export function NotificationsSettings({
         >
           <SettingRow
             label="Email notifications (admin)"
-            hint="Platform alerts to admin recipients below"
+            hint="Application admin alerts to recipients below"
             checked={!!notifications.emailEnabled}
             onChange={(v) => setNotifications({ ...notifications, emailEnabled: v })}
           />
@@ -320,17 +297,15 @@ export function NotificationsSettings({
               disabled={!loaded || !settingsReady}
             />
           </FieldRow>
-          {applicationId && (
-            <FieldRow label="Recipient groups" hint="Named lists merged into admin alert delivery">
-              <RecipientGroupsEditor
-                groups={recipientGroups}
-                onChange={(nextGroups) =>
-                  setNotifications((prev) => ({ ...prev, recipientGroups: nextGroups }))
-                }
-                disabled={!loaded || !settingsReady}
-              />
-            </FieldRow>
-          )}
+          <FieldRow label="Recipient groups" hint="Named lists merged into admin alert delivery">
+            <RecipientGroupsEditor
+              groups={recipientGroups}
+              onChange={(nextGroups) =>
+                setNotifications((prev) => ({ ...prev, recipientGroups: nextGroups }))
+              }
+              disabled={!loaded || !settingsReady}
+            />
+          </FieldRow>
         </div>
         {saving && <p className="px-5 pb-4 text-xs text-muted">Saving…</p>}
       </Card>
@@ -359,50 +334,37 @@ export function NotificationsSettings({
         </div>
       </Card>
 
-      {applicationId && (
-        <>
-          <SmtpSettingsCard
-            applicationId={applicationId}
-            smtp={smtp}
-            onSaved={(next) => {
-              setSmtp(next);
-              setNotifications((prev) => {
-                const updated = { ...prev, smtpConfigured: next.smtpConfigured };
-                patchCachedNotificationsBundle(applicationId, { smtp: next, notifications: updated });
-                return updated;
-              });
-            }}
-          />
-          <EmailTemplatesSettings
-            applicationId={applicationId}
-            templates={templates}
-            recipientGroups={recipientGroups}
-            adminOptions={adminOptions}
-            allUsers={allUsers}
-            onSaved={(next) => {
-              setTemplates(next);
-              patchCachedNotificationsBundle(applicationId, { templates: next });
-            }}
-          />
-          {emailTestUiEnabled && (
-            <EmailTestPanel
-              applicationId={applicationId}
-              templates={templates}
-              recipientGroups={recipientGroups}
-              adminOptions={adminOptions}
-              allUsers={allUsers}
-            />
-          )
-          // : (
-          //   <Card padded={false}>
-          //     <CardHeader
-          //       title="Send test email"
-          //       description='Hidden — open the "Feature flags" tab above, scroll to Notifications, and turn on "Email test console".'
-          //     />
-          //   </Card>
-          // )
-          }
-        </>
+      <SmtpSettingsCard
+        applicationId={applicationId}
+        smtp={smtp}
+        onSaved={(next) => {
+          setSmtp(next);
+          setNotifications((prev) => {
+            const updated = { ...prev, smtpConfigured: next.smtpConfigured };
+            patchCachedNotificationsBundle(applicationId, { smtp: next, notifications: updated });
+            return updated;
+          });
+        }}
+      />
+      <EmailTemplatesSettings
+        applicationId={applicationId}
+        templates={templates}
+        recipientGroups={recipientGroups}
+        adminOptions={adminOptions}
+        allUsers={allUsers}
+        onSaved={(next) => {
+          setTemplates(next);
+          patchCachedNotificationsBundle(applicationId, { templates: next });
+        }}
+      />
+      {emailTestUiEnabled && (
+        <EmailTestPanel
+          applicationId={applicationId}
+          templates={templates}
+          recipientGroups={recipientGroups}
+          adminOptions={adminOptions}
+          allUsers={allUsers}
+        />
       )}
     </div>
   );

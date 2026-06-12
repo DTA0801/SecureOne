@@ -14,10 +14,14 @@ import org.springframework.stereotype.Component;
 public class PlatformMailSenderProvider {
 
     private final SmtpSettingsService smtpSettings;
+    private final PlatformSmtpSettingsService platformSmtp;
     private final Map<UUID, CachedSender> cache = new ConcurrentHashMap<>();
+    private volatile CachedSender platformCache;
 
-    public PlatformMailSenderProvider(SmtpSettingsService smtpSettings) {
+    public PlatformMailSenderProvider(
+            SmtpSettingsService smtpSettings, PlatformSmtpSettingsService platformSmtp) {
         this.smtpSettings = smtpSettings;
+        this.platformSmtp = platformSmtp;
     }
 
     public Optional<JavaMailSender> getIfConfigured(UUID applicationId) {
@@ -44,10 +48,35 @@ public class PlatformMailSenderProvider {
         }
     }
 
+    public Optional<JavaMailSender> getPlatformIfConfigured() {
+        SmtpSettingsService.SmtpConnectionConfig config = platformSmtp.loadConnectionConfig();
+        if (config == null) {
+            return Optional.empty();
+        }
+        String hash = "platform:" + config.cacheKey(null);
+        CachedSender cached = platformCache;
+        if (cached != null && hash.equals(cached.hash)) {
+            return Optional.of(cached.sender);
+        }
+        synchronized (this) {
+            cached = platformCache;
+            if (cached != null && hash.equals(cached.hash)) {
+                return Optional.of(cached.sender);
+            }
+            JavaMailSender sender = build(config);
+            platformCache = new CachedSender(hash, sender);
+            return Optional.of(sender);
+        }
+    }
+
     public void invalidate(UUID applicationId) {
         if (applicationId != null) {
             cache.remove(applicationId);
         }
+    }
+
+    public void invalidatePlatform() {
+        platformCache = null;
     }
 
     private static JavaMailSender build(SmtpConnectionConfig config) {

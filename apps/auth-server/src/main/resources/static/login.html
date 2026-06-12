@@ -115,6 +115,11 @@
                 }
               })
               .catch(() => undefined);
+          } else if (params.get("error") === "expired") {
+            banner.textContent =
+              "Your password has expired and you cannot sign in. A password reset link has been sent to your email. Use that link to set a new password, or choose Forgot password below.";
+            banner.className = "banner error";
+            banner.hidden = false;
           } else if (params.has("error")) {
             banner.textContent =
               "Sign in failed. Check tenant slug, email, and password. If your email is not verified, open the link from your inbox or ask an administrator.";

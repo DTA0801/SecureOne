@@ -109,7 +109,12 @@ erDiagram
 | password_hash | VARCHAR | **Argon2id** |
 | algorithm, params | VARCHAR/JSON | enables cost migration / rehash |
 | is_current | BOOLEAN | |
+| expires_at | TIMESTAMP | nullable; set from policy `expiryDays` at password set; `NULL` = never expires |
+| expiry_warning_sent_at | TIMESTAMP | nullable; one approaching-expiry email per credential |
+| expiry_expired_notice_sent_at | TIMESTAMP | nullable; one post-expiry reset email per credential |
 | created_at | TIMESTAMP | |
+
+See [Password expiry notifications](10-settings-governance.md#password-expiry-notifications) for runtime behavior.
 
 ### `user_identity` (federated logins)
 | id, user_id (FK) | UUID | |

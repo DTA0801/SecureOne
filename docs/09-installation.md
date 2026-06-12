@@ -55,7 +55,13 @@ SECUREONE_ENCRYPTION_KEY=base64:...
 # Email (password reset / verification)
 SECUREONE_MAIL_PROVIDER=smtp          # smtp | ses | resend
 SECUREONE_MAIL_FROM=no-reply@example.com
+
+# Password expiry scheduler (auth-server background job)
+SECUREONE_PASSWORD_EXPIRY_SCHEDULER=true
+SECUREONE_PASSWORD_EXPIRY_CRON=0 0 */6 * * *
 ```
+
+See [Password expiry notifications — scheduled job](10-settings-governance.md#scheduled-job-passwordexpiryscheduler) for cron format, behavior, and logging.
 
 > **Never commit `.env`.** Production secrets belong in a KMS/Vault/cloud secrets manager (see [Security](07-security.md)).
 
@@ -124,7 +130,7 @@ Two channels are enabled when SMTP is up:
 | Flow | URL / API | Dev credentials |
 |------|-----------|-----------------|
 | Password login | http://localhost:9000/login.html | Create a tenant + user in Admin, set a password, then sign in with `tenant-slug:email` |
-| Magic link | http://localhost:9000/account/magic-link.html | Same tenant + email; link in MailHog |
+| Magic link | http://localhost:9000/account/magic-link.html?applicationId={id} | Same tenant + email; link in MailHog. See [Auth UI integration](13-auth-ui-integration.md). |
 | Forgot password | http://localhost:9000/account/forgot-password.html | `POST /api/v1/account/password/forgot` |
 | Reset password | MailHog link → `/account/reset-password.html?token=…` | `POST /api/v1/account/password/reset` |
 | Set password (invite) | MailHog link → `/account/set-password.html?token=…` | New users without a credential |

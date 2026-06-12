@@ -1,45 +1,38 @@
 package com.secureone.auth.notify;
 
-import com.secureone.auth.application.ApplicationSetting;
-import com.secureone.auth.application.ApplicationSettingRepository;
-import java.util.ArrayList;
+import com.secureone.auth.platform.PlatformSettingsService;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
-public class SmtpSettingsService {
+public class PlatformSmtpSettingsService {
 
     public static final String SETTINGS_KEY = "smtp";
 
-    private final ApplicationSettingRepository appSettings;
+    private final PlatformSettingsService platformSettings;
     private final SecretProtector secrets;
 
-    public SmtpSettingsService(ApplicationSettingRepository appSettings, SecretProtector secrets) {
-        this.appSettings = appSettings;
+    public PlatformSmtpSettingsService(PlatformSettingsService platformSettings, SecretProtector secrets) {
+        this.platformSettings = platformSettings;
         this.secrets = secrets;
     }
 
-    public boolean isConfigured(UUID applicationId) {
-        if (applicationId == null) {
-            return false;
-        }
-        Map<String, Object> smtp = loadMap(applicationId);
+    public boolean isConfigured() {
+        Map<String, Object> smtp = loadMap();
         return !string(smtp, "host", "").isBlank();
     }
 
-    public Map<String, Object> getPublicSettings(UUID applicationId) {
-        Map<String, Object> smtp = new HashMap<>(loadMap(applicationId));
+    public Map<String, Object> getPublicSettings() {
+        Map<String, Object> smtp = new HashMap<>(loadMap());
         smtp.remove("passwordEncrypted");
         smtp.put("passwordConfigured", hasPassword(smtp));
-        smtp.put("smtpConfigured", isConfigured(applicationId));
+        smtp.put("smtpConfigured", isConfigured());
         return smtp;
     }
 
-    public Map<String, Object> save(UUID applicationId, Map<String, Object> body) {
-        Map<String, Object> current = new HashMap<>(loadMap(applicationId));
+    public Map<String, Object> save(Map<String, Object> body) {
+        Map<String, Object> current = new HashMap<>(loadMap());
         if (body.containsKey("host")) {
             current.put("host", string(body, "host", ""));
         }
@@ -71,22 +64,19 @@ public class SmtpSettingsService {
         if (!current.containsKey("authEnabled")) {
             current.put("authEnabled", true);
         }
-        persist(applicationId, current);
-        return getPublicSettings(applicationId);
+        platformSettings.save(SETTINGS_KEY, current);
+        return getPublicSettings();
     }
 
-    SmtpConnectionConfig loadConnectionConfig(UUID applicationId) {
-        if (applicationId == null) {
-            return null;
-        }
-        Map<String, Object> smtp = loadMap(applicationId);
+    SmtpSettingsService.SmtpConnectionConfig loadConnectionConfig() {
+        Map<String, Object> smtp = loadMap();
         String host = string(smtp, "host", "");
         if (host.isBlank()) {
             return null;
         }
         String encrypted = string(smtp, "passwordEncrypted", "");
         String password = encrypted.isBlank() ? "" : secrets.decrypt(encrypted);
-        return new SmtpConnectionConfig(
+        return new SmtpSettingsService.SmtpConnectionConfig(
                 host,
                 intValue(smtp.get("port"), 465),
                 normalizeSecurity(string(smtp, "security", "ssl")),
@@ -95,30 +85,12 @@ public class SmtpSettingsService {
                 Boolean.TRUE.equals(smtp.get("authEnabled")));
     }
 
-    private Map<String, Object> loadMap(UUID applicationId) {
-        return appSettings
-                .findByApplicationIdAndKey(applicationId, SETTINGS_KEY)
-                .map(ApplicationSetting::getValue)
-                .filter(Map.class::isInstance)
-                .map(value -> {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> map = (Map<String, Object>) value;
-                    return new HashMap<>(map);
-                })
-                .orElseGet(() -> new HashMap<>(defaultSmtp()));
-    }
-
-    private void persist(UUID applicationId, Map<String, Object> value) {
-        ApplicationSetting row = appSettings
-                .findByApplicationIdAndKey(applicationId, SETTINGS_KEY)
-                .orElseGet(() -> {
-                    ApplicationSetting created = new ApplicationSetting();
-                    created.setApplicationId(applicationId);
-                    created.setKey(SETTINGS_KEY);
-                    return created;
-                });
-        row.setValue(new HashMap<>(value));
-        appSettings.save(row);
+    private Map<String, Object> loadMap() {
+        Map<String, Object> stored = platformSettings.get(SETTINGS_KEY);
+        if (stored == null || stored.isEmpty()) {
+            return defaultSmtp();
+        }
+        return new HashMap<>(stored);
     }
 
     private static Map<String, Object> defaultSmtp() {
@@ -132,8 +104,7 @@ public class SmtpSettingsService {
     }
 
     private static boolean hasPassword(Map<String, Object> smtp) {
-        String encrypted = string(smtp, "passwordEncrypted", "");
-        return !encrypted.isBlank();
+        return !string(smtp, "passwordEncrypted", "").isBlank();
     }
 
     private static String normalizeSecurity(String security) {
@@ -168,34 +139,5 @@ public class SmtpSettingsService {
     private static String string(Map<String, Object> map, String key, String defaultValue) {
         Object v = map.get(key);
         return v != null ? v.toString().trim() : defaultValue;
-    }
-
-    record SmtpConnectionConfig(
-            String host, int port, String security, String username, String password, boolean authEnabled) {
-
-        String cacheKey(UUID applicationId) {
-            return applicationId + ":" + host + ":" + port + ":" + security + ":" + username + ":" + password.length();
-        }
-    }
-
-    public static List<String> parseEmailList(Object raw) {
-        if (raw == null) {
-            return List.of();
-        }
-        List<String> emails = new ArrayList<>();
-        if (raw instanceof List<?> list) {
-            for (Object item : list) {
-                if (item != null && !item.toString().isBlank()) {
-                    emails.add(item.toString().trim().toLowerCase());
-                }
-            }
-        } else if (raw instanceof String text) {
-            for (String part : text.split("[,;\\s]+")) {
-                if (!part.isBlank()) {
-                    emails.add(part.trim().toLowerCase());
-                }
-            }
-        }
-        return emails;
     }
 }

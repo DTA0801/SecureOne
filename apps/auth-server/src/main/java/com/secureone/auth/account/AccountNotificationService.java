@@ -227,6 +227,17 @@ public class AccountNotificationService {
                         + ".");
     }
 
+    public void sendPasswordExpiringSoonEmail(UUID applicationId, UserAccount user, java.time.Instant expiresAt) {
+        mail.sendPasswordExpiringSoon(applicationId, user, expiresAt);
+    }
+
+    /** Automated reset when a password has expired (no admin security alert). */
+    public void sendExpiredPasswordResetEmail(UUID applicationId, UserAccount user) {
+        String raw = emailTokens.issue(user, EmailTokenType.RESET_PASSWORD).rawToken();
+        String link = passwordResetLink(applicationId, raw);
+        mail.sendPasswordReset(applicationId, user, link);
+    }
+
     public void onUserInvited(UserAccount user) {
         onUserInvited(null, user);
     }

@@ -36,6 +36,9 @@ public class ApplicationEffectiveSettingsService {
     }
 
     public boolean isFeatureEnabled(UUID applicationId, String key) {
+        if (applicationId != null && !platformAuth.isFeatureEnabled(key)) {
+            return false;
+        }
         List<Map<String, Object>> flags = applicationId != null
                 ? applicationSettings.resolveFeatureFlags(applicationId)
                 : platformAuth.getFeatureFlags();

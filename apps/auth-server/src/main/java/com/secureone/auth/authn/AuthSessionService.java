@@ -1,5 +1,6 @@
 package com.secureone.auth.authn;
 
+import com.secureone.auth.account.PasswordExpiryService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Locale;
@@ -8,6 +9,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -58,6 +60,9 @@ public class AuthSessionService {
         Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
         if (cause instanceof UsernameNotFoundException unfe && unfe.getMessage() != null) {
             return unfe.getMessage();
+        }
+        if (ex instanceof CredentialsExpiredException) {
+            return PasswordExpiryService.EXPIRED_LOGIN_MESSAGE;
         }
         if (ex instanceof BadCredentialsException) {
             return "Invalid email or password.";

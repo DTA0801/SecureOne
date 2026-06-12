@@ -6,7 +6,7 @@ import com.secureone.auth.application.ApplicationSetting;
 import com.secureone.auth.application.ApplicationSettingRepository;
 import com.secureone.auth.application.UserApplication;
 import com.secureone.auth.application.UserApplicationRepository;
-import com.secureone.auth.platform.PlatformSettingsService;
+import com.secureone.auth.application.ApplicationNotificationDefaults;
 import com.secureone.auth.user.UserAccount;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,19 +16,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class ApplicationEmailContextFactory {
 
-    private final PlatformSettingsService platformSettings;
     private final ApplicationSettingRepository appSettings;
     private final UserApplicationRepository userApplications;
     private final ApplicationRepository applications;
     private final SmtpSettingsService smtpSettings;
 
     public ApplicationEmailContextFactory(
-            PlatformSettingsService platformSettings,
             ApplicationSettingRepository appSettings,
             UserApplicationRepository userApplications,
             ApplicationRepository applications,
             SmtpSettingsService smtpSettings) {
-        this.platformSettings = platformSettings;
         this.appSettings = appSettings;
         this.userApplications = userApplications;
         this.applications = applications;
@@ -69,7 +66,11 @@ public class ApplicationEmailContextFactory {
     }
 
     private Map<String, Object> mergedMap(UUID applicationId, String key) {
-        Map<String, Object> merged = new HashMap<>(platformSettings.get(key));
+        Map<String, Object> defaults =
+                "email".equals(key)
+                        ? ApplicationNotificationDefaults.emailDefaults()
+                        : ApplicationNotificationDefaults.notificationDefaults();
+        Map<String, Object> merged = new HashMap<>(defaults);
         appSettings
                 .findByApplicationIdAndKey(applicationId, key)
                 .map(ApplicationSetting::getValue)

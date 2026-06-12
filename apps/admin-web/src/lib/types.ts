@@ -182,6 +182,8 @@ export type FeatureFlag = {
   rollout: number;
   /** Grouping for admin UI: oauth, identity, notifications, provisioning */
   category?: string;
+  /** Platform master switch; when false, application cannot enable this flag. */
+  platformEnabled?: boolean;
 };
 
 export type PasswordRequirement = {
@@ -198,4 +200,5 @@ export type PasswordPolicy = {
   historyCount: number;
   hashAlgorithm: string;
   requirements?: PasswordRequirement[];
+  inheritsPlatformDefaults?: boolean;
 };
