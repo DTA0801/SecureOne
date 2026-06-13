@@ -44,6 +44,7 @@ public class RbacBootstrapService {
     /** Inserts missing standard system roles and default permission grants (idempotent). */
     public void seedDefaultRoles(UUID tenantId, UUID applicationId) {
         seedDefaultPermissions(applicationId);
+        permissionRepository.flush();
         Map<String, UUID> permissionsByKey =
                 permissionRepository.findByApplicationIdOrderByKeyAsc(applicationId).stream()
                         .collect(Collectors.toMap(Permission::getKey, Permission::getId, (a, b) -> a));
@@ -55,6 +56,32 @@ public class RbacBootstrapService {
                 "Standard end-user access",
                 true,
                 List.of("user:read"),
+                permissionsByKey);
+        ensureRole(
+                tenantId,
+                applicationId,
+                ApplicationRbacScope.TENANT_ADMIN_ROLE_NAME,
+                "SecureOne tenant operator for this application. Assign to users who manage the app and can be imported to the tenant roster.",
+                false,
+                List.of(
+                        "user:read",
+                        "user:write",
+                        "user:delete",
+                        "role:read",
+                        "role:write",
+                        "app:read",
+                        "app:write",
+                        "settings:write",
+                        "audit:read",
+                        "session:read"),
+                permissionsByKey);
+        ensureRole(
+                tenantId,
+                applicationId,
+                "Application Admin",
+                "Manage users and roles for this application in SecureOne Admin",
+                false,
+                List.of("user:read", "user:write", "role:read", "app:read", "audit:read", "session:read"),
                 permissionsByKey);
         ensureRole(
                 tenantId,
@@ -96,9 +123,20 @@ public class RbacBootstrapService {
             role.setDefaultRole(true);
             roleRepository.save(role);
         }
+        if (ApplicationRbacScope.TENANT_ADMIN_ROLE_NAME.equalsIgnoreCase(name) && !role.isSystemRole()) {
+            role.setSystemRole(true);
+            roleRepository.save(role);
+        }
+        if (ApplicationRbacScope.TENANT_ADMIN_ROLE_NAME.equalsIgnoreCase(name)
+                && description != null
+                && !description.equals(role.getDescription())) {
+            role.setDescription(description);
+            roleRepository.save(role);
+        }
         if (roleRbac.countPermissions(role.getId()) > 0) {
             return;
         }
+        roleRepository.flush();
         List<UUID> permissionIds =
                 permissionKeys.stream().map(permissionsByKey::get).filter(java.util.Objects::nonNull).toList();
         if (!permissionIds.isEmpty()) {

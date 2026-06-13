@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { loadAdminContextSafe } from "@/lib/api/app-workspace";
 import { buildAppPath } from "@/lib/app-routes";
-import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { NoOAuthClientsPanel } from "@/components/applications/NoOAuthClientsPanel";
+import { hasOAuthClients, noOAuthClientsVariant } from "@/lib/oauth-client-registry";
+import { Card } from "@/components/ui/Card";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +12,20 @@ export const dynamic = "force-dynamic";
 export default async function AppIndexPage() {
   const ctx = await loadAdminContextSafe();
 
-  if (ctx.applications.length > 0) {
+  if (hasOAuthClients(ctx) && ctx.applications.length > 0) {
     redirect(buildAppPath(ctx.applications[0].id, "users"));
+  }
+
+  if (!hasOAuthClients(ctx)) {
+    return (
+      <div className="mx-auto max-w-lg">
+        <PageHeader
+          title="Application console"
+          description="Operational work for integrated applications lives here after OAuth clients are registered."
+        />
+        <NoOAuthClientsPanel variant={noOAuthClientsVariant(ctx)} />
+      </div>
+    );
   }
 
   const isTenantOperator =
@@ -24,14 +38,14 @@ export default async function AppIndexPage() {
         description={
           isTenantOperator
             ? "Your account has no applications assigned yet."
-            : "Select an application from the header dropdown or register a new OAuth client."
+            : "Select an application from the header dropdown."
         }
       />
       <Card className="p-5">
         <p className="text-sm text-muted">
           {isTenantOperator
             ? "Ask a platform administrator to grant you admin console access and assign applications, then sign in again."
-            : "No applications yet. Create a tenant and OAuth client under Tenants and OAuth clients, then return here."}
+            : "OAuth clients exist, but none are available in your session. Check console access assignments."}
         </p>
       </Card>
     </div>

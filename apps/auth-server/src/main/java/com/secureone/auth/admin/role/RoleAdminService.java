@@ -75,7 +75,7 @@ public class RoleAdminService {
                                 ? roleRepository.findByTenantIdOrderByNameAsc(tenantId)
                                 : roleRepository.findAll();
         return roles.stream()
-                .filter(role -> applicationId == null || ApplicationRbacScope.isApplicationScopedRole(role))
+                .filter(role -> applicationId == null || ApplicationRbacScope.isListedInApplicationRoleCatalog(role))
                 .map(this::toSummary)
                 .toList();
     }
@@ -296,11 +296,7 @@ public class RoleAdminService {
         List<RoleAdminDtos.RoleRefResponse> childRoles = childRoleIds.stream()
                 .map(id -> new RoleAdminDtos.RoleRefResponse(id, roleNamesById.getOrDefault(id, id.toString())))
                 .toList();
-        List<RoleAdminDtos.PermissionResponse> permissions =
-                permissionRepository.findByApplicationIdOrderByKeyAsc(role.getApplicationId()).stream()
-                        .filter(p -> ApplicationRbacScope.isApplicationScopedPermissionKey(p.getKey()))
-                        .map(this::toPermissionResponse)
-                        .toList();
+        List<RoleAdminDtos.PermissionResponse> permissions = permissionCatalogForRole(role, permissionIds);
         return new RoleAdminDtos.RoleDetailResponse(
                 role.getId(),
                 role.getTenantId(),
@@ -316,6 +312,20 @@ public class RoleAdminService {
                 childRoleIds,
                 childRoles,
                 permissions);
+    }
+
+    private List<RoleAdminDtos.PermissionResponse> permissionCatalogForRole(Role role, List<UUID> grantedPermissionIds) {
+        var stream = permissionRepository.findByApplicationIdOrderByKeyAsc(role.getApplicationId()).stream();
+        if (ApplicationRbacScope.isTenantAdminOperatorRole(role)) {
+            return stream
+                    .filter(p -> grantedPermissionIds.contains(p.getId()))
+                    .map(this::toPermissionResponse)
+                    .toList();
+        }
+        return stream
+                .filter(p -> ApplicationRbacScope.isApplicationScopedPermissionKey(p.getKey()))
+                .map(this::toPermissionResponse)
+                .toList();
     }
 
     private RoleAdminDtos.PermissionResponse toPermissionResponse(Permission permission) {
@@ -345,7 +355,7 @@ public class RoleAdminService {
         if (applicationId != null && !applicationId.equals(role.getApplicationId())) {
             throw new ResourceNotFoundException("Role not found in this application.");
         }
-        if (applicationId != null && !ApplicationRbacScope.isApplicationScopedRole(role)) {
+        if (applicationId != null && !ApplicationRbacScope.isListedInApplicationRoleCatalog(role)) {
             throw new ResourceNotFoundException("Role not found in this application.");
         }
         return role;

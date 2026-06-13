@@ -8,6 +8,7 @@ import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleCreateReque
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleDetailResponse;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleSummaryResponse;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleUpdateRequest;
+import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.UserTenantRoleAssignmentsResponse;
 import com.secureone.auth.application.Application;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.tenant.TenantRepository;
@@ -18,6 +19,8 @@ import com.secureone.auth.tenant.rbac.TenantRbacBootstrapService;
 import com.secureone.auth.tenant.rbac.TenantRbacRepository;
 import com.secureone.auth.tenant.rbac.TenantRole;
 import com.secureone.auth.tenant.rbac.TenantRoleRepository;
+import com.secureone.auth.user.UserAccount;
+import com.secureone.auth.user.UserAccountRepository;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -34,6 +37,7 @@ public class TenantRbacAdminService {
     private final TenantRoleRepository roles;
     private final TenantRbacRepository rbac;
     private final TenantRbacBootstrapService bootstrap;
+    private final UserAccountRepository users;
 
     public TenantRbacAdminService(
             TenantRepository tenants,
@@ -41,13 +45,15 @@ public class TenantRbacAdminService {
             TenantPermissionRepository permissions,
             TenantRoleRepository roles,
             TenantRbacRepository rbac,
-            TenantRbacBootstrapService bootstrap) {
+            TenantRbacBootstrapService bootstrap,
+            UserAccountRepository users) {
         this.tenants = tenants;
         this.applications = applications;
         this.permissions = permissions;
         this.roles = roles;
         this.rbac = rbac;
         this.bootstrap = bootstrap;
+        this.users = users;
     }
 
     @Transactional(readOnly = true)
@@ -166,6 +172,38 @@ public class TenantRbacAdminService {
             throw new ConflictException("Remove all user assignments before deleting this role.");
         }
         roles.delete(role);
+    }
+
+    @Transactional(readOnly = true)
+    public UserTenantRoleAssignmentsResponse listUserRoleAssignments(UUID tenantId, UUID userId) {
+        requireTenant(tenantId);
+        requireTenantUser(tenantId, userId);
+        return new UserTenantRoleAssignmentsResponse(
+                userId, rbac.findRoleIdsByUserId(userId), rbac.findRoleNamesByUserId(userId));
+    }
+
+    public UserTenantRoleAssignmentsResponse replaceUserRoleAssignments(
+            UUID tenantId, UUID userId, List<UUID> roleIds) {
+        requireTenant(tenantId);
+        requireTenantUser(tenantId, userId);
+        ensureSeeded(tenantId);
+        List<UUID> requested = roleIds != null ? roleIds : List.of();
+        for (UUID roleId : requested) {
+            TenantRole role = requireRole(tenantId, roleId);
+            if (role.isSystemRole()) {
+                throw new IllegalArgumentException("System tenant roles cannot be assigned from the roster.");
+            }
+        }
+        rbac.replaceUserRoles(userId, requested);
+        return listUserRoleAssignments(tenantId, userId);
+    }
+
+    private UserAccount requireTenantUser(UUID tenantId, UUID userId) {
+        UserAccount user = users.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (!user.getTenantId().equals(tenantId)) {
+            throw new ResourceNotFoundException("User not found in this tenant.");
+        }
+        return user;
     }
 
     private void ensureSeeded(UUID tenantId) {

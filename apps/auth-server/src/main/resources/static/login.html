@@ -15,17 +15,21 @@
       .banner.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
       .panel { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #e5e7eb; background: #f9fafb; font-size: 0.875rem; }
       .panel pre { margin: 0.5rem 0 0; padding: 0.5rem; background: #111827; color: #f9fafb; border-radius: 6px; overflow: auto; font-size: 11px; }
+      #tenant-wrap { display: none; }
     </style>
   </head>
   <body>
-    <h1>Sign in</h1>
+    <h1 id="title">Sign in</h1>
+    <p id="subtitle" hidden></p>
     <div id="banner" class="banner" hidden role="alert"></div>
     <p id="methods"></p>
     <form method="post" action="/login" id="login-form">
-      <label for="tenant">Tenant slug</label>
-      <input id="tenant" name="tenant" placeholder="your-tenant" required />
+      <div id="tenant-wrap">
+        <label for="tenant">Tenant slug</label>
+        <input id="tenant" name="tenant" placeholder="your-tenant" />
+      </div>
       <label for="email">Email</label>
-      <input id="email" type="email" required />
+      <input id="email" name="email" type="email" required autocomplete="email" />
       <input type="hidden" name="username" id="username" />
       <input type="hidden" name="applicationId" id="applicationId" />
       <input type="hidden" name="continue" id="continue" />
@@ -45,8 +49,8 @@
     </div>
     <div class="links">
       <p><a id="signup-link" href="/account/signup.html">Create an account</a></p>
-      <p><a href="/account/forgot-password.html">Forgot password</a></p>
-      <p><a href="/account/magic-link.html">Sign in with magic link</a></p>
+      <p><a id="forgot-link" href="/account/forgot-password.html">Forgot password</a></p>
+      <p><a id="magic-link" href="/account/magic-link.html">Sign in with magic link</a></p>
     </div>
     <script>
       (function () {
@@ -64,8 +68,20 @@
           }
         }
 
+        const appId = params.get("applicationId");
+        const tenantWrap = document.getElementById("tenant-wrap");
+        const tenantInput = document.getElementById("tenant");
+
+        function isAppScoped() {
+          return Boolean(document.getElementById("applicationId").value.trim());
+        }
+
         function syncUsername() {
-          const tenant = document.getElementById("tenant").value.trim();
+          if (isAppScoped()) {
+            document.getElementById("username").value = "";
+            return;
+          }
+          const tenant = tenantInput.value.trim();
           const email = document.getElementById("email").value.trim().toLowerCase();
           document.getElementById("username").value =
             tenant && email ? tenant + ":" + email : "";
@@ -121,18 +137,58 @@
             banner.className = "banner error";
             banner.hidden = false;
           } else if (params.has("error")) {
-            banner.textContent =
-              "Sign in failed. Check tenant slug, email, and password. If your email is not verified, open the link from your inbox or ask an administrator.";
+            banner.textContent = isAppScoped()
+              ? "Sign in failed. Check your email and password. If your email is not verified, open the link from your inbox."
+              : "Sign in failed. Check tenant slug, email, and password. If your email is not verified, open the link from your inbox or ask an administrator.";
             banner.className = "banner error";
             banner.hidden = false;
           }
         }
 
-        const appId = params.get("applicationId");
         if (appId) {
+          applyApplicationScope(appId);
+        } else if (continueUrl) {
+          try {
+            const clientId = new URL(continueUrl, location.origin).searchParams.get("client_id");
+            if (clientId) {
+              fetch("/api/v1/applications/resolve?clientId=" + encodeURIComponent(clientId))
+                .then((r) => (r.ok ? r.json() : null))
+                .then((resolved) => {
+                  if (resolved && resolved.applicationId) {
+                    applyApplicationScope(resolved.applicationId);
+                  }
+                })
+                .catch(() => undefined);
+            }
+          } catch (_) {
+            // ignore malformed continue URL
+          }
+        }
+
+        function applyApplicationScope(appId) {
           document.getElementById("applicationId").value = appId;
-          document.getElementById("signup-link").href =
-            "/account/signup.html?applicationId=" + encodeURIComponent(appId);
+          const suffix = "?applicationId=" + encodeURIComponent(appId);
+          document.getElementById("signup-link").href = "/account/signup.html" + suffix;
+          document.getElementById("forgot-link").href = "/account/forgot-password.html" + suffix;
+          document.getElementById("magic-link").href = "/account/magic-link.html" + suffix;
+          tenantWrap.style.display = "none";
+          tenantInput.required = false;
+          fetch("/api/v1/applications/" + encodeURIComponent(appId) + "/signup")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((opts) => {
+              if (opts && opts.applicationName) {
+                document.getElementById("title").textContent = "Sign in to " + opts.applicationName;
+                const subtitle = document.getElementById("subtitle");
+                subtitle.textContent = "Use the same email and password across apps from this provider.";
+                subtitle.hidden = false;
+              }
+            })
+            .catch(() => undefined);
+        }
+
+        if (!appId && !continueUrl) {
+          tenantWrap.style.display = "block";
+          tenantInput.required = true;
         }
 
         const form = document.getElementById("login-form");
@@ -146,9 +202,18 @@
               banner.className = "banner error";
               banner.hidden = false;
             }
+            return;
+          }
+          if (!isAppScoped() && !tenantInput.value.trim()) {
+            event.preventDefault();
+            if (banner) {
+              banner.textContent = "Enter your tenant slug or open this page from your application.";
+              banner.className = "banner error";
+              banner.hidden = false;
+            }
           }
         });
-        document.getElementById("tenant").addEventListener("input", syncUsername);
+        tenantInput.addEventListener("input", syncUsername);
         document.getElementById("email").addEventListener("input", syncUsername);
 
         fetch("/api/v1/auth/methods")

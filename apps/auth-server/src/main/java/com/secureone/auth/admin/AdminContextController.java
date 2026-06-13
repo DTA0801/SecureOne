@@ -73,6 +73,7 @@ public class AdminContextController {
             String tenantSlug,
             String tenantName,
             UUID userId,
+            long oauthClientCount,
             List<ApplicationContextItem> applications) {}
 
     @GetMapping
@@ -141,6 +142,7 @@ public class AdminContextController {
                 tenantSlug,
                 tenantName,
                 userId,
+                applications.count(),
                 items);
     }
 

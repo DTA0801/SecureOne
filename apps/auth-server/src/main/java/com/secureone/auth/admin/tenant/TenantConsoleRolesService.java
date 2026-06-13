@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
 public class TenantConsoleRolesService {
 
     private final TenantRepository tenants;
@@ -46,6 +45,7 @@ public class TenantConsoleRolesService {
     public record TenantConsoleRolesCatalogResponse(
             List<String> features, List<TenantConsoleRoleResponse> roles) {}
 
+    @Transactional(readOnly = true)
     public TenantConsoleRolesCatalogResponse catalog(UUID tenantId) {
         if (!tenants.existsById(tenantId)) {
             throw new ResourceNotFoundException("Tenant not found: " + tenantId);
@@ -58,6 +58,7 @@ public class TenantConsoleRolesService {
         return new TenantConsoleRolesCatalogResponse(features, roles);
     }
 
+    @Transactional
     public List<String> updateConsoleRoleFeatures(UUID tenantId, String roleKey, List<String> features) {
         return roleDefaults.updateConsoleRoleFeatures(tenantId, roleKey, features);
     }

@@ -38,4 +38,9 @@ public final class TenantRbacAdminDtos {
             @NotBlank String name, String description, List<UUID> permissionIds, List<UUID> applicationIds) {}
 
     public record TenantPermissionCreateRequest(@NotBlank String key, String description) {}
+
+    public record UserTenantRoleAssignmentsResponse(
+            UUID userId, List<UUID> roleIds, List<String> roleNames) {}
+
+    public record ReplaceUserTenantRolesRequest(List<UUID> roleIds) {}
 }

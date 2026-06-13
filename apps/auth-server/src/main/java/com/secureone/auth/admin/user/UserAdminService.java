@@ -19,6 +19,7 @@ import com.secureone.auth.admin.user.UserAdminDtos.MfaFactorResponse;
 import com.secureone.auth.audit.AuditService;
 import com.secureone.auth.mfa.MfaFactorRepository;
 import com.secureone.auth.notify.EmailNotificationService;
+import com.secureone.auth.rbac.ApplicationRbacScope;
 import com.secureone.auth.rbac.Role;
 import com.secureone.auth.rbac.RoleRepository;
 import com.secureone.auth.rbac.UserRole;
@@ -34,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -133,7 +135,7 @@ public class UserAdminService {
     @Transactional(readOnly = true)
     public UserResponse get(UUID id, UUID applicationId) {
         UserAccount user = require(id);
-        return toResponse(user, effectiveAuthMethods(user, applicationId));
+        return toResponse(user, effectiveAuthMethods(user, applicationId), applicationId);
     }
 
     public UserResponse updateAuthMethods(UUID id, UUID applicationId, Map<String, Boolean> updates) {
@@ -184,7 +186,7 @@ public class UserAdminService {
                 .forEach(mfaFactors::delete);
         auditService.record(
                 user.getTenantId(), "admin", "user.mfa_reset_method", "user_account", user.getId(), methodId, true);
-        return toResponse(user, effectiveAuthMethods(user, applicationId));
+        return toResponse(user, effectiveAuthMethods(user, applicationId), applicationId);
     }
 
     /** Used by application-scoped admin to map entities without exposing private helpers. */
@@ -195,15 +197,16 @@ public class UserAdminService {
 
     @Transactional(readOnly = true)
     public UserResponse toResponsePublic(UserAccount user, UUID applicationId) {
-        return toResponse(user, effectiveAuthMethods(user, applicationId));
+        return toResponse(user, effectiveAuthMethods(user, applicationId), applicationId);
     }
 
     public UserResponse create(UserCreateRequest request) {
         UUID tenantId = resolveTenantId(request);
         requireTenant(tenantId);
         String email = request.email().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.findByTenantIdAndEmail(tenantId, email).isPresent()) {
-            throw new ConflictException("User email already exists in tenant: " + email);
+        var existing = userRepository.findByTenantIdAndEmail(tenantId, email);
+        if (existing.isPresent()) {
+            return grantExistingUserToApplication(existing.get(), request);
         }
         UserAccount user = new UserAccount();
         user.setTenantId(tenantId);
@@ -219,6 +222,7 @@ public class UserAdminService {
         }
         userRepository.saveAndFlush(user);
         syncUserRoles(user.getId(), request.roleIds());
+        ensureApplicationAccessForOperatorRoles(user.getId(), request.roleIds());
         if (request.applicationId() != null) {
             grantApplicationAccess(request.applicationId(), user.getId());
         } else {
@@ -226,6 +230,33 @@ public class UserAdminService {
         }
         auditService.record(user.getTenantId(), "admin", "user.created", "user_account", user.getId(), user.getEmail(), true);
         accountNotifications.onUserInvited(request.applicationId(), user);
+        return toResponse(user);
+    }
+
+    /** Links an existing tenant identity to another application instead of creating a duplicate account. */
+    private UserResponse grantExistingUserToApplication(UserAccount user, UserCreateRequest request) {
+        UUID applicationId = request.applicationId();
+        if (applicationId == null) {
+            throw new ConflictException("User email already exists in tenant: " + user.getEmail());
+        }
+        if (userApplications.existsByUserIdAndApplicationId(user.getId(), applicationId)) {
+            throw new ConflictException(
+                    "This user already has access to this application. Open their profile to update roles.");
+        }
+        grantApplicationAccess(applicationId, user.getId());
+        if (request.roleIds() != null && !request.roleIds().isEmpty()) {
+            addApplicationRoles(user.getId(), applicationId, request.roleIds());
+        }
+        ensureApplicationAccessForOperatorRoles(user.getId(), request.roleIds());
+        auditService.record(
+                user.getTenantId(),
+                "admin",
+                "user.application_access_granted",
+                "user_account",
+                user.getId(),
+                user.getEmail(),
+                true);
+        accountNotifications.onUserInvited(applicationId, user);
         return toResponse(user);
     }
 
@@ -356,7 +387,7 @@ public class UserAdminService {
                     "Admin cleared email verification for " + user.getEmail() + ".");
         }
         UserAccount updated = require(id);
-        return toResponse(updated, effectiveAuthMethods(updated, applicationId));
+        return toResponse(updated, effectiveAuthMethods(updated, applicationId), applicationId);
     }
 
     public void resetMfa(UUID id) {
@@ -390,6 +421,7 @@ public class UserAdminService {
         }
         if (request.roleIds() != null) {
             syncUserRoles(user.getId(), request.roleIds());
+            ensureApplicationAccessForOperatorRoles(user.getId(), request.roleIds());
         }
         UserAccount updated = require(id);
         auditService.record(
@@ -515,11 +547,13 @@ public class UserAdminService {
     }
 
     private UserResponse toResponse(UserAccount user, Map<String, Boolean> allowedAuthMethods) {
+        return toResponse(user, allowedAuthMethods, null);
+    }
+
+    private UserResponse toResponse(
+            UserAccount user, Map<String, Boolean> allowedAuthMethods, UUID applicationId) {
         NameParts parts = splitDisplayName(user.getDisplayName());
-        List<String> roleIds = userRoleRepository.findByUserId(user.getId()).stream()
-                .map(ur -> ur.getRoleId().toString())
-                .sorted()
-                .toList();
+        RoleGrantSummary roleGrants = resolveRoleGrants(user.getId(), applicationId);
         List<MfaFactorResponse> factors = mfaFactors.findByUserIdOrderByCreatedAtAsc(user.getId()).stream()
                 .map(f -> new MfaFactorResponse(
                         f.getId().toString(),
@@ -542,11 +576,47 @@ public class UserAdminService {
                 passwords.hasPassword(user.getId()),
                 locked,
                 user.getFailedLoginCount(),
-                roleIds,
+                roleGrants.roleIds(),
+                roleGrants.roleNames(),
                 factors,
                 allowedAuthMethods,
                 user.getLastLoginAt(),
                 user.getCreatedAt());
+    }
+
+    private record RoleGrantSummary(List<String> roleIds, List<String> roleNames) {}
+
+    private RoleGrantSummary resolveRoleGrants(UUID userId, UUID applicationId) {
+        List<UserRole> grants = userRoleRepository.findByUserId(userId);
+        if (applicationId != null) {
+            Map<UUID, Role> rolesById = roleRepository.findByApplicationIdOrderByNameAsc(applicationId).stream()
+                    .collect(Collectors.toMap(Role::getId, r -> r, (a, b) -> a, LinkedHashMap::new));
+            List<Role> matched = grants.stream()
+                    .map(UserRole::getRoleId)
+                    .map(rolesById::get)
+                    .filter(java.util.Objects::nonNull)
+                    .sorted(Comparator.comparing(Role::getName, String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+            return new RoleGrantSummary(
+                    matched.stream().map(r -> r.getId().toString()).toList(),
+                    matched.stream().map(Role::getName).toList());
+        }
+        Map<UUID, String> namesById = new LinkedHashMap<>();
+        for (Role role : roleRepository.findAll()) {
+            namesById.putIfAbsent(role.getId(), role.getName());
+        }
+        List<String> roleIds = grants.stream()
+                .map(ur -> ur.getRoleId().toString())
+                .sorted()
+                .toList();
+        List<String> roleNames = grants.stream()
+                .map(UserRole::getRoleId)
+                .map(namesById::get)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+        return new RoleGrantSummary(roleIds, roleNames);
     }
 
     private UserResponse toResponse(UserAccount user) {
@@ -594,6 +664,41 @@ public class UserAdminService {
             grant.setUserId(userId);
             grant.setRoleId(roleId);
             userRoleRepository.save(grant);
+        }
+    }
+
+    private void addApplicationRoles(UUID userId, UUID applicationId, List<UUID> roleIds) {
+        LinkedHashSet<UUID> unique = new LinkedHashSet<>(roleIds);
+        for (UUID roleId : unique) {
+            Role role = roleRepository
+                    .findById(roleId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + roleId));
+            if (!role.getApplicationId().equals(applicationId)) {
+                throw new IllegalArgumentException("Role does not belong to this application");
+            }
+            boolean alreadyGranted = userRoleRepository.findByUserId(userId).stream()
+                    .anyMatch(grant -> grant.getRoleId().equals(roleId));
+            if (alreadyGranted) {
+                continue;
+            }
+            UserRole grant = new UserRole();
+            grant.setUserId(userId);
+            grant.setRoleId(roleId);
+            userRoleRepository.save(grant);
+        }
+    }
+
+    /** Tenant Admin (and other operator roles) require application membership to appear in tenant import. */
+    private void ensureApplicationAccessForOperatorRoles(UUID userId, List<UUID> roleIds) {
+        if (roleIds == null || roleIds.isEmpty()) {
+            return;
+        }
+        for (UUID roleId : new LinkedHashSet<>(roleIds)) {
+            Role role = roleRepository.findById(roleId).orElse(null);
+            if (role == null || !ApplicationRbacScope.isTenantAdminOperatorRole(role)) {
+                continue;
+            }
+            grantApplicationAccess(role.getApplicationId(), userId);
         }
     }
 

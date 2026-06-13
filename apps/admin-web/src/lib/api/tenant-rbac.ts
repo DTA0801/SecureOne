@@ -95,6 +95,36 @@ export async function deleteTenantPermission(
   await apiFetch<void>(`${base(tenantId)}/permissions/${permissionId}`, { method: "DELETE" });
 }
 
+export type UserTenantRoleAssignments = {
+  userId: string;
+  roleIds: string[];
+  roleNames: string[];
+};
+
+export async function fetchUserTenantRoleAssignments(
+  tenantId: string,
+  userId: string,
+): Promise<UserTenantRoleAssignments> {
+  return apiFetch<UserTenantRoleAssignments>(
+    `${base(tenantId)}/users/${userId}/role-assignments`,
+  );
+}
+
+export async function replaceUserTenantRoleAssignments(
+  tenantId: string,
+  userId: string,
+  roleIds: string[],
+): Promise<UserTenantRoleAssignments> {
+  return apiFetch<UserTenantRoleAssignments>(
+    `${base(tenantId)}/users/${userId}/role-assignments`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roleIds }),
+    },
+  );
+}
+
 /** Platform catalog keys — custom permissions use any other key. */
 export const TENANT_CATALOG_PERMISSION_KEYS = new Set([
   "tenant:read",

@@ -17,6 +17,7 @@ import {
   canDeleteRole,
   canEditRoleDetails,
   canRenameRole,
+  isTenantAdminOperatorRole,
 } from "@/lib/role-management";
 import { ROLE_LABEL_META } from "@/lib/role-labels";
 import { statusTone } from "@/lib/status";
@@ -125,6 +126,7 @@ export function RoleDetailPanel({
     detail.permissions.length > 0 ? detail.permissions : permissions;
   const userCount = detail.userCount ?? roleSummary.userCount;
   const editable = canEditRoleDetails(detail);
+  const tenantAdminOperator = isTenantAdminOperatorRole(detail);
   const canEditPermissions = editable && capabilities.permissions;
   const showRenameHint = editable && !canRenameRole(detail);
 
@@ -163,6 +165,12 @@ export function RoleDetailPanel({
             <p className="mt-1 line-clamp-2 text-sm text-muted">
               {detail.description || "No description"}
             </p>
+            {tenantAdminOperator && (
+              <p className="mt-2 rounded-lg border border-ui bg-ui-elevated px-3 py-2 text-xs text-soft">
+                System operator role. Assign from user management, then import to the tenant roster.
+                Permissions are managed by SecureOne and cannot be edited here.
+              </p>
+            )}
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             {editable && (
@@ -303,9 +311,11 @@ export function RoleDetailPanel({
         {tab === "permissions" && (
           <div className="p-5">
             <p className="mb-3 text-xs text-muted">
-              {canEditPermissions
-                ? "Toggle permissions directly — changes save immediately. Or use Edit role for bulk changes."
-                : "Direct grants on this role. Composite roles also inherit from child roles."}
+              {tenantAdminOperator
+                ? "All SecureOne console permissions granted to this operator role — read-only."
+                : canEditPermissions
+                  ? "Toggle permissions directly — changes save immediately. Or use Edit role for bulk changes."
+                  : "Direct grants on this role. Composite roles also inherit from child roles."}
             </p>
             {!canEditPermissions && editable && !capabilities.permissions && (
               <p className="mb-3 text-xs text-amber-800 dark:text-amber-200">

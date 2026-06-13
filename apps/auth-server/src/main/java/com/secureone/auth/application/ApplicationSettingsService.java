@@ -464,6 +464,8 @@ public class ApplicationSettingsService {
         sections.put("user-directory", "user_directory");
         sections.put("public-manifest", "public_manifest");
         sections.put("token-policy", "token_policy");
+        sections.put("notifications", "notifications");
+        sections.put("email", "email");
         for (var entry : sections.entrySet()) {
             if (exposure.isExposed(entry.getKey())) {
                 sources.put(entry.getKey(), policySource(applicationId, entry.getValue()));
@@ -548,6 +550,24 @@ public class ApplicationSettingsService {
                 saveAppRaw(applicationId, settingKey, new LinkedHashMap<>(platform));
             }
             case "token_policy" -> saveAppMap(applicationId, settingKey, new HashMap<>(platformTokenPolicy()));
+            case "notifications" -> {
+                Map<String, Object> effective = new HashMap<>(getNotifications(applicationId));
+                effective.remove("scope");
+                effective.remove("smtpConfigured");
+                saveAppMap(
+                        applicationId,
+                        settingKey,
+                        ApplicationNotificationDefaults.sanitizeNotifications(effective));
+            }
+            case "email" -> {
+                Map<String, Object> effective = new HashMap<>(getEmail(applicationId));
+                effective.remove("scope");
+                effective.remove("smtpConfigured");
+                saveAppMap(
+                        applicationId,
+                        settingKey,
+                        ApplicationNotificationDefaults.sanitizeEmail(effective));
+            }
             default -> throw new IllegalArgumentException("Unsupported setting key: " + settingKey);
         }
     }

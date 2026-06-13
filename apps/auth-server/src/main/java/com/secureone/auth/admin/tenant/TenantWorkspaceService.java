@@ -27,7 +27,9 @@ import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.tenant.TenantRosterSource;
 import com.secureone.auth.tenant.TenantUserRoster;
 import com.secureone.auth.tenant.TenantUserRosterRepository;
+import com.secureone.auth.rbac.ApplicationRbacScope;
 import com.secureone.auth.tenant.TenantUserRosterService;
+import com.secureone.auth.tenant.rbac.TenantRbacRepository;
 import com.secureone.auth.user.UserAccount;
 import com.secureone.auth.user.UserAccountRepository;
 import java.time.Instant;
@@ -49,6 +51,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class TenantWorkspaceService {
 
+    private static final String TENANT_ADMIN_ROLE_NAME = ApplicationRbacScope.TENANT_ADMIN_ROLE_NAME;
+
     private final AdminOperatorService operators;
     private final AdminAccessService access;
     private final TenantRepository tenants;
@@ -66,6 +70,7 @@ public class TenantWorkspaceService {
     private final TenantUserRosterRepository tenantUserRoster;
     private final TenantUserRosterService tenantUserRosterService;
     private final OperatorListVisibilityService listVisibility;
+    private final TenantRbacRepository tenantRbac;
 
     public TenantWorkspaceService(
             AdminOperatorService operators,
@@ -84,7 +89,8 @@ public class TenantWorkspaceService {
             AdminConsoleCapabilityService consoleCapabilities,
             TenantUserRosterRepository tenantUserRoster,
             TenantUserRosterService tenantUserRosterService,
-            OperatorListVisibilityService listVisibility) {
+            OperatorListVisibilityService listVisibility,
+            TenantRbacRepository tenantRbac) {
         this.operators = operators;
         this.access = access;
         this.tenants = tenants;
@@ -102,6 +108,7 @@ public class TenantWorkspaceService {
         this.tenantUserRoster = tenantUserRoster;
         this.tenantUserRosterService = tenantUserRosterService;
         this.listVisibility = listVisibility;
+        this.tenantRbac = tenantRbac;
     }
 
     public record TenantWorkspaceApplication(
@@ -131,7 +138,9 @@ public class TenantWorkspaceService {
             String rosterAddedByLabel,
             List<String> effectiveConsoleFeatures,
             List<FeatureOverride> consoleFeatureOverrides,
-            List<TenantWorkspaceApplicationAccess> applicationAccess) {}
+            List<TenantWorkspaceApplicationAccess> applicationAccess,
+            List<UUID> tenantGovernanceRoleIds,
+            List<String> tenantGovernanceRoleNames) {}
 
     public record TenantAdminOperator(
             UUID userId,
@@ -252,6 +261,14 @@ public class TenantWorkspaceService {
         return listImportableUsers(tenant, applicationId);
     }
 
+    public List<TenantWorkspaceUser> listImportableUsers(
+            Authentication authentication, String actAsEmail, UUID applicationId) {
+        requireTenantOperator(authentication, actAsEmail);
+        Tenant tenant = resolveWorkspaceTenant(authentication, actAsEmail);
+        requireAccessibleApp(authentication, actAsEmail, tenant, applicationId);
+        return listImportableUsers(tenant, applicationId);
+    }
+
     @Transactional
     public void importUserToRosterForPlatform(
             Authentication authentication,
@@ -264,8 +281,24 @@ public class TenantWorkspaceService {
                     "Platform super-admin required");
         }
         UUID addedBy = resolveOperatorUserId(authentication, actAsEmail);
+        requireTenantAdminInApplication(userId, applicationId);
         applicationUsers.grantAccess(applicationId, userId);
         tenantUserRosterService.importFromApplication(tenantId, userId, applicationId, addedBy);
+    }
+
+    @Transactional
+    public void importUserToRoster(
+            Authentication authentication,
+            String actAsEmail,
+            UUID userId,
+            UUID applicationId) {
+        requireTenantOperator(authentication, actAsEmail);
+        Tenant tenant = resolveWorkspaceTenant(authentication, actAsEmail);
+        requireAccessibleApp(authentication, actAsEmail, tenant, applicationId);
+        UUID addedBy = resolveOperatorUserId(authentication, actAsEmail);
+        requireTenantAdminInApplication(userId, applicationId);
+        applicationUsers.grantAccess(applicationId, userId);
+        tenantUserRosterService.importFromApplication(tenant.getId(), userId, applicationId, addedBy);
     }
 
     @Transactional
@@ -285,10 +318,33 @@ public class TenantWorkspaceService {
                 .filter(a -> a.getTenantId().equals(tenantId))
                 .orElseThrow(() -> new IllegalArgumentException("Application not in tenant"));
         UUID addedBy = resolveOperatorUserId(authentication, actAsEmail);
-        for (UUID userId : userIds) {
+        List<UUID> eligible = userIds.stream()
+                .filter(userId -> hasTenantAdminInApplication(userId, applicationId))
+                .toList();
+        for (UUID userId : eligible) {
             applicationUsers.grantAccess(applicationId, userId);
         }
-        return tenantUserRosterService.bulkImportFromApplication(tenantId, userIds, applicationId, addedBy);
+        return tenantUserRosterService.bulkImportFromApplication(tenantId, eligible, applicationId, addedBy);
+    }
+
+    @Transactional
+    public int bulkImportUsersToRoster(
+            Authentication authentication,
+            String actAsEmail,
+            UUID applicationId,
+            List<UUID> userIds) {
+        requireTenantOperator(authentication, actAsEmail);
+        Tenant tenant = resolveWorkspaceTenant(authentication, actAsEmail);
+        requireAccessibleApp(authentication, actAsEmail, tenant, applicationId);
+        UUID addedBy = resolveOperatorUserId(authentication, actAsEmail);
+        List<UUID> eligible = userIds.stream()
+                .filter(userId -> hasTenantAdminInApplication(userId, applicationId))
+                .toList();
+        for (UUID userId : eligible) {
+            applicationUsers.grantAccess(applicationId, userId);
+        }
+        return tenantUserRosterService.bulkImportFromApplication(
+                tenant.getId(), eligible, applicationId, addedBy);
     }
 
     @Transactional
@@ -301,6 +357,14 @@ public class TenantWorkspaceService {
         tenants.findById(tenantId).orElseThrow(() -> new ResourceNotFoundException("Tenant not found"));
         consoleAccess.revokeAllForUserInTenant(tenantId, userId);
         tenantUserRosterService.removeFromRoster(tenantId, userId);
+    }
+
+    @Transactional
+    public void removeUserFromRoster(Authentication authentication, String actAsEmail, UUID userId) {
+        requireTenantOperator(authentication, actAsEmail);
+        Tenant tenant = resolveWorkspaceTenant(authentication, actAsEmail);
+        consoleAccess.revokeAllForUserInTenant(tenant.getId(), userId);
+        tenantUserRosterService.removeFromRoster(tenant.getId(), userId);
     }
 
     @Transactional
@@ -538,6 +602,9 @@ public class TenantWorkspaceService {
                 consoleFeatureOverrides = caps.overrides();
             }
 
+            List<UUID> tenantGovernanceRoleIds = tenantRbac.findRoleIdsByUserId(userId);
+            List<String> tenantGovernanceRoleNames = tenantRbac.findRoleNamesByUserId(userId);
+
             userItems.add(new TenantWorkspaceUser(
                     user.getId(),
                     user.getEmail(),
@@ -555,7 +622,9 @@ public class TenantWorkspaceService {
                     rosterAddedByLabel,
                     effectiveConsoleFeatures,
                     consoleFeatureOverrides,
-                    applicationAccess));
+                    applicationAccess,
+                    tenantGovernanceRoleIds,
+                    tenantGovernanceRoleNames));
         }
         userItems.sort(Comparator.comparing(TenantWorkspaceUser::email, String.CASE_INSENSITIVE_ORDER));
         return userItems;
@@ -653,8 +722,22 @@ public class TenantWorkspaceService {
     }
 
     private List<TenantWorkspaceUser> listImportableUsers(Tenant tenant, UUID applicationId) {
+        List<UUID> tenantAdminUserIds = jdbc.queryForList(
+                """
+                SELECT DISTINCT u.id
+                FROM user_account u
+                JOIN user_role ur ON ur.user_id = u.id
+                JOIN role r ON r.id = ur.role_id
+                WHERE u.tenant_id = ?
+                  AND r.application_id = ?
+                  AND LOWER(TRIM(r.name)) = LOWER(TRIM(?))
+                """,
+                UUID.class,
+                tenant.getId(),
+                applicationId,
+                TENANT_ADMIN_ROLE_NAME);
         List<TenantWorkspaceUser> importable = new ArrayList<>();
-        for (UUID userId : applicationUsers.resolveApplicationMemberUserIds(applicationId)) {
+        for (UUID userId : tenantAdminUserIds) {
             if (isOnRosterBlockingImport(tenant.getId(), userId)) {
                 continue;
             }
@@ -668,10 +751,12 @@ public class TenantWorkspaceService {
                     FROM user_role ur
                     JOIN role r ON r.id = ur.role_id
                     WHERE ur.user_id = ?
+                      AND r.application_id = ?
                     ORDER BY r.name
                     """,
                     String.class,
-                    userId);
+                    userId,
+                    applicationId);
             importable.add(new TenantWorkspaceUser(
                     user.getId(),
                     user.getEmail(),
@@ -695,10 +780,41 @@ public class TenantWorkspaceService {
                             applications
                                     .findById(applicationId)
                                     .map(Application::getName)
-                                    .orElse(applicationId.toString())))));
+                                    .orElse(applicationId.toString()))),
+                    List.of(),
+                    List.of()));
         }
         importable.sort(Comparator.comparing(TenantWorkspaceUser::email, String.CASE_INSENSITIVE_ORDER));
         return importable;
+    }
+
+    private void requireTenantAdminInApplication(UUID userId, UUID applicationId) {
+        if (!hasTenantAdminInApplication(userId, applicationId)) {
+            throw new IllegalArgumentException(
+                    "Only users with the "
+                            + TENANT_ADMIN_ROLE_NAME
+                            + " role in this application can be imported to the tenant roster. "
+                            + "End-user accounts (e.g. Member) are managed in application user management only.");
+        }
+    }
+
+    private boolean hasTenantAdminInApplication(UUID userId, UUID applicationId) {
+        Boolean exists = jdbc.queryForObject(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM user_role ur
+                    JOIN role r ON r.id = ur.role_id
+                    WHERE ur.user_id = ?
+                      AND r.application_id = ?
+                      AND LOWER(TRIM(r.name)) = LOWER(TRIM(?))
+                )
+                """,
+                Boolean.class,
+                userId,
+                applicationId,
+                TENANT_ADMIN_ROLE_NAME);
+        return Boolean.TRUE.equals(exists);
     }
 
     private boolean isOnRosterBlockingImport(UUID tenantId, UUID userId) {

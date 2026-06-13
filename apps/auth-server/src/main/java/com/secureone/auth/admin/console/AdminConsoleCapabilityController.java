@@ -49,11 +49,14 @@ public class AdminConsoleCapabilityController {
                 "features", capabilities.allFeatureKeys(),
                 "roleDefaults", Map.of(
                         "APPLICATION_ADMIN",
-                                capabilities.defaultFeaturesForRole(AdminConsoleRoleType.APPLICATION_ADMIN),
+                                capabilities.defaultFeaturesForRole(
+                                        tenantId, AdminConsoleRoleType.APPLICATION_ADMIN),
                         "TENANT_ADMIN",
-                                capabilities.defaultFeaturesForRole(AdminConsoleRoleType.TENANT_ADMIN),
+                                capabilities.defaultFeaturesForRole(
+                                        tenantId, AdminConsoleRoleType.TENANT_ADMIN),
                         "TENANT_SUPER_ADMIN",
-                                capabilities.defaultFeaturesForRole(AdminConsoleRoleType.TENANT_SUPER_ADMIN)));
+                                capabilities.defaultFeaturesForRole(
+                                        tenantId, AdminConsoleRoleType.TENANT_SUPER_ADMIN)));
     }
 
     @GetMapping

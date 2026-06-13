@@ -105,6 +105,7 @@ public class ApplicationAdminService {
         }
         app.setConfig(config);
         applicationRepository.save(app);
+        applicationRepository.flush();
         rbacBootstrap.seedDefaultRoles(request.tenantId(), app.getId());
         auditService.record(
                 request.tenantId(), "admin", "application.created", "application", app.getId(), app.getName(), true);

@@ -46,6 +46,7 @@ import {
 import { fetchUserDirectorySettings } from "@/lib/api/user-directory";
 import { buildAppPath } from "@/lib/app-routes";
 import { formatDate } from "@/lib/format";
+import { listRoles } from "@/lib/api/roles";
 import { statusTone } from "@/lib/status";
 import type { Role, Status, Tenant } from "@/lib/types";
 
@@ -84,6 +85,7 @@ export function TenantWorkspacePanel({
   tenant,
   roles,
   manageTenantId,
+  useOperatorWorkspace = false,
   consoleAssignments = [],
   onMutated,
 }: {
@@ -91,6 +93,8 @@ export function TenantWorkspacePanel({
   tenant: Tenant;
   roles: Role[];
   manageTenantId?: string;
+  /** Tenant super-admin: omit tenantId on workspace API calls (scoped to signed-in tenant). */
+  useOperatorWorkspace?: boolean;
   consoleAssignments?: ConsoleAccessAssignment[];
   onMutated?: () => Promise<void>;
 }) {
@@ -119,11 +123,32 @@ export function TenantWorkspacePanel({
   const [importable, setImportable] = useState<TenantWorkspaceUser[]>([]);
   const [importLoading, setImportLoading] = useState(false);
   const [accessUserId, setAccessUserId] = useState<string | null>(null);
-  const [accessInitialTab, setAccessInitialTab] = useState<"console" | "features" | "roles">(
-    "console",
-  );
+  const [accessInitialTab, setAccessInitialTab] = useState<
+    "console" | "features" | "roles" | "tenantRoles"
+  >("console");
   const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<TenantWorkspaceUser | null>(null);
+  const [inviteRoles, setInviteRoles] = useState<Role[]>(roles);
+
+  const apiTenantId = useOperatorWorkspace ? undefined : manageTenantId;
+
+  useEffect(() => {
+    if (!importAppId) {
+      setInviteRoles([]);
+      return;
+    }
+    let cancelled = false;
+    void listRoles({ applicationId: importAppId })
+      .then((rows) => {
+        if (!cancelled) setInviteRoles(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setInviteRoles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [importAppId]);
 
   useEffect(() => {
     setData((prev) => mergeTenantWorkspace(workspace, prev));
@@ -204,7 +229,7 @@ export function TenantWorkspacePanel({
       await onMutated();
     }
     if (manageTenantId) {
-      const next = await fetchTenantWorkspace(manageTenantId);
+      const next = await fetchTenantWorkspace(apiTenantId);
       setData((prev) => {
         const merged = mergeTenantWorkspace(next, prev);
         if (!patch) return merged;
@@ -214,7 +239,7 @@ export function TenantWorkspacePanel({
         };
       });
     } else if (!onMutated) {
-      const next = await fetchTenantWorkspace(manageTenantId);
+      const next = await fetchTenantWorkspace(apiTenantId);
       setData(next);
       router.refresh();
     }
@@ -237,10 +262,10 @@ export function TenantWorkspacePanel({
     setBusyKey(key);
     try {
       if (hasAccess) {
-        await revokeUserApplication(userId, applicationId, manageTenantId);
+        await revokeUserApplication(userId, applicationId, apiTenantId);
         toast("Application access removed", "success");
       } else {
-        await grantUserApplication(userId, applicationId, manageTenantId);
+        await grantUserApplication(userId, applicationId, apiTenantId);
         toast("Application access granted", "success");
       }
       await refresh();
@@ -256,10 +281,10 @@ export function TenantWorkspacePanel({
     setImportOpen(true);
     setImportLoading(true);
     try {
-      setImportable(await fetchImportableUsers(importAppId, manageTenantId));
+      setImportable(await fetchImportableUsers(importAppId, apiTenantId));
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not load importable users", "error");
-      setImportOpen(false);
+      setImportable([]);
     } finally {
       setImportLoading(false);
     }
@@ -269,7 +294,7 @@ export function TenantWorkspacePanel({
     if (!importAppId || !manageTenantId) return;
     setImportLoading(true);
     try {
-      setImportable(await fetchImportableUsers(importAppId, manageTenantId));
+      setImportable(await fetchImportableUsers(importAppId, apiTenantId));
       await refresh();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not refresh import list", "error");
@@ -282,12 +307,12 @@ export function TenantWorkspacePanel({
     if (!manageTenantId || !removeTarget) return;
     setRemoveBusyId(removeTarget.id);
     try {
-      await removeUserFromTenantRoster(removeTarget.id, manageTenantId);
+      await removeUserFromTenantRoster(removeTarget.id, apiTenantId);
       toast("Removed from tenant roster", "success");
       setRemoveTarget(null);
       await refresh();
       if (importOpen && importAppId) {
-        setImportable(await fetchImportableUsers(importAppId, manageTenantId));
+        setImportable(await fetchImportableUsers(importAppId, apiTenantId));
       }
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not remove user", "error");
@@ -363,7 +388,7 @@ export function TenantWorkspacePanel({
       <Card padded={false}>
         <CardHeader
           title="Tenant roster"
-          description={`${filteredUsers.length} of ${tenantUsers.length} shown · application members are managed per app — import here when you need tenant-wide access or console roles`}
+          description={`${filteredUsers.length} of ${tenantUsers.length} shown · import Tenant Admin operators from an app for tenant-wide console access; end users stay in application user management`}
           action={
             <div className="flex flex-wrap items-center gap-2">
               {manageTenantId && data.applications.length > 0 && (
@@ -390,6 +415,19 @@ export function TenantWorkspacePanel({
                   >
                     Import from application
                   </button>
+                  {importAppId && (
+                    <UserFormModal
+                      tenants={[tenant]}
+                      roles={inviteRoles}
+                      tenantId={tenant.id}
+                      applicationId={importAppId}
+                      lockToApp
+                      triggerLabel="+ Invite Tenant Admin"
+                      triggerVariant="secondary"
+                      triggerSize="sm"
+                      onCreated={() => void openImportDialog()}
+                    />
+                  )}
                   {importAppId && directory && (
                     <UserImportExportMenu applicationId={importAppId} directory={directory} />
                   )}
@@ -400,7 +438,9 @@ export function TenantWorkspacePanel({
                 roles={roles}
                 tenantId={tenant.id}
                 defaultStatus="active"
-                triggerLabel="+ Add tenant user"
+                triggerLabel="+ Add to roster"
+                triggerVariant="secondary"
+                triggerSize="sm"
                 onCreated={() => void refresh()}
               />
             </div>
@@ -629,6 +669,20 @@ export function TenantWorkspacePanel({
                               )}
                             </div>
                           )}
+                        </div>
+                      )}
+                      {(user.tenantGovernanceRoleNames?.length ?? 0) > 0 && (
+                        <div>
+                          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-faint">
+                            Tenant roles
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {user.tenantGovernanceRoleNames.map((r) => (
+                              <Badge key={r} tone="neutral">
+                                {r}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
                       )}
                       <div>

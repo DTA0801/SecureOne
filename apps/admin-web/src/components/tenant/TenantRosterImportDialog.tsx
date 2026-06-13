@@ -152,8 +152,9 @@ export function TenantRosterImportDialog({
         <div className="border-b border-ui px-5 py-4">
           <h2 className="text-base font-semibold text-ui">Import from application</h2>
           <p className="mt-0.5 text-xs text-muted">
-            Import members from <span className="font-medium text-ui">{applicationName}</span> into
-            the tenant roster. They remain in application user management.
+            Import <span className="font-medium text-ui">Tenant Admin</span> operators from{" "}
+            <span className="font-medium text-ui">{applicationName}</span> into the tenant roster.
+            End-user accounts (Member, etc.) stay in application user management only.
           </p>
         </div>
 
@@ -212,12 +213,12 @@ export function TenantRosterImportDialog({
 
         <div className="max-h-[28rem] overflow-y-auto px-5 py-2">
           {loading ? (
-            <p className="py-6 text-sm text-muted">Loading members…</p>
+            <p className="py-6 text-sm text-muted">Loading Tenant Admins…</p>
           ) : filtered.length === 0 ? (
             <p className="py-6 text-sm text-muted">
               {importable.length === 0
-                ? "No application members left to import."
-                : "No members match your search or filters."}
+                ? "No Tenant Admin operators left to import from this application. Assign the application role Tenant Admin under Application → Users (invite or edit user), confirm the From app dropdown matches that application, or use + Add tenant user if they are already on the roster."
+                : "No Tenant Admins match your search or filters."}
             </p>
           ) : (
             <ul className="divide-y divide-ui">

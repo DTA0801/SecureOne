@@ -6,7 +6,6 @@ import { Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import {
   CONSOLE_FEATURE_LABELS,
-  CONSOLE_ROLE_DEFAULT_FEATURES,
   computeEffectiveFeatures,
   fetchConsoleCapabilityCatalog,
   fetchUserConsoleCapabilities,
@@ -20,6 +19,13 @@ import {
   type AdminConsoleRoleType,
   type ConsoleAccessAssignment,
 } from "@/lib/api/admin-console-access";
+import { loadTenantConsoleRolesCatalog } from "@/lib/api/tenant-console-roles";
+import {
+  fetchUserTenantRoleAssignments,
+  listTenantRoles,
+  replaceUserTenantRoleAssignments,
+  type TenantRole,
+} from "@/lib/api/tenant-rbac";
 import { getRole, listRoles } from "@/lib/api/roles";
 import {
   updateUserApplicationRoles,
@@ -29,7 +35,7 @@ import {
 } from "@/lib/api/tenant-workspace";
 import type { Role, RoleDetail } from "@/lib/types";
 
-type Tab = "console" | "features" | "roles";
+type Tab = "console" | "features" | "roles" | "tenantRoles";
 
 export function TenantRosterAccessDialog({
   open,
@@ -69,6 +75,14 @@ export function TenantRosterAccessDialog({
   const [grantRoleType, setGrantRoleType] = useState<AdminConsoleRoleType>("APPLICATION_ADMIN");
   const [grantAppId, setGrantAppId] = useState(applications[0]?.id ?? "");
   const [granting, setGranting] = useState(false);
+  const [consoleRoleCatalog, setConsoleRoleCatalog] = useState<
+    Record<string, string[]>
+  >({});
+  const [tenantGovernanceRoles, setTenantGovernanceRoles] = useState<TenantRole[]>([]);
+  const [tenantRoleIds, setTenantRoleIds] = useState<string[]>([]);
+  const [savedTenantRoleIds, setSavedTenantRoleIds] = useState<string[]>([]);
+  const [loadingTenantRoles, setLoadingTenantRoles] = useState(false);
+  const [savingTenantRoles, setSavingTenantRoles] = useState(false);
 
   const memberApps = useMemo(
     () => applications.filter((a) => user?.applicationIds.includes(a.id)),
@@ -85,6 +99,55 @@ export function TenantRosterAccessDialog({
     setGrantAppId(first);
     setGrantRoleType("APPLICATION_ADMIN");
   }, [open, user?.id, memberApps, applications, initialTab]);
+
+  useEffect(() => {
+    if (!open || !user) return;
+    let cancelled = false;
+    void loadTenantConsoleRolesCatalog(tenantId)
+      .then((catalog) => {
+        if (cancelled) return;
+        const defaults: Record<string, string[]> = {};
+        for (const role of catalog.roles) {
+          defaults[role.roleType] = role.defaultFeatures;
+        }
+        setConsoleRoleCatalog(defaults);
+      })
+      .catch(() => {
+        if (!cancelled) setConsoleRoleCatalog({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tenantId, user?.id]);
+
+  useEffect(() => {
+    if (!open || !user) return;
+    let cancelled = false;
+    setLoadingTenantRoles(true);
+    void Promise.all([
+      listTenantRoles(tenantId).then((rows) => rows.filter((r) => !r.systemRole)),
+      fetchUserTenantRoleAssignments(tenantId, user.id),
+    ])
+      .then(([roles, assignments]) => {
+        if (cancelled) return;
+        setTenantGovernanceRoles(roles);
+        setTenantRoleIds(assignments.roleIds);
+        setSavedTenantRoleIds(assignments.roleIds);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTenantGovernanceRoles([]);
+          setTenantRoleIds([]);
+          setSavedTenantRoleIds([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTenantRoles(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, user?.id, tenantId]);
 
   useEffect(() => {
     if (!open || !user) return;
@@ -174,6 +237,17 @@ export function TenantRosterAccessDialog({
     return JSON.stringify(saved) !== JSON.stringify(current);
   }, [savedOverrides, overrides]);
 
+  const tenantRolesDirty = useMemo(() => {
+    const saved = [...savedTenantRoleIds].sort();
+    const current = [...tenantRoleIds].sort();
+    return JSON.stringify(saved) !== JSON.stringify(current);
+  }, [savedTenantRoleIds, tenantRoleIds]);
+
+  const grantPreviewFeatures = useMemo(
+    () => consoleRoleCatalog[grantRoleType] ?? [],
+    [consoleRoleCatalog, grantRoleType],
+  );
+
   const effectivePermissions = useMemo(() => {
     const keys = new Set<string>();
     for (const id of roleIds) {
@@ -201,6 +275,42 @@ export function TenantRosterAccessDialog({
     setRoleIds((prev) =>
       prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id],
     );
+  }
+
+  function toggleTenantRole(id: string) {
+    setTenantRoleIds((prev) =>
+      prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id],
+    );
+  }
+
+  async function saveTenantRoles() {
+    if (!user) return;
+    setSavingTenantRoles(true);
+    try {
+      const updated = await replaceUserTenantRoleAssignments(
+        tenantId,
+        user.id,
+        tenantRoleIds,
+      );
+      setTenantRoleIds(updated.roleIds);
+      setSavedTenantRoleIds(updated.roleIds);
+      const caps = await fetchUserConsoleCapabilities(tenantId, user.id);
+      setRoleDefaults(caps.roleDefaults);
+      setOverrides(caps.overrides);
+      setSavedOverrides(caps.overrides);
+      toast("Tenant governance roles updated", "success");
+      await onSaved({
+        userId: user.id,
+        tenantGovernanceRoleIds: updated.roleIds,
+        tenantGovernanceRoleNames: updated.roleNames,
+        effectiveConsoleFeatures: caps.effectiveFeatures,
+        consoleFeatureOverrides: caps.overrides,
+      });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not update tenant roles", "error");
+    } finally {
+      setSavingTenantRoles(false);
+    }
   }
 
   async function saveRoles() {
@@ -296,6 +406,7 @@ export function TenantRosterAccessDialog({
   const tabs: { id: Tab; label: string }[] = [
     { id: "console", label: "Console access" },
     { id: "features", label: "Console features" },
+    { id: "tenantRoles", label: "Tenant roles" },
     { id: "roles", label: "In-app RBAC" },
   ];
 
@@ -309,7 +420,7 @@ export function TenantRosterAccessDialog({
         <div className="border-b border-ui px-5 py-4">
           <h2 className="text-base font-semibold text-ui">Manage operator access</h2>
           <p className="mt-0.5 text-xs text-muted">
-            {user.displayName} · console role, feature matrix, and in-app permissions
+            {user.displayName} · console access, tenant governance roles, and in-app permissions
           </p>
         </div>
 
@@ -335,8 +446,8 @@ export function TenantRosterAccessDialog({
             <div className="space-y-4">
               <p className="text-xs text-muted">
                 Tenant operators only — controls who can sign in to this admin console and which
-                applications they manage. Application-only members without console access cannot use
-                these features.
+                applications they manage. Custom tenant roles from Roles &amp; Permissions are
+                assigned on the Tenant roles tab, not here.
               </p>
               {consoleAssignments.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-ui px-4 py-3">
@@ -405,7 +516,7 @@ export function TenantRosterAccessDialog({
                   )}
                   <div className="rounded-md bg-ui-elevated px-3 py-2 text-[10px] text-soft">
                     Default features:{" "}
-                    {(CONSOLE_ROLE_DEFAULT_FEATURES[grantRoleType] ?? [])
+                    {grantPreviewFeatures
                       .map((f) => CONSOLE_FEATURE_LABELS[f] ?? f)
                       .join(", ") || "—"}
                   </div>
@@ -524,6 +635,72 @@ export function TenantRosterAccessDialog({
                   className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-60"
                 >
                   {savingCaps ? "Saving…" : "Save feature overrides"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === "tenantRoles" && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted">
+                Assign custom tenant governance roles from Tenant → Roles &amp; Permissions.
+                Console sections configured on those roles are applied automatically; per-user
+                overrides remain available on the Features tab when console access is active.
+              </p>
+              {loadingTenantRoles ? (
+                <p className="text-sm text-muted">Loading tenant roles…</p>
+              ) : tenantGovernanceRoles.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-ui px-4 py-3">
+                  <p className="text-sm text-faint">
+                    No custom tenant roles yet. Create one from Tenant → Roles &amp; Permissions.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {tenantGovernanceRoles.map((r) => {
+                    const selected = tenantRoleIds.includes(r.id);
+                    return (
+                      <label
+                        key={r.id}
+                        className={`flex cursor-pointer flex-col gap-1 rounded-lg border px-3 py-2 text-sm ${
+                          selected ? "border-brand bg-brand-muted/30" : "border-ui"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            disabled={savingTenantRoles}
+                            onChange={() => toggleTenantRole(r.id)}
+                          />
+                          <span>{r.name}</span>
+                        </span>
+                        {r.description && (
+                          <span className="ml-6 text-xs text-faint">{r.description}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={savingTenantRoles || !tenantRolesDirty}
+                  onClick={() => setTenantRoleIds(savedTenantRoleIds)}
+                  className="text-xs font-medium text-muted hover:text-ui disabled:opacity-40"
+                >
+                  Reset changes
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    savingTenantRoles || !tenantRolesDirty || tenantGovernanceRoles.length === 0
+                  }
+                  onClick={() => void saveTenantRoles()}
+                  className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-on-brand disabled:opacity-60"
+                >
+                  {savingTenantRoles ? "Saving…" : "Save tenant roles"}
                 </button>
               </div>
             </div>

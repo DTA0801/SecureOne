@@ -13,11 +13,13 @@ export function Topbar({
   activeApplicationId,
   inAppWorkspace,
   onApplicationChange,
+  registryHasClients = true,
 }: {
   applications: ApplicationContextItem[];
   activeApplicationId?: string;
   inAppWorkspace: boolean;
   onApplicationChange?: (applicationId: string) => void;
+  registryHasClients?: boolean;
 }) {
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -41,12 +43,16 @@ export function Topbar({
   return (
     <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-4 border-b border-ui bg-[var(--ui-surface)]/85 px-8 backdrop-blur">
       <div className="flex min-w-0 flex-1 items-center gap-4">
-        <ApplicationSelector
-          applications={applications}
-          currentApplicationId={activeApplicationId}
-          inAppWorkspace={inAppWorkspace}
-          onApplicationChange={onApplicationChange}
-        />
+        {registryHasClients ? (
+          <ApplicationSelector
+            applications={applications}
+            currentApplicationId={activeApplicationId}
+            inAppWorkspace={inAppWorkspace}
+            onApplicationChange={onApplicationChange}
+          />
+        ) : (
+          <span className="text-sm text-muted">Application console unavailable — register an OAuth client first</span>
+        )}
         <div className="relative hidden max-w-xs flex-1 md:block">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint">
             ⌕

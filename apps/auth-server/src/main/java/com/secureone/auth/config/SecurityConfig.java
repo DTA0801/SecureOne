@@ -2,6 +2,7 @@ package com.secureone.auth.config;
 
 import com.secureone.auth.admin.AdminBasicAuthenticationFilter;
 import com.secureone.auth.admin.AdminCredentialAuthenticationFilter;
+import com.secureone.auth.application.ApplicationOAuthClientResolver;
 import com.secureone.auth.authn.DevAdminAuthenticationProvider;
 import com.secureone.auth.authn.FormLoginFailureHandler;
 import com.secureone.auth.authn.LoginSuccessHandler;
@@ -47,11 +48,18 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public class SecurityConfig {
 
     @Bean
+    OAuthAwareLoginEntryPoint oauthAwareLoginEntryPoint(
+            RequestCache requestCache, ApplicationOAuthClientResolver applications) {
+        return new OAuthAwareLoginEntryPoint(requestCache, applications);
+    }
+
+    @Bean
     @Order(1)
     SecurityFilterChain authorizationServerSecurityFilterChain(
             HttpSecurity http,
             JwtDecoder jwtDecoder,
             RequestCache requestCache,
+            OAuthAwareLoginEntryPoint oauthAwareLoginEntryPoint,
             Function<OidcUserInfoAuthenticationContext, OidcUserInfo> oidcUserInfoMapper)
             throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServer =
@@ -75,7 +83,7 @@ public class SecurityConfig {
                 // Redirect browser (text/html) requests to the login page when unauthenticated.
                 .exceptionHandling(ex -> ex
                         .defaultAuthenticationEntryPointFor(
-                                new OAuthAwareLoginEntryPoint(requestCache),
+                                oauthAwareLoginEntryPoint,
                                 new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 // Accept access tokens for OIDC UserInfo and/or Client Registration.
                 .oauth2ResourceServer(rs -> rs.jwt(jwt -> jwt.decoder(jwtDecoder)));
@@ -110,6 +118,7 @@ public class SecurityConfig {
             AuthenticationManager authenticationManager,
             AdminBasicAuthenticationFilter adminBasicAuthenticationFilter,
             AdminCredentialAuthenticationFilter adminCredentialAuthenticationFilter,
+            TenantLoginUsernameFilter tenantLoginUsernameFilter,
             LoginSuccessHandler loginSuccessHandler,
             FormLoginFailureHandler loginFailureHandler)
             throws Exception {
@@ -156,7 +165,7 @@ public class SecurityConfig {
                 .httpBasic(Customizer.withDefaults())
                 .addFilterBefore(adminCredentialAuthenticationFilter, BasicAuthenticationFilter.class)
                 .addFilterBefore(adminBasicAuthenticationFilter, BasicAuthenticationFilter.class)
-                .addFilterBefore(new TenantLoginUsernameFilter(), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(tenantLoginUsernameFilter, UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form
                         .loginPage("/login.html")
                         .loginProcessingUrl("/login")

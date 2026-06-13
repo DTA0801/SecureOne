@@ -179,6 +179,7 @@ export async function applicationCreateAction(_prev: FormState, fd: FormData): P
       clientId: str(fd, "clientId"),
     });
     revalidatePath("/applications");
+    revalidatePath("/app");
     revalidatePath("/tenants");
     revalidatePath("/audit");
     return ok({
@@ -209,6 +210,7 @@ export async function applicationDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
   if (id) await deleteApplicationApi(id);
   revalidatePath("/applications");
+  revalidatePath("/app");
   revalidatePath("/audit");
   redirect("/applications");
 }

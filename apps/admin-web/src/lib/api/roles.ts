@@ -1,5 +1,5 @@
 import { appScopeHeaders } from "./http";
-import { isApplicationScopedRoleName } from "@/lib/application-rbac-scope";
+import { isListedInApplicationRoleCatalogName } from "@/lib/application-rbac-scope";
 import { browserApiFetch as apiFetch } from "./browser-client";
 import type { Permission, Role, RoleAssignedUser, RoleDetail, RoleLabel } from "@/lib/types";
 
@@ -95,7 +95,7 @@ export async function listRoles(opts?: { tenantId?: string; applicationId?: stri
         headers: appScopeHeaders(opts.applicationId),
       })
     )
-      .filter((dto) => isApplicationScopedRoleName(dto.name))
+      .filter((dto) => isListedInApplicationRoleCatalogName(dto.name))
       .map(mapSummary);
   }
   const params = new URLSearchParams();

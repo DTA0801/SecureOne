@@ -80,6 +80,7 @@ public class TenantRbacBootstrapService {
             roles.save(role);
         }
         if (rbac.countPermissionsByRoleId(role.getId()) == 0) {
+            roles.flush();
             List<UUID> permissionIds =
                     permissionKeys.stream().map(byKey::get).filter(java.util.Objects::nonNull).toList();
             rbac.replacePermissions(role.getId(), permissionIds);

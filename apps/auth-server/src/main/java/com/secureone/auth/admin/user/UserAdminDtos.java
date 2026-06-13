@@ -29,6 +29,7 @@ public final class UserAdminDtos {
             boolean locked,
             int failedLoginCount,
             List<String> roleIds,
+            List<String> roleNames,
             List<MfaFactorResponse> mfaFactors,
             Map<String, Boolean> allowedAuthMethods,
             Instant lastLoginAt,

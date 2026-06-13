@@ -1,5 +1,6 @@
 package com.secureone.auth.application;
 
+import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.application.ApplicationAccountDtos.EmailRequest;
 import com.secureone.auth.application.ApplicationAccountDtos.SessionLoginRequest;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,14 +32,27 @@ public class ApplicationPublicController {
     private final ApplicationPublicManifestService manifest;
     private final ApplicationSignupService signup;
     private final ApplicationPublicAccountService account;
+    private final ApplicationOAuthClientResolver clients;
 
     public ApplicationPublicController(
             ApplicationPublicManifestService manifest,
             ApplicationSignupService signup,
-            ApplicationPublicAccountService account) {
+            ApplicationPublicAccountService account,
+            ApplicationOAuthClientResolver clients) {
         this.manifest = manifest;
         this.signup = signup;
         this.account = account;
+        this.clients = clients;
+    }
+
+    /** Resolve an integrated application from its OAuth {@code client_id} (for hosted login pages). */
+    @GetMapping("/resolve")
+    public Map<String, String> resolveByClientId(@RequestParam String clientId) {
+        var app = clients.findActiveByOAuthClientId(clientId)
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found for client: " + clientId));
+        return Map.of(
+                "applicationId", app.getId().toString(),
+                "applicationName", app.getName());
     }
 
     @GetMapping("/{applicationId}")

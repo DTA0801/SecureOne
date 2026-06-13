@@ -27,6 +27,8 @@ export type AdminContext = {
   tenantName: string | null;
   userId: string | null;
   actAsEmail: string | null;
+  /** Total OAuth clients in the platform registry (all tenants). */
+  oauthClientCount: number;
   applications: ApplicationContextItem[];
 };
 
@@ -42,6 +44,7 @@ export async function fetchAdminContext(): Promise<AdminContext> {
     tenantName?: string | null;
     userId?: string | null;
     actAsEmail: string | null;
+    oauthClientCount?: number;
     applications: ApplicationContextItem[];
   }>("/api/admin/v1/context");
   return {
@@ -55,6 +58,7 @@ export async function fetchAdminContext(): Promise<AdminContext> {
     tenantName: raw.tenantName ?? null,
     userId: raw.userId ?? null,
     actAsEmail: raw.actAsEmail,
+    oauthClientCount: raw.oauthClientCount ?? raw.applications.length,
     applications: raw.applications.map((app) => ({
       ...app,
       permissions: app.permissions ?? [],

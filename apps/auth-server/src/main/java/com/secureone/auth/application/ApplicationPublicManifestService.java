@@ -131,7 +131,7 @@ public class ApplicationPublicManifestService {
         response.put("signup", buildSignupBlock(applicationId, app));
         response.put(
                 "account",
-                ApplicationAccountEndpoints.manifestBlock(applicationId, tenantResolver.requireTenantSlug(applicationId)));
+                ApplicationAccountEndpoints.manifestBlock(applicationId));
         return response;
     }
 

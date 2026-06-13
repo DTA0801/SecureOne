@@ -4,6 +4,9 @@ import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.admin.console.AdminConsoleAccessRepository;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.application.UserApplicationRepository;
+import com.secureone.auth.rbac.ApplicationRbacScope;
+import com.secureone.auth.rbac.RoleRepository;
+import com.secureone.auth.rbac.UserRoleRepository;
 import com.secureone.auth.user.UserAccount;
 import com.secureone.auth.user.UserAccountRepository;
 import java.util.List;
@@ -15,12 +18,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class TenantUserRosterService {
 
+    private static final String TENANT_ADMIN_ROLE_NAME = ApplicationRbacScope.TENANT_ADMIN_ROLE_NAME;
+
     private final TenantUserRosterRepository roster;
     private final TenantRepository tenants;
     private final UserAccountRepository users;
     private final ApplicationRepository applications;
     private final UserApplicationRepository memberships;
     private final AdminConsoleAccessRepository consoleAccess;
+    private final RoleRepository roles;
+    private final UserRoleRepository userRoles;
 
     public TenantUserRosterService(
             TenantUserRosterRepository roster,
@@ -28,13 +35,17 @@ public class TenantUserRosterService {
             UserAccountRepository users,
             ApplicationRepository applications,
             UserApplicationRepository memberships,
-            AdminConsoleAccessRepository consoleAccess) {
+            AdminConsoleAccessRepository consoleAccess,
+            RoleRepository roles,
+            UserRoleRepository userRoles) {
         this.roster = roster;
         this.tenants = tenants;
         this.users = users;
         this.applications = applications;
         this.memberships = memberships;
         this.consoleAccess = consoleAccess;
+        this.roles = roles;
+        this.userRoles = userRoles;
     }
 
     @Transactional(readOnly = true)
@@ -85,6 +96,12 @@ public class TenantUserRosterService {
         if (!memberships.existsByUserIdAndApplicationId(userId, app.getId())) {
             throw new IllegalArgumentException("User is not a member of this application");
         }
+        if (!hasTenantAdminRoleInApplication(userId, applicationId)) {
+            throw new IllegalArgumentException(
+                    "Only users with the "
+                            + TENANT_ADMIN_ROLE_NAME
+                            + " role in this application can be imported to the tenant roster");
+        }
         addToRoster(tenantId, userId, TenantRosterSource.IMPORTED, applicationId, addedBy);
     }
 
@@ -131,5 +148,12 @@ public class TenantUserRosterService {
             throw new IllegalArgumentException("User must belong to this tenant");
         }
         return user;
+    }
+
+    private boolean hasTenantAdminRoleInApplication(UUID userId, UUID applicationId) {
+        return userRoles.findByUserId(userId).stream()
+                .map(grant -> roles.findById(grant.getRoleId()).orElse(null))
+                .filter(role -> role != null && applicationId.equals(role.getApplicationId()))
+                .anyMatch(role -> TENANT_ADMIN_ROLE_NAME.equalsIgnoreCase(role.getName()));
     }
 }

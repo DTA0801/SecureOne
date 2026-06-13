@@ -8,6 +8,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -48,7 +50,12 @@ public class FormLoginFailureHandler extends SimpleUrlAuthenticationFailureHandl
         String errorParam = exception instanceof org.springframework.security.authentication.CredentialsExpiredException
                 ? "error=expired"
                 : "error";
-        setDefaultFailureUrl(OAuthLoginRedirectSupport.appendContinueToLoginUrl("/login.html?" + errorParam, authorizeUrl));
+        String failureUrl = "/login.html?" + errorParam;
+        String applicationId = request.getParameter("applicationId");
+        if (applicationId != null && !applicationId.isBlank()) {
+            failureUrl += "&applicationId=" + URLEncoder.encode(applicationId.trim(), StandardCharsets.UTF_8);
+        }
+        setDefaultFailureUrl(OAuthLoginRedirectSupport.appendContinueToLoginUrl(failureUrl, authorizeUrl));
 
         LoginAttemptDiagnostics.Snapshot snapshot = LoginAttemptDiagnostics.capture(request);
         String username = snapshot.usernameField();

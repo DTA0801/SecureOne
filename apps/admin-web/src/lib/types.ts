@@ -71,6 +71,7 @@ export type User = {
   locked?: boolean;
   failedLoginCount?: number;
   roleIds: string[];
+  roleNames: string[];
   mfaFactors: MfaFactor[];
   /** Per-user allow-list for app-enabled sign-in methods (app-scoped fetch only). */
   allowedAuthMethods?: Record<string, boolean>;

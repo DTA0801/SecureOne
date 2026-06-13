@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminConsoleAccessService {
 
     private final AdminConsoleAccessRepository access;
+    private final AdminConsoleCapabilityService consoleCapabilities;
     private final UserAccountRepository users;
     private final TenantRepository tenants;
     private final ApplicationRepository applications;
@@ -36,6 +37,7 @@ public class AdminConsoleAccessService {
 
     public AdminConsoleAccessService(
             AdminConsoleAccessRepository access,
+            AdminConsoleCapabilityService consoleCapabilities,
             UserAccountRepository users,
             TenantRepository tenants,
             ApplicationRepository applications,
@@ -43,6 +45,7 @@ public class AdminConsoleAccessService {
             TenantUserRosterService tenantUserRoster,
             ConsoleRbacMirrorService consoleRbacMirror) {
         this.access = access;
+        this.consoleCapabilities = consoleCapabilities;
         this.users = users;
         this.tenants = tenants;
         this.applications = applications;
@@ -62,7 +65,7 @@ public class AdminConsoleAccessService {
             String applicationName) {}
 
     public boolean hasActiveConsoleAccess(UUID userId) {
-        return !access.findActiveByUserId(userId).isEmpty();
+        return consoleCapabilities.hasConsoleAccess(userId);
     }
 
     public Optional<AdminConsoleRoleType> highestRoleType(UUID userId) {
@@ -106,6 +109,7 @@ public class AdminConsoleAccessService {
                 appIds.add(row.getApplicationId());
             }
         }
+        appIds.addAll(consoleCapabilities.accessibleApplicationIdsFromTenantGovernance(userId));
         return applications.findAllById(appIds).stream()
                 .sorted(Comparator.comparing(Application::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(this::toSummary)

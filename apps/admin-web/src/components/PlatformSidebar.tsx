@@ -10,6 +10,7 @@ import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { buildAppPath } from "@/lib/app-routes";
 import type { ApplicationContextItem } from "@/lib/api/context";
+import { hasOAuthClients } from "@/lib/oauth-client-registry";
 
 /** Fallback sidebar when no applications are loaded yet. */
 export function PlatformSidebar({
@@ -21,18 +22,25 @@ export function PlatformSidebar({
 }) {
   const pathname = usePathname();
   const ctx = useAdminContext();
+  const registryHasClients = hasOAuthClients(ctx);
+  const tenantSuper = isTenantSuperAdmin(ctx);
+  const showPlatformAdmin = superAdmin || tenantSuper;
   const isTenantOperator =
     (ctx.operatorTier === "tenant" || ctx.operatorTier === "tenant_super") && !superAdmin;
   const navSource = isTenantOperator ? TENANT_OPERATOR_NAV : PLATFORM_NAV;
   const superAdminHrefs = new Set(SUPER_ADMIN_NAV.map((i) => i.href));
-  const items = navSource.filter(
-    (i) => (superAdmin || !i.superAdminOnly) && !(superAdmin && superAdminHrefs.has(i.href)),
-  );
-  const defaultAppHref =
-    applications.length > 0
+  const items = navSource.filter((i) => {
+    if (i.href === "/app" && !registryHasClients) return false;
+    return (superAdmin || !i.superAdminOnly) && !(superAdmin && superAdminHrefs.has(i.href));
+  });
+  const defaultAppHref = !registryHasClients
+    ? superAdmin
+      ? "/applications"
+      : "/app"
+    : applications.length > 0
       ? buildAppPath(applications[0].id, "users")
       : isTenantOperator
-        ? "/login"
+        ? "/app"
         : "/applications";
 
   return (

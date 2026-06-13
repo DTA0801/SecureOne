@@ -80,4 +80,54 @@ public class TenantRbacRepository {
                 String.class,
                 roleId));
     }
+
+    public List<UUID> findRoleIdsByUserId(UUID userId) {
+        return jdbc.queryForList(
+                """
+                SELECT utr.role_id
+                FROM user_tenant_role utr
+                JOIN tenant_role tr ON tr.id = utr.role_id
+                WHERE utr.user_id = ?
+                ORDER BY tr.name
+                """,
+                UUID.class,
+                userId);
+    }
+
+    public List<String> findRoleNamesByUserId(UUID userId) {
+        return jdbc.queryForList(
+                """
+                SELECT tr.name
+                FROM user_tenant_role utr
+                JOIN tenant_role tr ON tr.id = utr.role_id
+                WHERE utr.user_id = ?
+                ORDER BY tr.name
+                """,
+                String.class,
+                userId);
+    }
+
+    public boolean hasAnyConsolePermission(UUID userId) {
+        Long count = jdbc.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM user_tenant_role utr
+                JOIN tenant_role_permission rp ON rp.role_id = utr.role_id
+                JOIN tenant_permission p ON p.id = rp.permission_id
+                WHERE utr.user_id = ? AND p.key LIKE 'console:%'
+                """,
+                Long.class,
+                userId);
+        return count != null && count > 0;
+    }
+
+    public void replaceUserRoles(UUID userId, List<UUID> roleIds) {
+        jdbc.update("DELETE FROM user_tenant_role WHERE user_id = ?", userId);
+        for (UUID roleId : new LinkedHashSet<>(roleIds)) {
+            jdbc.update(
+                    "INSERT INTO user_tenant_role (id, user_id, role_id) VALUES (gen_random_uuid(), ?, ?)",
+                    userId,
+                    roleId);
+        }
+    }
 }

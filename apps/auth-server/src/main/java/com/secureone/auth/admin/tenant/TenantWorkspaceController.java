@@ -64,9 +64,12 @@ public class TenantWorkspaceController {
     public List<TenantWorkspaceService.TenantWorkspaceUser> listImportableUsers(
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
-            @RequestParam UUID tenantId,
+            @RequestParam(required = false) UUID tenantId,
             @PathVariable UUID applicationId) {
-        return workspace.listImportableUsersForPlatform(authentication, actAsEmail, tenantId, applicationId);
+        if (tenantId != null) {
+            return workspace.listImportableUsersForPlatform(authentication, actAsEmail, tenantId, applicationId);
+        }
+        return workspace.listImportableUsers(authentication, actAsEmail, applicationId);
     }
 
     @PostMapping("/users/{userId}/roster")
@@ -74,27 +77,39 @@ public class TenantWorkspaceController {
     public void importUserToRoster(
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
-            @RequestParam UUID tenantId,
+            @RequestParam(required = false) UUID tenantId,
             @RequestParam UUID applicationId,
             @PathVariable UUID userId) {
-        workspace.importUserToRosterForPlatform(
-                authentication, actAsEmail, tenantId, userId, applicationId);
+        if (tenantId != null) {
+            workspace.importUserToRosterForPlatform(
+                    authentication, actAsEmail, tenantId, userId, applicationId);
+            return;
+        }
+        workspace.importUserToRoster(authentication, actAsEmail, userId, applicationId);
     }
 
     @PostMapping("/users/roster/bulk")
     public Map<String, Object> bulkImportUsersToRoster(
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
-            @RequestParam UUID tenantId,
+            @RequestParam(required = false) UUID tenantId,
             @RequestParam UUID applicationId,
             @RequestBody BulkRosterImportRequest body) {
-        int imported =
-                workspace.bulkImportUsersToRosterForPlatform(
-                        authentication,
-                        actAsEmail,
-                        tenantId,
-                        applicationId,
-                        body.userIds() != null ? body.userIds() : List.of());
+        int imported;
+        if (tenantId != null) {
+            imported = workspace.bulkImportUsersToRosterForPlatform(
+                    authentication,
+                    actAsEmail,
+                    tenantId,
+                    applicationId,
+                    body.userIds() != null ? body.userIds() : List.of());
+        } else {
+            imported = workspace.bulkImportUsersToRoster(
+                    authentication,
+                    actAsEmail,
+                    applicationId,
+                    body.userIds() != null ? body.userIds() : List.of());
+        }
         return Map.of("imported", imported);
     }
 
@@ -103,9 +118,13 @@ public class TenantWorkspaceController {
     public void removeUserFromRoster(
             Authentication authentication,
             @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
-            @RequestParam UUID tenantId,
+            @RequestParam(required = false) UUID tenantId,
             @PathVariable UUID userId) {
-        workspace.removeUserFromRosterForPlatform(authentication, actAsEmail, tenantId, userId);
+        if (tenantId != null) {
+            workspace.removeUserFromRosterForPlatform(authentication, actAsEmail, tenantId, userId);
+            return;
+        }
+        workspace.removeUserFromRoster(authentication, actAsEmail, userId);
     }
 
     @PutMapping("/users/{userId}/applications/{applicationId}/roles")

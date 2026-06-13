@@ -8,6 +8,8 @@ import { Topbar } from "./Topbar";
 import { useLastApplicationId } from "@/hooks/useLastApplication";
 import { applicationIdFromPath, isAppWorkspacePath } from "@/lib/app-routes";
 import type { ApplicationContextItem } from "@/lib/api/context";
+import { useAdminContext } from "./AdminContextProvider";
+import { hasOAuthClients } from "@/lib/oauth-client-registry";
 
 export function ConsoleShell({
   children,
@@ -21,13 +23,17 @@ export function ConsoleShell({
   tenantSuperAdmin?: boolean;
 }) {
   const pathname = usePathname();
+  const ctx = useAdminContext();
+  const registryHasClients = hasOAuthClients(ctx);
   const { lastApplicationId, rememberApplicationId } = useLastApplicationId();
   const pathApplicationId = applicationIdFromPath(pathname);
-  const inAppWorkspace = isAppWorkspacePath(pathname) && Boolean(pathApplicationId);
+  const inAppWorkspace =
+    registryHasClients && isAppWorkspacePath(pathname) && Boolean(pathApplicationId);
 
-  const activeApplicationId =
-    pathApplicationId ??
-    (superAdmin ? lastApplicationId ?? applications[0]?.id : applications[0]?.id);
+  const activeApplicationId = registryHasClients
+    ? pathApplicationId ??
+      (superAdmin ? lastApplicationId ?? applications[0]?.id : applications[0]?.id)
+    : undefined;
 
   useEffect(() => {
     if (pathApplicationId) {
@@ -37,7 +43,9 @@ export function ConsoleShell({
 
   // Platform and tenant super-admins keep the app sidebar while visiting platform/tenant pages.
   const showAppSidebar =
-    Boolean(activeApplicationId) && (superAdmin || tenantSuperAdmin || inAppWorkspace);
+    registryHasClients &&
+    Boolean(activeApplicationId) &&
+    (superAdmin || tenantSuperAdmin || inAppWorkspace);
 
   return (
     <div className="flex min-h-screen text-ui">
@@ -48,10 +56,11 @@ export function ConsoleShell({
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
-          applications={applications}
+          applications={registryHasClients ? applications : []}
           activeApplicationId={activeApplicationId}
           inAppWorkspace={inAppWorkspace}
           onApplicationChange={rememberApplicationId}
+          registryHasClients={registryHasClients}
         />
         <main className="flex min-h-0 flex-1 flex-col px-8 py-8">{children}</main>
       </div>

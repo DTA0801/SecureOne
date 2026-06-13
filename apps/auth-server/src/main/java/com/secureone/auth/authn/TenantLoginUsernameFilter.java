@@ -1,5 +1,6 @@
 package com.secureone.auth.authn;
 
+import com.secureone.auth.application.ApplicationTenantResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,13 +12,22 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Builds {@code tenant:email} usernames for the hosted login form when the hidden username field is
- * missing (password managers, script errors, or Enter-key submit races).
+ * Builds internal {@code tenant:email} usernames for the hosted login form. When {@code applicationId}
+ * is present, tenant slug is resolved server-side so end users only enter email and password.
  */
+@Component
 public class TenantLoginUsernameFilter extends OncePerRequestFilter {
+
+    private final ApplicationTenantResolver applications;
+
+    public TenantLoginUsernameFilter(ApplicationTenantResolver applications) {
+        this.applications = applications;
+    }
 
     @Override
     protected void doFilterInternal(
@@ -27,6 +37,9 @@ public class TenantLoginUsernameFilter extends OncePerRequestFilter {
             String username = normalize(request.getParameter("username"));
             if (username == null) {
                 String tenant = normalize(request.getParameter("tenant"));
+                if (tenant == null) {
+                    tenant = resolveTenantFromApplicationId(normalize(request.getParameter("applicationId")));
+                }
                 String email = normalize(request.getParameter("email"));
                 if (tenant != null && email != null) {
                     request = new UsernameOverrideRequest(request, tenant + ":" + email.toLowerCase(Locale.ROOT));
@@ -34,6 +47,17 @@ public class TenantLoginUsernameFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String resolveTenantFromApplicationId(String applicationId) {
+        if (applicationId == null) {
+            return null;
+        }
+        try {
+            return applications.requireTenantSlug(UUID.fromString(applicationId));
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static boolean isLoginPost(HttpServletRequest request) {

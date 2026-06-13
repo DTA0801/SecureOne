@@ -7,6 +7,8 @@ import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleCreateReque
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleDetailResponse;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleSummaryResponse;
 import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.TenantRoleUpdateRequest;
+import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.ReplaceUserTenantRolesRequest;
+import com.secureone.auth.admin.tenant.TenantRbacAdminDtos.UserTenantRoleAssignmentsResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -122,6 +124,28 @@ public class TenantRbacAdminController {
             @PathVariable UUID roleId) {
         requirePlatform(authentication, actAsEmail, tenantId);
         rbac.deleteRole(tenantId, roleId);
+    }
+
+    @GetMapping("/users/{userId}/role-assignments")
+    public UserTenantRoleAssignmentsResponse listUserRoleAssignments(
+            Authentication authentication,
+            @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
+            @PathVariable UUID tenantId,
+            @PathVariable UUID userId) {
+        requirePlatform(authentication, actAsEmail, tenantId);
+        return rbac.listUserRoleAssignments(tenantId, userId);
+    }
+
+    @PutMapping("/users/{userId}/role-assignments")
+    public UserTenantRoleAssignmentsResponse replaceUserRoleAssignments(
+            Authentication authentication,
+            @RequestHeader(value = "X-Act-As-Email", required = false) String actAsEmail,
+            @PathVariable UUID tenantId,
+            @PathVariable UUID userId,
+            @RequestBody ReplaceUserTenantRolesRequest request) {
+        requirePlatform(authentication, actAsEmail, tenantId);
+        return rbac.replaceUserRoleAssignments(
+                tenantId, userId, request != null ? request.roleIds() : List.of());
     }
 
     private void requirePlatform(Authentication authentication, String actAsEmail, UUID tenantId) {

@@ -92,6 +92,8 @@
       if (!applicationId) {
         intro.textContent = "Missing applicationId in the URL.";
       } else {
+        document.getElementById("login").href =
+          "/login.html?applicationId=" + encodeURIComponent(applicationId);
         fetch("/api/v1/applications/" + encodeURIComponent(applicationId) + "/signup")
           .then((r) => r.json())
           .then((opts) => {
@@ -105,8 +107,8 @@
               passwordPolicy = opts.passwordPolicy;
               SecureOnePasswordPolicy.bindPasswordField(passwordInput, checklist, passwordPolicy);
             }
-            if (opts.loginUsernameHint) {
-              policyHint.textContent = "Sign in as: " + opts.loginUsernameHint;
+            if (opts.loginEmailHint) {
+              policyHint.textContent = "Sign in with: " + opts.loginEmailHint;
             }
             form.hidden = false;
           })
@@ -141,12 +143,14 @@
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           status.className = "msg ok";
+          const loginHref =
+            "/login.html?applicationId=" + encodeURIComponent(applicationId);
           status.innerHTML =
             (data.message || "Account created.") +
-            (data.loginUsername
-              ? '<br/>Sign in with username <code>' + data.loginUsername + "</code>"
+            (data.loginEmail
+              ? '<br/>Sign in with <code>' + data.loginEmail + "</code>"
               : "") +
-            ' <br/><a href="/login.html">Go to sign in</a>';
+            ' <br/><a href="' + loginHref + '">Go to sign in</a>';
           form.hidden = true;
         } else {
           status.className = "msg err";

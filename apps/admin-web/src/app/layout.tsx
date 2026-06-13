@@ -21,6 +21,7 @@ const EMPTY_ADMIN_CONTEXT: AdminContext = {
   tenantName: null,
   userId: null,
   actAsEmail: null,
+  oauthClientCount: 0,
   applications: [],
 };
 

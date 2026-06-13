@@ -1,10 +1,6 @@
 import { browserApiFetch as apiFetch } from "./browser-client";
 import type { ConsoleAccessAssignment } from "./admin-console-access";
-import {
-  CONSOLE_ROLE_DEFAULT_FEATURES,
-  computeEffectiveFeatures,
-  type ConsoleFeatureOverride,
-} from "./admin-console-capabilities";
+import type { ConsoleFeatureOverride } from "./admin-console-capabilities";
 
 export type TenantRosterSource =
   | "direct"
@@ -46,6 +42,8 @@ export type TenantWorkspaceUser = {
   effectiveConsoleFeatures: string[];
   consoleFeatureOverrides: ConsoleFeatureOverride[];
   applicationAccess: TenantWorkspaceApplicationAccess[];
+  tenantGovernanceRoleIds: string[];
+  tenantGovernanceRoleNames: string[];
 };
 
 export type TenantWorkspace = {
@@ -106,6 +104,12 @@ export function normalizeTenantWorkspaceUser(
     applicationAccess: access
       .map((row) => normalizeApplicationAccess(row))
       .filter((row): row is TenantWorkspaceApplicationAccess => row !== null),
+    tenantGovernanceRoleIds: Array.isArray(user.tenantGovernanceRoleIds)
+      ? user.tenantGovernanceRoleIds
+      : [],
+    tenantGovernanceRoleNames: Array.isArray(user.tenantGovernanceRoleNames)
+      ? user.tenantGovernanceRoleNames
+      : [],
   };
 }
 
@@ -149,20 +153,23 @@ export async function revokeUserApplication(
 
 export async function fetchImportableUsers(
   applicationId: string,
-  tenantId: string,
+  tenantId?: string,
 ): Promise<TenantWorkspaceUser[]> {
-  const params = new URLSearchParams({ tenantId });
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenantId", tenantId);
+  const query = params.toString();
   return apiFetch<TenantWorkspaceUser[]>(
-    `/api/admin/v1/tenant-workspace/applications/${applicationId}/importable-users?${params}`,
+    `/api/admin/v1/tenant-workspace/applications/${applicationId}/importable-users${query ? `?${query}` : ""}`,
   );
 }
 
 export async function importUserToTenantRoster(
   userId: string,
   applicationId: string,
-  tenantId: string,
+  tenantId?: string,
 ): Promise<void> {
-  const params = new URLSearchParams({ tenantId, applicationId });
+  const params = new URLSearchParams({ applicationId });
+  if (tenantId) params.set("tenantId", tenantId);
   await apiFetch<void>(
     `/api/admin/v1/tenant-workspace/users/${userId}/roster?${params}`,
     { method: "POST" },
@@ -172,9 +179,10 @@ export async function importUserToTenantRoster(
 export async function bulkImportUsersToTenantRoster(
   userIds: string[],
   applicationId: string,
-  tenantId: string,
+  tenantId?: string,
 ): Promise<number> {
-  const params = new URLSearchParams({ tenantId, applicationId });
+  const params = new URLSearchParams({ applicationId });
+  if (tenantId) params.set("tenantId", tenantId);
   const result = await apiFetch<{ imported: number }>(
     `/api/admin/v1/tenant-workspace/users/roster/bulk?${params}`,
     { method: "POST", body: JSON.stringify({ userIds }) },
@@ -184,11 +192,10 @@ export async function bulkImportUsersToTenantRoster(
 
 export async function removeUserFromTenantRoster(
   userId: string,
-  tenantId: string,
+  tenantId?: string,
 ): Promise<void> {
-  const params = new URLSearchParams({ tenantId });
   await apiFetch<void>(
-    `/api/admin/v1/tenant-workspace/users/${userId}/roster?${params}`,
+    `/api/admin/v1/tenant-workspace/users/${userId}/roster${tenantQuery(tenantId)}`,
     { method: "DELETE" },
   );
 }
@@ -243,28 +250,18 @@ export type TenantWorkspaceUserPatch = {
   consoleFeatureOverrides?: ConsoleFeatureOverride[];
   applicationAccess?: TenantWorkspaceApplicationAccess[];
   roleNames?: string[];
+  tenantGovernanceRoleIds?: string[];
+  tenantGovernanceRoleNames?: string[];
 };
 
 export function resolveRosterConsoleFeatures(
   user: TenantWorkspaceUser,
-  consoleRoleTypes: string[],
+  _consoleRoleTypes: string[],
 ): string[] {
-  const roleDefaults = [
-    ...new Set(
-      consoleRoleTypes.flatMap(
-        (roleType) =>
-          CONSOLE_ROLE_DEFAULT_FEATURES[roleType] ??
-          CONSOLE_ROLE_DEFAULT_FEATURES.APPLICATION_ADMIN,
-      ),
-    ),
-  ];
-  if (user.consoleFeatureOverrides?.length) {
-    return computeEffectiveFeatures(roleDefaults, user.consoleFeatureOverrides);
-  }
   if (user.effectiveConsoleFeatures?.length) {
     return user.effectiveConsoleFeatures;
   }
-  return [...roleDefaults].sort();
+  return [];
 }
 
 export function patchTenantWorkspaceUser(
@@ -282,6 +279,12 @@ export function patchTenantWorkspaceUser(
       : {}),
     ...(patch.applicationAccess ? { applicationAccess: patch.applicationAccess } : {}),
     ...(patch.roleNames ? { roleNames: patch.roleNames } : {}),
+    ...(patch.tenantGovernanceRoleIds
+      ? { tenantGovernanceRoleIds: patch.tenantGovernanceRoleIds }
+      : {}),
+    ...(patch.tenantGovernanceRoleNames
+      ? { tenantGovernanceRoleNames: patch.tenantGovernanceRoleNames }
+      : {}),
   };
 }
 

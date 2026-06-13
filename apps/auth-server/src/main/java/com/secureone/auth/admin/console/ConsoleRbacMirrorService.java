@@ -95,7 +95,13 @@ public class ConsoleRbacMirrorService {
     private static List<String> mirrorPermissionKeys(String roleName) {
         return switch (roleName) {
             case "Application Admin" -> List.of(
-                    "user:read", "user:write", "role:read", "app:read", "audit:read", "session:read");
+                    "user:read",
+                    "user:write",
+                    "role:read",
+                    "app:read",
+                    "audit:read",
+                    "session:read",
+                    "logs:read");
             case "Tenant Admin" -> List.of(
                     "user:read",
                     "user:write",

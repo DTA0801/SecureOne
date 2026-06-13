@@ -23,6 +23,7 @@ export async function loadAdminContextSafe(): Promise<AdminContext> {
       tenantName: null,
       userId: null,
       actAsEmail: null,
+      oauthClientCount: 0,
       applications: [],
     };
   }

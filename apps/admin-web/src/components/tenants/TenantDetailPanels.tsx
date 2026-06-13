@@ -70,6 +70,7 @@ export function TenantDetailPanels({
         tenant={tenant}
         roles={roles}
         manageTenantId={tenant.id}
+        useOperatorWorkspace={useOperatorWorkspace}
         consoleAssignments={assignments}
         onMutated={refreshAll}
       />

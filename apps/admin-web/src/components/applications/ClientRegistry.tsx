@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Field";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { statusTone } from "@/lib/status";
 import type { Application, AppType, Tenant } from "@/lib/types";
+import { NoOAuthClientsPanel } from "@/components/applications/NoOAuthClientsPanel";
 
 const TYPE_LABEL: Record<AppType, string> = {
   web: "Web (confidential)",
@@ -46,6 +47,15 @@ export function ClientRegistry({
       );
     });
   }, [apps, query, tenantFilter, typeFilter, statusFilter]);
+
+  if (apps.length === 0) {
+    return (
+      <NoOAuthClientsPanel
+        variant="platform_admin"
+        className="border-dashed p-8 text-center"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

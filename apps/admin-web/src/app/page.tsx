@@ -1,9 +1,15 @@
 import { redirect } from "next/navigation";
 import { loadAdminContextSafe } from "@/lib/api/app-workspace";
 import { buildAppPath } from "@/lib/app-routes";
+import { hasOAuthClients } from "@/lib/oauth-client-registry";
 
 export default async function HomePage() {
   const ctx = await loadAdminContextSafe();
+  if (!hasOAuthClients(ctx)) {
+    if (ctx.platformSuperAdmin) redirect("/applications");
+    if (ctx.operatorTier === "tenant" || ctx.operatorTier === "tenant_super") redirect("/app");
+    redirect("/login");
+  }
   if (
     (ctx.operatorTier === "tenant" || ctx.operatorTier === "tenant_super") &&
     ctx.applications.length > 0
@@ -16,5 +22,5 @@ export default async function HomePage() {
   if (ctx.platformSuperAdmin) {
     redirect("/applications");
   }
-  redirect("/login");
+  redirect("/app");
 }

@@ -102,6 +102,22 @@ Dev migrations historically inserted Acme/Globex sample data; **V25+ removes it*
 .\scripts\reset-database.ps1 -SkipInstall
 ```
 
+### Repair catalog after TRUNCATE
+
+If you truncated catalog tables (`platform_setting`, `tenant_permission`, `permission`, etc.) and the admin UI breaks, re-apply idempotent seeds **without** wiping tenants or OAuth clients:
+
+```powershell
+.\scripts\reseed-catalog.ps1
+```
+
+This runs `R__z_repair_catalog.sql` (also applied by Flyway when that file changes). Auth-server also runs **startup bootstrap** on boot to fill missing platform settings and per-tenant/per-app catalogs.
+
+| Situation | Command |
+|-----------|---------|
+| Empty database / start fresh | `.\scripts\reset-database.ps1` |
+| Truncated catalog tables only | `.\scripts\reseed-catalog.ps1` |
+| Apply pending Flyway migrations | `docker run ... flyway migrate` (see §5) |
+
 **Platform super admin** (in-memory, not in Postgres): username `admin`, password from `SECUREONE_DEV_PASSWORD` (default `admin`). Sign in at http://localhost:3001/login with **no tenant slug**.
 
 ### End-to-end tenant operator test

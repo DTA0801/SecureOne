@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
-import { initials, timeAgo } from "@/lib/format";
+import { formatDate, initials } from "@/lib/format";
 import { statusTone } from "@/lib/status";
 import type { Role, Tenant, User } from "@/lib/types";
 
@@ -90,6 +90,8 @@ export function UsersWorkspaceHeaderActions({
   );
 }
 
+type CreatedSort = "asc" | "desc";
+
 export function UsersWorkspace({
   users: initialUsers,
   roles,
@@ -120,6 +122,8 @@ export function UsersWorkspace({
   const [users, setUsers] = useState(initialUsers);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [createdSort, setCreatedSort] = useState<CreatedSort>("desc");
   const [directory, setDirectory] = useState<UserDirectorySettings | null>(null);
 
   const reloadUsers = useCallback(async () => {
@@ -213,15 +217,35 @@ export function UsersWorkspace({
     const q = query.trim().toLowerCase();
     return users.filter((u) => {
       if (statusFilter !== "ALL" && u.status !== statusFilter) return false;
+      if (roleFilter !== "ALL") {
+        const hasRole =
+          u.roleIds.includes(roleFilter) ||
+          (u.roleNames ?? []).includes(
+            roles.find((r) => r.id === roleFilter)?.name ?? "",
+          );
+        if (!hasRole) return false;
+      }
       if (!q) return true;
       const name = `${u.firstName} ${u.lastName}`.toLowerCase();
+      const roleText = (u.roleNames ?? []).join(" ").toLowerCase();
       return (
         name.includes(q) ||
         u.email.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q)
+        u.username.toLowerCase().includes(q) ||
+        roleText.includes(q)
       );
     });
-  }, [users, query, statusFilter]);
+  }, [users, query, statusFilter, roleFilter, roles]);
+
+  const displayed = useMemo(() => {
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return createdSort === "desc" ? bTime - aTime : aTime - bTime;
+    });
+    return rows;
+  }, [filtered, createdSort]);
 
   const selected = users.find((u) => u.id === selectedId);
 
@@ -292,10 +316,41 @@ export function UsersWorkspace({
         ))}
       </div>
 
+      {roles.length > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-faint">Role</span>
+          <button
+            type="button"
+            onClick={() => setRoleFilter("ALL")}
+            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+              roleFilter === "ALL"
+                ? "border-brand bg-brand-muted text-brand"
+                : "border-ui text-muted hover:bg-ui-elevated"
+            }`}
+          >
+            All roles
+          </button>
+          {roles.map((role) => (
+            <button
+              key={role.id}
+              type="button"
+              onClick={() => setRoleFilter(role.id)}
+              className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                roleFilter === role.id
+                  ? "border-brand bg-brand-muted text-brand"
+                  : "border-ui text-muted hover:bg-ui-elevated"
+              }`}
+            >
+              {role.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <Card padded={false} className="flex min-h-0 flex-1 flex-col">
         <CardHeader
           title="Users"
-          description={`${appName} · ${filtered.length} of ${users.length} members — select a row to manage`}
+          description={`${appName} · ${displayed.length} of ${users.length} members — select a row to manage`}
         />
         {directory && !directory.importEnabled && !directory.exportEnabled && (
           <p className="border-b border-ui px-4 py-2 text-xs text-muted">
@@ -310,13 +365,13 @@ export function UsersWorkspace({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, email, username…"
+            placeholder="Search name, email, username, role…"
             aria-label="Search users"
           />
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
-        {filtered.length > 0 ? (
+        {displayed.length > 0 ? (
           <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -324,14 +379,28 @@ export function UsersWorkspace({
                 <tr className="border-b border-ui text-xs font-semibold uppercase tracking-wide text-faint">
                   <th className="px-4 py-3 font-semibold">User</th>
                   <th className="hidden px-4 py-3 font-semibold sm:table-cell">Username</th>
+                  <th className="hidden px-4 py-3 font-semibold md:table-cell">Roles</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="hidden px-4 py-3 font-semibold md:table-cell">MFA</th>
-                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Last login</th>
+                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCreatedSort((current) => (current === "desc" ? "asc" : "desc"))
+                      }
+                      className="inline-flex items-center gap-1 uppercase tracking-wide text-faint transition-colors hover:text-ui"
+                      aria-label={`Sort by created date, currently ${createdSort === "desc" ? "newest first" : "oldest first"}`}
+                    >
+                      Created
+                      <span aria-hidden className="text-brand">
+                        {createdSort === "desc" ? "↓" : "↑"}
+                      </span>
+                    </button>
+                  </th>
                   <th className="px-4 py-3 font-semibold w-24" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-ui">
-                {filtered.map((u) => {
+                {displayed.map((u) => {
                   const name = `${u.firstName} ${u.lastName}`.trim() || u.email;
                   return (
                     <tr
@@ -360,6 +429,19 @@ export function UsersWorkspace({
                         </div>
                       </td>
                       <td className="hidden px-4 py-3 text-muted sm:table-cell">@{u.username}</td>
+                      <td className="hidden px-4 py-3 md:table-cell">
+                        <div className="flex flex-wrap gap-1">
+                          {(u.roleNames ?? []).length > 0 ? (
+                            u.roleNames.map((roleName) => (
+                              <Badge key={roleName} tone="neutral" className="text-[10px]">
+                                {roleName}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-faint">None</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           <Badge tone={statusTone(u.status)} className="capitalize text-[10px]">
@@ -377,17 +459,8 @@ export function UsersWorkspace({
                           )}
                         </div>
                       </td>
-                      <td className="hidden px-4 py-3 text-muted md:table-cell">
-                        {u.mfaFactors.length > 0 ? (
-                          <Badge tone="success" className="text-[10px]">
-                            {u.mfaFactors.length} factor{u.mfaFactors.length === 1 ? "" : "s"}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-faint">None</span>
-                        )}
-                      </td>
                       <td className="hidden px-4 py-3 text-xs text-muted lg:table-cell">
-                        {u.lastLoginAt ? timeAgo(u.lastLoginAt) : "Never"}
+                        {formatDate(u.createdAt)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Button
@@ -412,7 +485,7 @@ export function UsersWorkspace({
             applicationId={applicationId}
             directory={directory}
             formProps={formProps}
-            showQuickStart={filtered.length <= 4}
+            showQuickStart={displayed.length <= 4}
           />
           </>
         ) : (

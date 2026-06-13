@@ -22,6 +22,7 @@ type UserDto = {
   locked?: boolean;
   failedLoginCount?: number;
   roleIds: string[];
+  roleNames?: string[];
   mfaFactors?: MfaFactorDto[];
   allowedAuthMethods?: Record<string, boolean>;
   lastLoginAt: string | null;
@@ -45,6 +46,7 @@ function mapUser(dto: UserDto): User {
     locked: dto.locked ?? false,
     failedLoginCount: dto.failedLoginCount ?? 0,
     roleIds: dto.roleIds,
+    roleNames: dto.roleNames ?? [],
     mfaFactors: (dto.mfaFactors ?? []).map((f) => ({
       id: f.id,
       type: f.type as import("@/lib/types").MfaFactorType,

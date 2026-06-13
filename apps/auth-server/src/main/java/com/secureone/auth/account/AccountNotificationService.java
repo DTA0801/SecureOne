@@ -117,7 +117,7 @@ public class AccountNotificationService {
                 null, user, "Magic link sign-in", "User " + user.getEmail() + " signed in via magic link.");
         return Map.of(
                 "message", "Signed in successfully.",
-                "loginUsername", resolveLoginUsername(user));
+                "loginEmail", user.getEmail());
     }
 
     public Map<String, String> setPasswordFromInvite(String rawToken, String newPassword) {
@@ -138,6 +138,9 @@ public class AccountNotificationService {
         }
         users.save(user);
         mail.sendPasswordChanged(applicationId, user);
+        if (applicationId != null) {
+            return Map.of("message", "Password set. You can sign in now.", "loginEmail", user.getEmail());
+        }
         return Map.of("message", "Password set. You can sign in now.", "loginUsername", resolveLoginUsername(user));
     }
 
@@ -174,7 +177,7 @@ public class AccountNotificationService {
         return Map.of("message", "If an unverified account exists, a verification email has been sent.");
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public UserAccount verifyEmail(String rawToken) {
         var token = emailTokens.requireValid(rawToken, EmailTokenType.VERIFY_EMAIL);
         UserAccount user = users.findById(token.getUserId()).orElseThrow();

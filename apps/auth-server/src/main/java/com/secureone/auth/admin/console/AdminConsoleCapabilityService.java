@@ -4,10 +4,12 @@ import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.application.Application;
 import com.secureone.auth.application.ApplicationRepository;
 import com.secureone.auth.tenant.TenantRepository;
+import com.secureone.auth.tenant.rbac.TenantRbacRepository;
 import com.secureone.auth.user.UserAccount;
 import com.secureone.auth.user.UserAccountRepository;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -18,9 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AdminConsoleCapabilityService {
 
+    private static final String CONSOLE_PERMISSION_PREFIX = "console:";
+
     private final AdminConsoleAccessRepository consoleAccess;
     private final AdminConsoleFeatureOverrideRepository overrides;
     private final TenantConsoleRoleDefaultsService roleDefaults;
+    private final TenantRbacRepository tenantRbac;
     private final UserAccountRepository users;
     private final TenantRepository tenants;
     private final ApplicationRepository applications;
@@ -29,6 +34,7 @@ public class AdminConsoleCapabilityService {
             AdminConsoleAccessRepository consoleAccess,
             AdminConsoleFeatureOverrideRepository overrides,
             TenantConsoleRoleDefaultsService roleDefaults,
+            TenantRbacRepository tenantRbac,
             UserAccountRepository users,
             TenantRepository tenants,
             ApplicationRepository applications) {
@@ -38,6 +44,7 @@ public class AdminConsoleCapabilityService {
         this.applications = applications;
         this.overrides = overrides;
         this.roleDefaults = roleDefaults;
+        this.tenantRbac = tenantRbac;
     }
 
     public record FeatureOverride(String featureKey, String effect) {}
@@ -50,7 +57,38 @@ public class AdminConsoleCapabilityService {
             List<FeatureOverride> overrides) {}
 
     public boolean hasConsoleAccess(UUID userId) {
-        return !consoleAccess.findActiveByUserId(userId).isEmpty();
+        if (!consoleAccess.findActiveByUserId(userId).isEmpty()) {
+            return true;
+        }
+        return tenantRbac.hasAnyConsolePermission(userId);
+    }
+
+    /** Application ids reachable via assigned tenant governance roles that grant console sections. */
+    public Set<UUID> accessibleApplicationIdsFromTenantGovernance(UUID userId) {
+        UserAccount user = users.findById(userId).orElse(null);
+        if (user == null) {
+            return Set.of();
+        }
+        UUID tenantId = user.getTenantId();
+        Set<UUID> scopedAppIds = new LinkedHashSet<>();
+        boolean allApplications = false;
+        for (UUID roleId : tenantRbac.findRoleIdsByUserId(userId)) {
+            if (!roleGrantsConsoleSections(roleId)) {
+                continue;
+            }
+            List<UUID> roleAppIds = tenantRbac.findApplicationIdsByRoleId(roleId);
+            if (roleAppIds.isEmpty()) {
+                allApplications = true;
+                break;
+            }
+            scopedAppIds.addAll(roleAppIds);
+        }
+        if (allApplications) {
+            return applications.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                    .map(Application::getId)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        }
+        return scopedAppIds;
     }
 
     public List<String> effectiveFeatureKeys(UUID userId, UUID tenantId, UUID applicationId) {
@@ -93,12 +131,18 @@ public class AdminConsoleCapabilityService {
         users.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         List<AdminConsoleFeatureOverride> rows = overrides.findByUserIdAndTenantId(userId, tenantId);
         Set<ConsoleFeature> roleDefaults = baseFeaturesFromAllRoles(userId, tenantId);
-        UUID firstAppId = applications.findByTenantIdOrderByCreatedAtDesc(tenantId).stream()
-                .map(Application::getId)
-                .findFirst()
-                .orElse(null);
-        Set<ConsoleFeature> effective =
-                firstAppId != null ? effectiveFeatures(userId, tenantId, firstAppId) : Set.copyOf(roleDefaults);
+        Set<ConsoleFeature> effective = EnumSet.copyOf(roleDefaults);
+        for (AdminConsoleFeatureOverride row : rows) {
+            ConsoleFeature feature = ConsoleFeature.fromKey(row.getFeatureKey()).orElse(null);
+            if (feature == null) {
+                continue;
+            }
+            if ("GRANT".equalsIgnoreCase(row.getEffect())) {
+                effective.add(feature);
+            } else if ("DENY".equalsIgnoreCase(row.getEffect())) {
+                effective.remove(feature);
+            }
+        }
         List<FeatureOverride> overrideItems = rows.stream()
                 .sorted(Comparator.comparing(AdminConsoleFeatureOverride::getFeatureKey))
                 .map(row -> new FeatureOverride(row.getFeatureKey(), row.getEffect()))
@@ -170,6 +214,7 @@ public class AdminConsoleCapabilityService {
             }
             features.addAll(catalogFeaturesForRole(tenantId, row.getRoleType()));
         }
+        features.addAll(tenantGovernanceFeatures(userId, null));
         return features;
     }
 
@@ -190,7 +235,44 @@ public class AdminConsoleCapabilityService {
                 }
             }
         }
+        features.addAll(tenantGovernanceFeatures(userId, applicationId));
         return features;
+    }
+
+    private Set<ConsoleFeature> tenantGovernanceFeatures(UUID userId, UUID applicationId) {
+        Set<ConsoleFeature> features = EnumSet.noneOf(ConsoleFeature.class);
+        for (UUID roleId : tenantRbac.findRoleIdsByUserId(userId)) {
+            if (!roleAppliesToApplication(roleId, applicationId)) {
+                continue;
+            }
+            for (String key : tenantRbac.permissionKeysForRole(roleId)) {
+                featureFromPermissionKey(key).ifPresent(features::add);
+            }
+        }
+        return features;
+    }
+
+    private boolean roleGrantsConsoleSections(UUID roleId) {
+        return tenantRbac.permissionKeysForRole(roleId).stream()
+                .anyMatch(key -> key != null && key.startsWith(CONSOLE_PERMISSION_PREFIX));
+    }
+
+    private boolean roleAppliesToApplication(UUID roleId, UUID applicationId) {
+        if (!roleGrantsConsoleSections(roleId)) {
+            return false;
+        }
+        if (applicationId == null) {
+            return true;
+        }
+        List<UUID> scopedAppIds = tenantRbac.findApplicationIdsByRoleId(roleId);
+        return scopedAppIds.isEmpty() || scopedAppIds.contains(applicationId);
+    }
+
+    private java.util.Optional<ConsoleFeature> featureFromPermissionKey(String key) {
+        if (key == null || !key.startsWith(CONSOLE_PERMISSION_PREFIX)) {
+            return java.util.Optional.empty();
+        }
+        return ConsoleFeature.fromKey(key.substring(CONSOLE_PERMISSION_PREFIX.length()));
     }
 
     private Set<ConsoleFeature> catalogFeaturesForRole(UUID tenantId, AdminConsoleRoleType roleType) {

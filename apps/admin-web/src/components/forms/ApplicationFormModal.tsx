@@ -155,8 +155,8 @@ function ApplicationForm({
           <Input name="name" defaultValue={app?.name} placeholder="Acme Web Portal" required />
         </FieldRow>
         <FieldRow label="Tenant">
-          <Select name="tenantId" defaultValue={app?.tenantId} disabled={Boolean(app)} required>
-            {!app && <option value="">Select tenant…</option>}
+          <Select name="tenantId" defaultValue={app?.tenantId ?? tenants[0]?.id} disabled={Boolean(app)} required>
+            {!app && tenants.length === 0 && <option value="">No tenants available</option>}
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -240,7 +240,7 @@ function ApplicationForm({
           <strong>{confidential ? authMethod : "none (public client)"}</strong>
         </span>
       </div>
-      <FormActions pending={pending} close={close} submitLabel={app ? "Save changes" : "Register client"} />
+      <FormActions pending={pending} close={close} submitLabel={app ? "Save changes" : "Register client"} submitDisabled={!app && tenants.length === 0} />
     </form>
   );
 }

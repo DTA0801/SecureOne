@@ -5,11 +5,6 @@ import com.secureone.auth.account.UserPasswordService;
 import com.secureone.auth.admin.ConflictException;
 import com.secureone.auth.admin.ResourceNotFoundException;
 import com.secureone.auth.audit.AuditService;
-import com.secureone.auth.rbac.Role;
-import com.secureone.auth.rbac.RoleRepository;
-import com.secureone.auth.rbac.UserRole;
-import com.secureone.auth.rbac.UserRoleRepository;
-import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.user.UserAccount;
 import com.secureone.auth.user.UserAccountRepository;
 import java.util.LinkedHashMap;
@@ -29,11 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ApplicationSignupService {
 
     private final ApplicationRepository applications;
-    private final TenantRepository tenants;
     private final UserAccountRepository users;
-    private final UserApplicationRepository memberships;
-    private final UserRoleRepository userRoles;
-    private final RoleRepository roles;
+    private final ApplicationMembershipService memberships;
     private final UserPasswordService passwords;
     private final ApplicationEffectiveSettingsService effectiveSettings;
     private final AccountNotificationService accountNotifications;
@@ -42,22 +34,16 @@ public class ApplicationSignupService {
 
     public ApplicationSignupService(
             ApplicationRepository applications,
-            TenantRepository tenants,
             UserAccountRepository users,
-            UserApplicationRepository memberships,
-            UserRoleRepository userRoles,
-            RoleRepository roles,
+            ApplicationMembershipService memberships,
             UserPasswordService passwords,
             ApplicationEffectiveSettingsService effectiveSettings,
             AccountNotificationService accountNotifications,
             AuditService auditService,
             @Value("${secureone.public-base-url:http://localhost:9000}") String publicBaseUrl) {
         this.applications = applications;
-        this.tenants = tenants;
         this.users = users;
         this.memberships = memberships;
-        this.userRoles = userRoles;
-        this.roles = roles;
         this.passwords = passwords;
         this.effectiveSettings = effectiveSettings;
         this.accountNotifications = accountNotifications;
@@ -76,14 +62,13 @@ public class ApplicationSignupService {
         out.put("signupEnabled", enabled);
         out.put("signupEndpoint", "/api/v1/applications/" + applicationId + "/signup");
         out.put("hostedSignupPage", publicBaseUrl + "/account/signup.html?applicationId=" + applicationId);
-        out.put("loginPage", publicBaseUrl + "/login.html");
+        out.put("loginPage", publicBaseUrl + "/login.html?applicationId=" + applicationId);
         out.put(
                 "passwordPolicy",
                 com.secureone.auth.account.PasswordPolicyRules.signupPolicy(
                         effectiveSettings.passwordPolicy(applicationId)));
-        String tenantSlug = tenants.findById(app.getTenantId()).map(t -> t.getSlug()).orElse("tenant");
-        out.put("loginUsernameHint", tenantSlug + ":user@example.com");
-        out.put("account", ApplicationAccountEndpoints.manifestBlock(applicationId, tenantSlug));
+        out.put("loginEmailHint", "your@email.com");
+        out.put("account", ApplicationAccountEndpoints.manifestBlock(applicationId));
         return out;
     }
 
@@ -91,9 +76,10 @@ public class ApplicationSignupService {
         Application app = requireActiveApplication(applicationId);
         ensureSignupAllowed(applicationId);
 
-        String email = request.email().trim().toLowerCase(Locale.ROOT);
-        if (users.findByTenantIdAndEmail(app.getTenantId(), email).isPresent()) {
-            throw new ConflictException("An account with this email already exists. Try signing in or reset your password.");
+        String email = ApplicationConsumerAuth.normalizeEmail(request.email());
+        var existing = users.findByTenantIdAndEmail(app.getTenantId(), email);
+        if (existing.isPresent()) {
+            return linkExistingUserToApplication(app, applicationId, existing.get(), email);
         }
 
         UserAccount user = new UserAccount();
@@ -108,9 +94,7 @@ public class ApplicationSignupService {
 
         passwords.setPassword(user.getId(), request.password(), applicationId);
 
-        linkUserToApplication(user.getId(), applicationId);
-
-        assignDefaultRole(applicationId, user.getId());
+        memberships.ensureMemberWithDefaultRole(applicationId, user.getId());
 
         accountNotifications.sendVerificationEmail(applicationId, user, "signup");
         auditService.record(
@@ -128,9 +112,46 @@ public class ApplicationSignupService {
                 "message",
                 "Account created. Check your inbox for a verification link, then sign in with your email and password.");
         response.put("userId", user.getId().toString());
-        response.put("loginUsername", loginUsername(app, email));
+        response.put("loginEmail", email);
         response.put("emailVerificationRequired", true);
         response.put("verificationEmailSent", true);
+        response.put(
+                "devMailInboxHint",
+                "Local dev: open http://localhost:8025 (MailHog) if the message is not in your real inbox.");
+        return response;
+    }
+
+    private Map<String, Object> linkExistingUserToApplication(
+            Application app, UUID applicationId, UserAccount user, String email) {
+        if (memberships.isMember(applicationId, user.getId())) {
+            throw new ConflictException(
+                    "An account with this email already exists for this application. Try signing in or reset your password.");
+        }
+        memberships.ensureMemberWithDefaultRole(applicationId, user.getId());
+        if (!user.isEmailVerified()) {
+            accountNotifications.sendVerificationEmail(applicationId, user, "signup");
+        }
+        auditService.record(
+                app.getTenantId(),
+                applicationId,
+                email,
+                "user.application_joined",
+                "user_account",
+                user.getId(),
+                email,
+                true);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put(
+                "message",
+                "You already have an account. We granted access to "
+                        + app.getName()
+                        + " — sign in with your existing email and password.");
+        response.put("userId", user.getId().toString());
+        response.put("loginEmail", email);
+        response.put("existingAccountLinked", true);
+        response.put("emailVerificationRequired", !user.isEmailVerified());
+        response.put("verificationEmailSent", !user.isEmailVerified());
         response.put(
                 "devMailInboxHint",
                 "Local dev: open http://localhost:8025 (MailHog) if the message is not in your real inbox.");
@@ -164,32 +185,6 @@ public class ApplicationSignupService {
         return app;
     }
 
-    private void linkUserToApplication(UUID userId, UUID applicationId) {
-        if (memberships.existsByUserIdAndApplicationId(userId, applicationId)) {
-            return;
-        }
-        UserApplication link = new UserApplication();
-        link.setUserId(userId);
-        link.setApplicationId(applicationId);
-        memberships.saveAndFlush(link);
-    }
-
-    private void assignDefaultRole(UUID applicationId, UUID userId) {
-        Role role = roles.findByApplicationIdOrderByNameAsc(applicationId).stream()
-                .filter(Role::isDefaultRole)
-                .filter(r -> "Member".equalsIgnoreCase(r.getName()))
-                .findFirst()
-                .or(() -> roles.findFirstByApplicationIdAndDefaultRoleTrue(applicationId))
-                .orElse(null);
-        if (role == null) {
-            return;
-        }
-        UserRole grant = new UserRole();
-        grant.setUserId(userId);
-        grant.setRoleId(role.getId());
-        userRoles.saveAndFlush(grant);
-    }
-
     private static String resolveUsername(String email) {
         int at = email.indexOf('@');
         if (at > 0) {
@@ -211,15 +206,4 @@ public class ApplicationSignupService {
         String combined = (first + " " + last).trim();
         return combined.isBlank() ? email : combined;
     }
-
-    private String loginUsername(Application app, String email) {
-        String slug = tenants.findById(app.getTenantId()).map(t -> t.getSlug()).orElse("tenant");
-        return slug + ":" + email;
-    }
-
-    private String loginUsernameHint(Application app) {
-        String slug = tenants.findById(app.getTenantId()).map(t -> t.getSlug()).orElse("tenant");
-        return slug + ":your@email.com";
-    }
-
 }

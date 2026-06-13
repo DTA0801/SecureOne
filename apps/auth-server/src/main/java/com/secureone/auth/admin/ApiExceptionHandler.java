@@ -61,6 +61,14 @@ public class ApiExceptionHandler {
                     HttpStatus.CONFLICT,
                     "An account with this email already exists. Try signing in or reset your password.");
         }
+        if (lower.contains("application_tenant_id_slug_key") || lower.contains("(tenant_id, slug)")) {
+            return ProblemDetail.forStatusAndDetail(
+                    HttpStatus.CONFLICT, "An OAuth client with this ID already exists for this tenant.");
+        }
+        if (lower.contains("role_application_id_name_key") || lower.contains("(application_id, name)")) {
+            return ProblemDetail.forStatusAndDetail(
+                    HttpStatus.CONFLICT, "Default roles could not be seeded for this client. Try again.");
+        }
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Database constraint violation.");
     }
 
