@@ -4,121 +4,120 @@
 
 Run on **PostgreSQL**, configured at install time, while keeping the data layer **abstracted behind repository interfaces** so a different engine could be added later without rewriting domain logic.
 
-> **Current decision: PostgreSQL only.** We previously considered shipping PostgreSQL + MySQL together; that was dropped to reduce complexity (one dialect, one test matrix) and to let us use Postgres-native features like RLS and `jsonb`. The abstraction below keeps the door open without paying the multi-engine tax now.
+> **Current decision: PostgreSQL only.** See [ADR 0002](decisions/0002-database-postgresql.md).
+
+## Physical layout (implemented)
+
+```
+secureone (database)
+├── public
+│   └── flyway_schema_history     ← Flyway only; never moved to platform
+├── platform
+│   ├── tenant, application, oauth_client, application_schema
+│   ├── user_account, audit_log, platform_setting, …
+│   └── legacy app IAM rows (schema_name IS NULL)
+└── {app_slug}                    ← one schema per isolated application
+    ├── role, permission, user_application, application_setting
+    ├── rbac_group, rbac_group_role, rbac_group_member
+    └── application_log
+```
+
+Migration **V45** moves shared tables from `public` → `platform` and introduces `oauth_client` + `application.schema_name`. Per-app DDL is applied at runtime from `db/migration/application-schema/V1__app_core.sql`.
+
+Full guide: [15 — Applications & OAuth clients](15-applications-and-oauth-clients.md) · ADR: [0010](decisions/0010-platform-and-app-schemas.md).
 
 ## Why relational, why Postgres
 
-IAM data is deeply relational: users, roles, permissions, grants, hierarchical tenants, referential integrity. NoSQL is a poor fit and is out of scope. PostgreSQL adds, on top of solid relational guarantees:
+IAM data is deeply relational. PostgreSQL adds:
 
-- **Row-Level Security (RLS)** — a database-enforced tenant-isolation backstop.
+- **Row-Level Security (RLS)** — tenant-isolation backstop (where enabled).
 - **`jsonb`** — indexable flexible metadata.
-- Strong concurrency (MVCC), rich indexing, mature tooling and managed offerings.
+- **Schemas** — isolate per-application IAM without separate databases.
 
-## Layering: ORM **and** Repository (complementary, not either/or)
+## Layering: ORM **and** Repository
 
 > Editable source: [`diagrams/data-layer-layering.drawio`](diagrams/data-layer-layering.drawio)
 
 ```mermaid
 flowchart TB
-    DOM["Domain / Services"] -- "depends on" --> PORT["Repository Interfaces (ports)<br/><i>domain never imports the ORM</i>"]
+    DOM["Domain / Services"] -- "depends on" --> PORT["Repository Interfaces (ports)"]
     PORT -- "implemented by" --> IMPL["JPA / Hibernate Repository Impls"]
-    IMPL --> HIB["Hibernate (PostgreSQL dialect)"]
-    HIB --> PG[("PostgreSQL")]
-
-    classDef authc fill:#ffe6cc,stroke:#d79b00,color:#000;
-    classDef uic fill:#d5e8d4,stroke:#82b366,color:#000;
-    classDef client fill:#dae8fc,stroke:#6c8ebf,color:#000;
-    classDef store fill:#f8cecc,stroke:#b85450,color:#000;
-    class DOM authc;
-    class PORT uic;
-    class IMPL,HIB client;
-    class PG store;
+    IMPL --> HIB["Hibernate + search_path routing"]
+    HIB --> PG[("PostgreSQL<br/>platform + app schemas")]
 ```
 
-> The **ports** layer is the swap point: adding a future engine means new adapters below this line, with the domain untouched.
+- **ORM = JPA/Hibernate** on PostgreSQL.
+- **Repository pattern** — domain depends on interfaces, not Hibernate.
+- **Schema routing** — `ApplicationSchemaJpaTransactionManager` sets `SET LOCAL search_path` at transaction begin from `ApplicationSchemaContext` (set by `ApplicationSchemaFilter` for app-scoped requests).
 
-- **ORM = JPA/Hibernate.** Maps `UUID`, `jsonb`, timestamps, etc. cleanly.
-- **Repository pattern.** Domain logic depends on repository *interfaces*, not Hibernate — keeps the ORM/engine swappable and makes unit testing trivial (in-memory fakes). This is the abstraction that would let a future engine be added.
-- **Adapter pattern — only for the leaks.** If a second engine is ever added, isolate the few genuinely engine-specific spots (RLS setup, JSON querying, advisory locks) behind adapters. Do **not** pre-abstract everything now.
+### Connection defaults
 
-> **Anti-pattern to avoid:** writing raw SQL everywhere "to stay engine-agnostic." That is how projects become accidentally engine-*specific* and lose Postgres's advantages anyway.
+```dotenv
+SECUREONE_DB_URL=jdbc:postgresql://localhost:5432/secureone?currentSchema=platform
+```
+
+- JDBC `currentSchema=platform` — default connection schema for platform tables.
+- **`hibernate.default_schema` is not set** — app-scoped entities rely on `search_path` (`{app_schema}, platform`).
 
 ## Conventions (enforced)
 
 | Concern | Rule |
 |---|---|
-| IDs | UUID v7, mapped via `@JdbcTypeCode(SqlTypes.UUID)` |
-| Enums | `VARCHAR` + `@Enumerated(STRING)` (never native DB enum — keeps migrations and a future port easy) |
+| IDs | UUID, `@JdbcTypeCode(SqlTypes.UUID)` |
+| Enums | `VARCHAR` + `@Enumerated(STRING)` |
 | JSON | `@JdbcTypeCode(SqlTypes.JSON)` → `jsonb` |
-| Timestamps | UTC everywhere (`timestamptz`) |
-| Booleans | `BOOLEAN` |
-| Email/case | lowercased in app for consistent lookups/uniqueness |
-| Tenant isolation | `tenant_id` everywhere + RLS (see below) |
+| Timestamps | UTC (`timestamptz`) |
+| Email | lowercased in app |
+| Tenant isolation | `tenant_id` + RLS (where applied) |
+| App IAM isolation | dedicated schema + `search_path` |
 
-See [Data Model](04-data-model.md) for the full schema applying these rules.
+See [Data Model](04-data-model.md).
 
 ## Migrations — Flyway
 
 ```
-db/migration/
-└─ postgresql/
-   ├─ V1__core_schema.sql
-   ├─ V2__rbac.sql
-   └─ V3__rls_policies.sql
+apps/auth-server/src/main/resources/db/migration/
+├── postgresql/                    ← platform migrations (V1…V45, R__z_repair_catalog.sql)
+└── application-schema/
+    └── V1__app_core.sql          ← template DDL (not Flyway-versioned per app)
 ```
 
-- Versioned, repeatable migrations run automatically on app boot.
-- Keep DDL Hibernate-portable where it costs nothing, so a future engine port is mostly RLS + a handful of functions.
-- Liquibase (DB-agnostic XML/YAML) remains an alternative if multi-engine support is ever revived.
+- **Platform:** versioned scripts run on auth-server boot; history in **`public.flyway_schema_history`**.
+- **Per-app:** `ApplicationSchemaProvisioner` runs `CREATE SCHEMA` + `V1__app_core.sql` inside the new schema; recorded in `platform.application_schema`.
+
+```bash
+cd apps/auth-server && ./gradlew flywayMigrate   # optional; bootRun also migrates
+```
+
+Full SQL reference: [18 — Flyway migration files](18-flyway-migration-files.md). Table & schema map: [17 — Database schemas & tables](17-database-schemas-and-tables.md).
+
+### `flyway_schema_history`
+
+Flyway’s bookkeeping table. Lists which SQL scripts have run (`version`, `description`, `success`). **Stays in `public`** — do not move it to `platform` (V45 excludes it).
 
 ## Tenant isolation (defense in depth)
 
 > Editable source: [`diagrams/tenant-isolation.drawio`](diagrams/tenant-isolation.drawio)
 
-```mermaid
-flowchart TB
-    REQ["Authenticated request<br/>(carries tenant context)"] --> L1["Layer 1 — tenant_id on every tenant-scoped table"]
-    L1 --> L2["Layer 2 — Hibernate @Filter auto-applies the tenant predicate"]
-    L2 --> L3["Layer 3 — PostgreSQL Row-Level Security (DB-enforced backstop)"]
-    L3 --> DATA[("Tenant-scoped rows")]
-    CI["Layer 4 — CI cross-tenant isolation tests<br/>(tenant A must NOT read tenant B)"] -. "continuously guards" .-> DATA
+1. **Mandatory `tenant_id`** on tenant-scoped tables.
+2. **Hibernate `@Filter`** (where enabled) from authenticated tenant context.
+3. **PostgreSQL RLS** (where policies exist) as a DB backstop.
+4. **CI cross-tenant isolation tests** (target).
 
-    classDef client fill:#dae8fc,stroke:#6c8ebf,color:#000;
-    classDef uic fill:#d5e8d4,stroke:#82b366,color:#000;
-    classDef authc fill:#ffe6cc,stroke:#d79b00,color:#000;
-    classDef store fill:#f8cecc,stroke:#b85450,color:#000;
-    classDef sec fill:#e1d5e7,stroke:#9673a6,color:#000;
-    class REQ client;
-    class L1,L2 uic;
-    class L3 authc;
-    class DATA store;
-    class CI sec;
-```
-
-PostgreSQL lets us enforce isolation at multiple layers:
-
-1. **Mandatory `tenant_id`** on every tenant-scoped table.
-2. **Hibernate `@Filter`** auto-enabled per request from the authenticated tenant — queries cannot omit the predicate.
-3. **PostgreSQL RLS** policies keyed on a per-connection setting (e.g. `SET app.tenant_id = ...`) — a database-enforced backstop even if application code has a bug.
-4. **Automated cross-tenant isolation tests** in CI (the highest-value test suite here).
-
-The tenant-resolution strategy is pluggable so enterprise tiers can later use **schema-per-tenant** or **database-per-tenant** without rewriting domain code.
+**Application isolation** adds schema-level separation for IAM tables (in addition to `application_id` predicates).
 
 ## Connection management & scale
 
-- Connection pooling (**HikariCP** in Spring; **PgBouncer** in front of Postgres at scale).
-  - Note: with RLS using a per-connection `SET`, use session-level pooling (or set/reset within the transaction) so the tenant setting doesn't leak across pooled connections.
-- **Read replicas** for read-heavy admin/audit queries.
-- Cache hot, rarely-changing data (JWKS, discovery, tenant config) in **Redis**.
+- **HikariCP** in Spring; **PgBouncer** at scale.
+- With RLS or `SET LOCAL search_path`, use session-level pooling or reset per transaction.
+- Read replicas for admin/audit reads; Redis for sessions and cache.
 
-## Install-time configuration (how it works)
+## Install-time configuration
 
-At install the operator sets the connection string (see [Installation](09-installation.md)):
-
-```
-SECUREONE_DB_URL=jdbc:postgresql://host:5432/secureone
-SECUREONE_DB_USERNAME=...
+```dotenv
+SECUREONE_DB_URL=jdbc:postgresql://host:5432/secureone?currentSchema=platform
+SECUREONE_DB_USERNAME=secureone
 SECUREONE_DB_PASSWORD=...
 ```
 
-Hibernate uses the PostgreSQL dialect and Flyway applies the `postgresql` migrations automatically.
+See [Installation](09-installation.md).

@@ -3,7 +3,16 @@
 Every architecture/flow diagram exists in two forms:
 
 - **Mermaid** — embedded inline in the relevant doc; renders automatically on GitHub.
-- **`.drawio`** — editable source in this folder; open in [draw.io / diagrams.net](https://app.diagrams.net) or the **VS Code "Draw.io Integration"** extension (`hediet.vscode-drawio`). Export to PNG/SVG for slide decks.
+- **`.drawio`** — editable source in this folder; **view inline in SecureOne Confluence** on the parent doc page (e.g. [Architecture](../03-architecture.md) → `/confluence/architecture`), or edit in [draw.io / diagrams.net](https://app.diagrams.net) / VS Code Draw.io extension.
+
+## Viewing in SecureOne Confluence
+
+1. Open **SecureOne Confluence** from the admin sidebar (new tab) → http://localhost:3001/confluence
+2. Go to the doc listed in **Used in** below (or open **Diagrams** and click a row — links to that doc).
+3. Scroll to the section with **Editable source** — the draw.io viewer is embedded inline below the link.
+4. Download the `.drawio` source from the link or `GET /api/confluence/assets/diagrams/{filename}.drawio` (session required).
+
+> Legacy `/confluence/diagram/diagrams/{file}.drawio` URLs redirect to the parent doc page.
 
 ## Index
 
@@ -20,6 +29,8 @@ Every architecture/flow diagram exists in two forms:
 | Enterprise capability map | [`enterprise-capability-map.drawio`](enterprise-capability-map.drawio) | [10-enterprise](../10-enterprise.md) |
 | Configuration inheritance | [`config-inheritance.drawio`](config-inheritance.drawio) | [11-admin-control](../11-admin-control.md) |
 | Roles & permissions (multi-role + composite) | [`roles-permissions.drawio`](roles-permissions.drawio) | [04-data-model](../04-data-model.md) |
+
+**Schema layout** (platform + per-app schemas) is documented in Mermaid/text in [06-database](../06-database.md) and [15-applications-and-oauth-clients](../15-applications-and-oauth-clients.md) — no separate draw.io yet.
 
 ## Editing notes
 

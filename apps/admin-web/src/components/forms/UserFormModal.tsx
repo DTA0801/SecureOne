@@ -61,6 +61,7 @@ export function UserFormModal({
           tenantId={tenantId}
           applicationId={applicationId}
           lockToApp={lockToApp}
+          defaultStatus={defaultStatus}
           onCreated={onCreated}
           onUserUpdated={onUserUpdated}
           close={close}

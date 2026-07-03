@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,6 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 public class InfoController {
+
+    private final String adminWebUrl;
+
+    public InfoController(@Value("${secureone.admin-web-url:http://localhost:3001}") String adminWebUrl) {
+        this.adminWebUrl = adminWebUrl.endsWith("/") ? adminWebUrl.substring(0, adminWebUrl.length() - 1) : adminWebUrl;
+    }
 
     @Operation(summary = "Service info", description = "Public metadata including links to OpenAPI documentation.")
     @GetMapping("/info")
@@ -24,6 +31,9 @@ public class InfoController {
         out.put("openapi", "/v3/api-docs");
         out.put("swaggerUi", "/swagger-ui/index.html");
         out.put("docs", "/docs");
+        out.put("confluence", adminWebUrl + "/confluence");
+        out.put("confluenceApi", adminWebUrl + "/api/confluence");
+        out.put("confluenceDiscovery", "/api/v1/confluence");
         return out;
     }
 }

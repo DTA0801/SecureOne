@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { SUPER_ADMIN_NAV, TENANT_NAV_GROUP, tenantNavGroupForOperator } from "./nav";
 import { SidebarNavGroup } from "./SidebarNavGroup";
+import { SidebarNavItem } from "./SidebarNavItem";
 import { cn } from "@/lib/cn";
 import type { SidebarNavGroupConfig } from "./nav";
 
@@ -57,21 +58,13 @@ export function PlatformAdminNav({
         children={tenantGroup.children}
         pathname={pathname}
       />
-      {rest.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "rounded-lg px-2.5 py-2 text-sm transition-colors",
-              active ? "bg-brand font-medium text-on-brand" : "text-soft hover:bg-ui-elevated",
-            )}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+      {rest.map((item) => (
+        <SidebarNavItem
+          key={item.href}
+          item={item}
+          active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+        />
+      ))}
     </nav>
   );
 }

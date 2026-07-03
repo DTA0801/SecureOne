@@ -1,8 +1,7 @@
 package com.secureone.auth.application;
 
-import com.secureone.auth.util.JsonMaps;
-import java.util.Locale;
-import java.util.Map;
+import com.secureone.auth.oauth.OAuthClient;
+import com.secureone.auth.oauth.OAuthClientRepository;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,9 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class ApplicationOAuthClientResolver {
 
+    private final OAuthClientRepository oauthClients;
     private final ApplicationRepository applications;
 
-    public ApplicationOAuthClientResolver(ApplicationRepository applications) {
+    public ApplicationOAuthClientResolver(
+            OAuthClientRepository oauthClients, ApplicationRepository applications) {
+        this.oauthClients = oauthClients;
         this.applications = applications;
     }
 
@@ -22,20 +24,18 @@ public class ApplicationOAuthClientResolver {
         if (clientId == null || clientId.isBlank()) {
             return Optional.empty();
         }
-        String normalized = clientId.trim();
-        return applications.findAll().stream()
-                .filter(this::isActive)
-                .filter(app -> normalized.equals(resolveOAuthClientId(app)))
-                .findFirst();
+        return oauthClients
+                .findByClientId(clientId.trim())
+                .filter(this::isActiveClient)
+                .flatMap(client -> applications.findById(client.getApplicationId()))
+                .filter(this::isActiveApplication);
     }
 
-    private boolean isActive(Application app) {
+    private boolean isActiveClient(OAuthClient client) {
+        return "ACTIVE".equalsIgnoreCase(client.getStatus());
+    }
+
+    private boolean isActiveApplication(Application app) {
         return "ACTIVE".equalsIgnoreCase(app.getStatus());
-    }
-
-    static String resolveOAuthClientId(Application app) {
-        Map<String, Object> config = app.getConfig() != null ? app.getConfig() : Map.of();
-        String clientId = JsonMaps.stringVal(config, "clientId", app.getSlug());
-        return clientId != null && !clientId.isBlank() ? clientId.trim() : app.getSlug();
     }
 }

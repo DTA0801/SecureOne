@@ -3,6 +3,8 @@ export type NavItem = {
   href: string;
   description: string;
   superAdminOnly?: boolean;
+  /** Open in a new browser tab (e.g. documentation). */
+  openInNewTab?: boolean;
 };
 
 export type SidebarNavChild = {
@@ -60,12 +62,25 @@ export const SUPER_ADMIN_NAV: NavItem[] = [
     description: "Enterprise client registry",
     superAdminOnly: true,
   },
+  {
+    label: "SecureOne Confluence",
+    href: "/confluence",
+    description: "Platform & integration documentation",
+    superAdminOnly: true,
+    openInNewTab: true,
+  },
   { label: "Platform settings", href: "/settings", description: "Global defaults", superAdminOnly: true },
 ];
 
-/** Tenant operator nav — application console only (assigned apps via header dropdown). */
+/** Tenant operator nav — application console + documentation. */
 export const TENANT_OPERATOR_NAV: NavItem[] = [
   { label: "Application console", href: "/app", description: "Manage users, roles, and settings per application" },
+  {
+    label: "SecureOne Confluence",
+    href: "/confluence",
+    description: "Setup, architecture, API integration",
+    openInNewTab: true,
+  },
 ];
 
 /** Legacy platform nav (picker + super admin) — used when no application context. */

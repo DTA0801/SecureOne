@@ -5,8 +5,8 @@
 | Component | Tech | Responsibility |
 |---|---|---|
 | **auth-server** | Spring Boot + Spring Authorization Server | OIDC/OAuth endpoints, token issuance, JWKS, user/tenant/role APIs, admin APIs |
-| **admin-web** | Next.js | Admin dashboard + hosted login/consent/MFA pages |
-| **docs-site** | Next.js/Nextra + Scalar | Public developer docs + OpenAPI rendering |
+| **admin-web** | Next.js | Admin dashboard, hosted login/consent/MFA pages, **SecureOne Confluence** (in-app docs) |
+| **docs-site** | Next.js/Nextra + Scalar | Public developer docs + OpenAPI rendering (planned) |
 | **sdk-js** | TypeScript | Client SDK for integrating applications |
 | **PostgreSQL** | RDBMS | Durable system of record |
 | **Redis** | Cache | Sessions, refresh-token store + revocation, rate limiting, MFA challenges |
@@ -125,6 +125,23 @@ sequenceDiagram
 ```
 
 Full standards detail: [Auth Standards](05-auth-standards.md).
+
+## Application schema isolation
+
+IAM data for each application product can live in a **dedicated PostgreSQL schema** (derived from the application slug). Shared platform data (tenants, application registry, `oauth_client`, user accounts) stays in the **`platform`** schema.
+
+```
+secureone DB
+├── public.flyway_schema_history
+├── platform.*          ← tenants, applications, oauth_client, identity, governance
+└── {app_slug}.*        ← per-app role, permission, settings, groups (when isolated)
+```
+
+- **New applications** — schema provisioned automatically on register.
+- **Legacy applications** — `schema_name = NULL`; IAM remains in `platform.*` until **isolate** (super-admin).
+- **Routing** — `search_path` set at transaction begin for app-scoped API paths and OAuth `client_id` resolution.
+
+See [Applications & OAuth clients](15-applications-and-oauth-clients.md) and [Database Strategy](06-database.md).
 
 ## Multi-tenancy & isolation
 

@@ -8,6 +8,7 @@ import { CopyValue } from "@/components/ui/CopyValue";
 import { FieldRow, Input, Textarea } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { getApplication } from "@/lib/api/applications";
+import { listOAuthClients } from "@/lib/api/oauth-clients";
 import {
   fetchClientIntegration,
   saveClientIntegration,
@@ -16,9 +17,11 @@ import {
 } from "@/lib/api/application-settings";
 import { runIntegrationHealthChecks, type IntegrationHealthResult } from "@/lib/api/integration-health";
 import { ApiReferenceList } from "@/components/settings/ApiReferenceList";
+import { IsolateApplicationButton } from "@/components/applications/IsolateApplicationButton";
+import { useAdminContext } from "@/components/AdminContextProvider";
 import { AUTH_SERVER_URL } from "@/lib/config";
 import { buildIntegrationApiCatalog } from "@/lib/integration-api-catalog";
-import type { Application } from "@/lib/types";
+import type { ApplicationProduct, OAuthClient } from "@/lib/types";
 import type { SettingsTabId } from "@/components/settings/SettingsTabs";
 
 const DEFAULT_CONFIG: ClientIntegrationConfig = {
@@ -90,8 +93,10 @@ export function ApplicationIntegrationSettings({
   onOpenTab?: (tab: SettingsTabId) => void;
 }) {
   const { toast } = useToast();
+  const adminContext = useAdminContext();
   const [config, setConfig] = useState<ClientIntegrationConfig>(DEFAULT_CONFIG);
-  const [app, setApp] = useState<Application | null>(null);
+  const [app, setApp] = useState<ApplicationProduct | null>(null);
+  const [oauthClients, setOauthClients] = useState<OAuthClient[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [health, setHealth] = useState<IntegrationHealthResult[] | null>(null);
   const [checking, setChecking] = useState(false);
@@ -114,9 +119,10 @@ export function ApplicationIntegrationSettings({
   const reload = useCallback(async () => {
     setLoaded(false);
     try {
-      const [integration, application] = await Promise.all([
+      const [integration, application, clients] = await Promise.all([
         fetchClientIntegration(applicationId),
         getApplication(applicationId),
+        listOAuthClients({ applicationId }),
       ]);
       setConfig({
         ...DEFAULT_CONFIG,
@@ -125,6 +131,7 @@ export function ApplicationIntegrationSettings({
         checklist: { ...DEFAULT_CONFIG.checklist, ...integration.checklist },
       });
       setApp(application);
+      setOauthClients(clients);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Failed to load integration settings", "error");
     } finally {
@@ -179,7 +186,7 @@ export function ApplicationIntegrationSettings({
 
   const catalog = buildIntegrationApiCatalog({
     applicationId,
-    clientId: app?.clientId,
+    clientId: oauthClients[0]?.clientId,
   });
   const filteredCatalog = catalog.filter(
     (e) =>
@@ -203,6 +210,24 @@ export function ApplicationIntegrationSettings({
         </Link>
         .
       </p>
+
+      <Card padded={false}>
+        <CardHeader
+          title="Database schema"
+          action={
+            adminContext.platformSuperAdmin && app ? (
+              <IsolateApplicationButton application={app} />
+            ) : undefined
+          }
+        />
+        <div className="p-4">
+          <p className="text-sm text-muted">
+            {app?.schemaName
+              ? `IAM data for this application lives in the dedicated PostgreSQL schema ${app.schemaName}.`
+              : "Legacy layout: IAM data still shares the platform schema. Platform super-admins can isolate it into a dedicated schema."}
+          </p>
+        </div>
+      </Card>
 
       <Card padded={false}>
         <CardHeader title="Authentication UI" />
@@ -247,8 +272,19 @@ export function ApplicationIntegrationSettings({
             <div className="rounded-lg border border-ui bg-black/5 px-3 py-2 dark:bg-white/5">
               <p className="text-xs text-muted">OAuth client ID</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <code className="font-mono text-sm">{app.clientId}</code>
-                <CopyValue value={app.clientId} />
+                {oauthClients[0] ? (
+                  <>
+                    <code className="font-mono text-sm">{oauthClients[0].clientId}</code>
+                    <CopyValue value={oauthClients[0].clientId} />
+                  </>
+                ) : (
+                  <span className="text-sm text-muted">
+                    No OAuth client registered —{" "}
+                    <Link href="/applications" className="text-brand hover:underline">
+                      register one
+                    </Link>
+                  </span>
+                )}
               </div>
               <p className="mt-2 text-xs text-muted">Application UUID</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">

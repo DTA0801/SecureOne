@@ -9,7 +9,7 @@ const COPY: Record<
 > = {
   platform_admin: {
     title: "Register an OAuth client first",
-    body: "The application console is unavailable until at least one OAuth client exists in the registry. Create a tenant if needed, then register a client.",
+    body: "The application console is unavailable until at least one OAuth client exists. Create a tenant and application product if needed, then register an OAuth client for that application.",
     showRegistryLink: true,
   },
   tenant_super_admin: {

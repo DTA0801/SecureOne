@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/Field";
 import { Select } from "@/components/ui/Field";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
 import { statusTone } from "@/lib/status";
-import type { Application, AppType, Tenant } from "@/lib/types";
+import type { ApplicationProduct, AppType, OAuthClient, Tenant } from "@/lib/types";
 import { NoOAuthClientsPanel } from "@/components/applications/NoOAuthClientsPanel";
 
 const TYPE_LABEL: Record<AppType, string> = {
@@ -19,36 +19,43 @@ const TYPE_LABEL: Record<AppType, string> = {
 };
 
 export function ClientRegistry({
-  apps,
+  clients,
   tenants,
+  applications,
 }: {
-  apps: Application[];
+  clients: OAuthClient[];
   tenants: Tenant[];
+  applications: ApplicationProduct[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [tenantFilter, setTenantFilter] = useState("");
+  const [applicationFilter, setApplicationFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
   const tenantMap = useMemo(() => new Map(tenants.map((t) => [t.id, t.name])), [tenants]);
+  const applicationMap = useMemo(
+    () => new Map(applications.map((a) => [a.id, a.name])),
+    [applications],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return apps.filter((a) => {
-      if (tenantFilter && a.tenantId !== tenantFilter) return false;
-      if (typeFilter && a.type !== typeFilter) return false;
-      if (statusFilter && a.status !== statusFilter) return false;
+    return clients.filter((c) => {
+      if (tenantFilter && c.tenantId !== tenantFilter) return false;
+      if (applicationFilter && c.applicationId !== applicationFilter) return false;
+      if (typeFilter && c.type !== typeFilter) return false;
+      if (statusFilter && c.status !== statusFilter) return false;
       if (!q) return true;
       return (
-        a.name.toLowerCase().includes(q) ||
-        a.clientId.toLowerCase().includes(q) ||
-        (a.description ?? "").toLowerCase().includes(q)
+        c.applicationName.toLowerCase().includes(q) ||
+        c.clientId.toLowerCase().includes(q)
       );
     });
-  }, [apps, query, tenantFilter, typeFilter, statusFilter]);
+  }, [clients, query, tenantFilter, applicationFilter, typeFilter, statusFilter]);
 
-  if (apps.length === 0) {
+  if (clients.length === 0) {
     return (
       <NoOAuthClientsPanel
         variant="platform_admin"
@@ -65,7 +72,7 @@ export function ClientRegistry({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Name, client ID, description…"
+            placeholder="Client ID, application name…"
           />
         </div>
         <div className="min-w-[160px]">
@@ -75,6 +82,17 @@ export function ClientRegistry({
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="min-w-[160px]">
+          <label className="mb-1 block text-xs font-medium text-muted">Application</label>
+          <Select value={applicationFilter} onChange={(e) => setApplicationFilter(e.target.value)}>
+            <option value="">All applications</option>
+            {applications.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
               </option>
             ))}
           </Select>
@@ -104,6 +122,7 @@ export function ClientRegistry({
       <Table>
         <THead>
           <tr>
+            <TH>OAuth client</TH>
             <TH>Application</TH>
             <TH>Tenant</TH>
             <TH>Type</TH>
@@ -115,35 +134,43 @@ export function ClientRegistry({
         <TBody>
           {filtered.length === 0 ? (
             <tr>
-              <TD colSpan={6} className="py-8 text-center text-sm text-muted">
+              <TD colSpan={7} className="py-8 text-center text-sm text-muted">
                 No clients match your filters.
               </TD>
             </tr>
           ) : (
-            filtered.map((a) => (
+            filtered.map((c) => (
               <TR
-                key={a.id}
+                key={c.id}
                 className="cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                onClick={() => router.push(`/applications/${a.id}`)}
+                onClick={() => router.push(`/applications/${c.id}`)}
               >
                 <TD>
-                  <span className="link-brand font-medium">{a.name}</span>
-                  <p className="font-mono text-xs text-faint">{a.clientId}</p>
-                  {a.description && <p className="mt-0.5 text-xs text-muted line-clamp-1">{a.description}</p>}
+                  <span className="link-brand font-medium">{c.clientId}</span>
+                  <p className="font-mono text-xs text-faint">{c.id}</p>
                 </TD>
-                <TD className="text-muted">{tenantMap.get(a.tenantId) ?? a.tenantId}</TD>
                 <TD>
-                  <Badge tone="indigo">{TYPE_LABEL[a.type]}</Badge>
+                  <Link
+                    href={`/app/${c.applicationId}/users`}
+                    className="text-sm text-brand hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {applicationMap.get(c.applicationId) ?? c.applicationName}
+                  </Link>
+                </TD>
+                <TD className="text-muted">{tenantMap.get(c.tenantId) ?? c.tenantId}</TD>
+                <TD>
+                  <Badge tone="indigo">{TYPE_LABEL[c.type]}</Badge>
                 </TD>
                 <TD>
                   <div className="flex flex-col gap-0.5 text-xs text-muted">
-                    <span>{a.confidential ? "Confidential" : "Public"}</span>
-                    {a.pkceRequired && <span>PKCE required</span>}
+                    <span>{c.confidential ? "Confidential" : "Public"}</span>
+                    {c.pkceRequired && <span>PKCE required</span>}
                   </div>
                 </TD>
                 <TD>
                   <div className="flex max-w-[200px] flex-wrap gap-1">
-                    {a.grantTypes.slice(0, 3).map((g) => (
+                    {c.grantTypes.slice(0, 3).map((g) => (
                       <span
                         key={g}
                         className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-[10px] dark:bg-white/10"
@@ -151,14 +178,14 @@ export function ClientRegistry({
                         {g.replace("urn:ietf:params:oauth:grant-type:", "")}
                       </span>
                     ))}
-                    {a.grantTypes.length > 3 && (
-                      <span className="text-[10px] text-faint">+{a.grantTypes.length - 3}</span>
+                    {c.grantTypes.length > 3 && (
+                      <span className="text-[10px] text-faint">+{c.grantTypes.length - 3}</span>
                     )}
                   </div>
                 </TD>
                 <TD>
-                  <Badge tone={statusTone(a.status)} dot className="capitalize">
-                    {a.status}
+                  <Badge tone={statusTone(c.status)} dot className="capitalize">
+                    {c.status}
                   </Badge>
                 </TD>
               </TR>

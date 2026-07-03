@@ -226,9 +226,9 @@ export function ClientThemePreview({
           <div
             className="rounded-lg border px-3 py-1.5 text-sm"
             style={{
-              background: appearance.dropdownBackground,
-              color: appearance.dropdownText,
-              borderColor: appearance.dropdownBorder,
+              background: appearance.surfaceColor,
+              color: appearance.textColor,
+              borderColor: appearance.inputBorder,
             }}
           >
             Dropdown item
@@ -236,8 +236,8 @@ export function ClientThemePreview({
           <span
             className="rounded px-2 py-1 text-xs"
             style={{
-              background: appearance.tooltipBackground,
-              color: appearance.tooltipText,
+              background: appearance.surfaceColor,
+              color: appearance.mutedText,
             }}
           >
             Tooltip

@@ -2,10 +2,10 @@ package com.secureone.auth.config.oauth;
 
 import com.secureone.auth.application.Application;
 import com.secureone.auth.application.ApplicationRepository;
-import com.secureone.auth.util.JsonMaps;
+import com.secureone.auth.oauth.OAuthClient;
+import com.secureone.auth.oauth.OAuthClientRepository;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
@@ -18,16 +18,20 @@ import org.springframework.security.oauth2.server.authorization.settings.TokenSe
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Loads OAuth clients from application records (admin-registered OAuth apps). */
+/** Loads OAuth clients from oauth_client records (admin-registered credentials). */
 @Service
 @Transactional(readOnly = true)
 public class ApplicationRegisteredClientRepository implements RegisteredClientRepository {
 
+    private final OAuthClientRepository oauthClients;
     private final ApplicationRepository applications;
     private final PasswordEncoder passwordEncoder;
 
     public ApplicationRegisteredClientRepository(
-            ApplicationRepository applications, PasswordEncoder passwordEncoder) {
+            OAuthClientRepository oauthClients,
+            ApplicationRepository applications,
+            PasswordEncoder passwordEncoder) {
+        this.oauthClients = oauthClients;
         this.applications = applications;
         this.passwordEncoder = passwordEncoder;
     }
@@ -35,13 +39,13 @@ public class ApplicationRegisteredClientRepository implements RegisteredClientRe
     @Override
     public void save(RegisteredClient registeredClient) {
         throw new UnsupportedOperationException(
-                "OAuth clients are managed via the admin Applications API.");
+                "OAuth clients are managed via the admin OAuth Clients API.");
     }
 
     @Override
     public RegisteredClient findById(String id) {
         try {
-            return applications
+            return oauthClients
                     .findById(UUID.fromString(id))
                     .filter(this::isActive)
                     .map(this::toRegisteredClient)
@@ -56,51 +60,56 @@ public class ApplicationRegisteredClientRepository implements RegisteredClientRe
         if (clientId == null || clientId.isBlank()) {
             return null;
         }
-        String normalized = clientId.trim();
-        return applications.findAll().stream()
+        return oauthClients
+                .findByClientId(clientId.trim())
                 .filter(this::isActive)
-                .filter(app -> normalized.equals(resolveClientId(app)))
                 .map(this::toRegisteredClient)
-                .findFirst()
                 .orElse(null);
     }
 
-    private boolean isActive(Application app) {
-        return "ACTIVE".equalsIgnoreCase(app.getStatus());
+    private boolean isActive(OAuthClient client) {
+        return "ACTIVE".equalsIgnoreCase(client.getStatus())
+                && applications
+                        .findById(client.getApplicationId())
+                        .map(app -> "ACTIVE".equalsIgnoreCase(app.getStatus()))
+                        .orElse(false);
     }
 
-    private RegisteredClient toRegisteredClient(Application app) {
-        Map<String, Object> config = app.getConfig() != null ? app.getConfig() : Map.of();
-        String clientId = resolveClientId(app);
-        String type = JsonMaps.stringVal(config, "type", "web").toLowerCase(Locale.ROOT);
-        boolean pkceRequired = JsonMaps.boolVal(config, "pkceRequired", !"m2m".equals(type));
-        String authMethod = JsonMaps.stringVal(config, "tokenEndpointAuthMethod", defaultAuthMethod(type));
+    private RegisteredClient toRegisteredClient(OAuthClient client) {
+        Application app = applications.findById(client.getApplicationId()).orElse(null);
+        String clientName = app != null ? app.getName() : client.getClientName();
+        String type = client.getType() != null ? client.getType().toLowerCase(Locale.ROOT) : "web";
+        boolean pkceRequired = client.isRequirePkce();
+        String authMethod = client.getTokenEndpointAuthMethod() != null
+                ? client.getTokenEndpointAuthMethod()
+                : defaultAuthMethod(type);
         boolean publicClient = "none".equalsIgnoreCase(authMethod);
 
-        RegisteredClient.Builder builder = RegisteredClient.withId(app.getId().toString())
-                .clientId(clientId)
-                .clientName(app.getName());
+        RegisteredClient.Builder builder = RegisteredClient.withId(client.getId().toString())
+                .clientId(client.getClientId())
+                .clientName(clientName);
 
-        for (String grant : JsonMaps.stringList(config, "grantTypes")) {
+        List<String> grantTypes = client.getGrantTypes();
+        for (String grant : grantTypes) {
             mapGrantType(grant).ifPresent(builder::authorizationGrantType);
         }
-        if (JsonMaps.stringList(config, "grantTypes").isEmpty()) {
+        if (grantTypes.isEmpty()) {
             builder.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE);
             builder.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN);
         }
 
-        for (String uri : JsonMaps.stringList(config, "redirectUris")) {
-            if (!uri.isBlank()) {
+        for (String uri : client.getRedirectUris()) {
+            if (uri != null && !uri.isBlank()) {
                 builder.redirectUri(uri.trim());
             }
         }
-        for (String uri : JsonMaps.stringList(config, "postLogoutRedirectUris")) {
-            if (!uri.isBlank()) {
+        for (String uri : client.getPostLogoutRedirectUris()) {
+            if (uri != null && !uri.isBlank()) {
                 builder.postLogoutRedirectUri(uri.trim());
             }
         }
 
-        List<String> scopes = JsonMaps.stringList(config, "scopes");
+        List<String> scopes = client.getScopes();
         if (scopes.isEmpty()) {
             builder.scope("openid").scope("profile").scope("email");
         } else {
@@ -112,7 +121,7 @@ public class ApplicationRegisteredClientRepository implements RegisteredClientRe
         } else {
             builder.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
             builder.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST);
-            String secret = JsonMaps.stringVal(config, "clientSecret", "");
+            String secret = client.getClientSecret() != null ? client.getClientSecret() : "";
             if (!secret.isBlank()) {
                 builder.clientSecret(encodeSecret(secret));
             }
@@ -127,12 +136,6 @@ public class ApplicationRegisteredClientRepository implements RegisteredClientRe
                 .build());
 
         return builder.build();
-    }
-
-    private String resolveClientId(Application app) {
-        Map<String, Object> config = app.getConfig() != null ? app.getConfig() : Map.of();
-        String clientId = JsonMaps.stringVal(config, "clientId", app.getSlug());
-        return clientId != null && !clientId.isBlank() ? clientId.trim() : app.getSlug();
     }
 
     private String encodeSecret(String secret) {

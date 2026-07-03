@@ -3,6 +3,7 @@ package com.secureone.auth.admin;
 import com.secureone.auth.admin.AdminAccessService.ApplicationSummary;
 import com.secureone.auth.admin.console.AdminConsoleCapabilityService;
 import com.secureone.auth.application.ApplicationRepository;
+import com.secureone.auth.oauth.OAuthClientRepository;
 import com.secureone.auth.tenant.Tenant;
 import com.secureone.auth.tenant.TenantRepository;
 import com.secureone.auth.user.UserAccount;
@@ -31,6 +32,7 @@ public class AdminContextController {
     private final AdminConsoleCapabilityService consoleCapabilities;
     private final AdminOperatorResolver operators;
     private final ApplicationRepository applications;
+    private final OAuthClientRepository oauthClients;
     private final TenantRepository tenants;
     private final UserAccountRepository users;
 
@@ -40,6 +42,7 @@ public class AdminContextController {
             AdminConsoleCapabilityService consoleCapabilities,
             AdminOperatorResolver operators,
             ApplicationRepository applications,
+            OAuthClientRepository oauthClients,
             TenantRepository tenants,
             UserAccountRepository users) {
         this.access = access;
@@ -47,6 +50,7 @@ public class AdminContextController {
         this.consoleCapabilities = consoleCapabilities;
         this.operators = operators;
         this.applications = applications;
+        this.oauthClients = oauthClients;
         this.tenants = tenants;
         this.users = users;
     }
@@ -142,7 +146,7 @@ public class AdminContextController {
                 tenantSlug,
                 tenantName,
                 userId,
-                applications.count(),
+                oauthClients.count(),
                 items);
     }
 

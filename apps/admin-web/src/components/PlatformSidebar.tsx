@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PLATFORM_NAV, SUPER_ADMIN_NAV, TENANT_OPERATOR_NAV } from "./nav";
 import { PlatformAdminNav } from "./PlatformAdminNav";
+import { SidebarNavItem } from "./SidebarNavItem";
 import { useAdminContext } from "./AdminContextProvider";
 import { isTenantSuperAdmin } from "@/lib/operator-access";
 import { APP_NAME, APP_TAGLINE } from "@/lib/config";
-import { cn } from "@/lib/cn";
 import { buildAppPath } from "@/lib/app-routes";
 import type { ApplicationContextItem } from "@/lib/api/context";
 import { hasOAuthClients } from "@/lib/oauth-client-registry";
@@ -57,21 +57,17 @@ export function PlatformSidebar({
       <nav className="flex flex-1 flex-col gap-0.5">
         {items.map((item) => {
           const href = item.href === "/app" ? defaultAppHref : item.href;
-          const active =
-            item.href === "/app"
-              ? pathname.startsWith("/app/")
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
-            <Link
+            <SidebarNavItem
               key={item.href}
+              item={item}
               href={href}
-              className={cn(
-                "rounded-lg px-2.5 py-2 text-sm transition-colors",
-                active ? "bg-brand font-medium text-on-brand" : "text-soft hover:bg-ui-elevated",
-              )}
-            >
-              {item.label}
-            </Link>
+              active={
+                item.href === "/app"
+                  ? pathname.startsWith("/app/")
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`)
+              }
+            />
           );
         })}
         {showPlatformAdmin && (

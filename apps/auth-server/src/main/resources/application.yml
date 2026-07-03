@@ -3,7 +3,7 @@ spring:
     name: auth-server
 
   datasource:
-    url: ${SECUREONE_DB_URL:jdbc:postgresql://localhost:5432/secureone}
+    url: ${SECUREONE_DB_URL:jdbc:postgresql://localhost:5432/secureone?currentSchema=platform}
     username: ${SECUREONE_DB_USERNAME:secureone}
     password: ${SECUREONE_DB_PASSWORD:secureone}
 
@@ -51,6 +51,7 @@ server:
 
 secureone:
   public-base-url: ${SECUREONE_PUBLIC_BASE_URL:http://localhost:9000}
+  admin-web-url: ${SECUREONE_ADMIN_WEB_URL:http://localhost:3001}
   # When MailHog/SMTP is down, log verification/reset links to the auth-server console (dev only).
   mail:
     log-links-when-smtp-unavailable: ${SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE:true}

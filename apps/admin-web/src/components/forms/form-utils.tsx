@@ -15,11 +15,16 @@ export function useCloseOnSuccess(
   useEffect(() => {
     if (!state.ok) return;
     void (async () => {
+      if (state.createdClientSecret) {
+        await onSuccess?.(state);
+        router.refresh();
+        return;
+      }
       await onSuccess?.(state);
       router.refresh();
       close();
     })();
-  }, [state.ok, state.createdRoleId, state.createdGroupId, state.createdUserId, close, router, onSuccess, state]);
+  }, [state.ok, state.createdRoleId, state.createdGroupId, state.createdUserId, state.createdClientSecret, close, router, onSuccess, state]);
 }
 
 export function FormError({ state }: { state?: FormState }) {

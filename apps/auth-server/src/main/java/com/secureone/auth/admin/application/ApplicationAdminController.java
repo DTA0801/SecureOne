@@ -2,9 +2,7 @@ package com.secureone.auth.admin.application;
 
 import com.secureone.auth.admin.AdminAccessService;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationCreateRequest;
-import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationCreateResult;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationResponse;
-import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationSecretResponse;
 import com.secureone.auth.admin.application.ApplicationAdminDtos.ApplicationUpdateRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -24,7 +22,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Admin — applications", description = "Register and manage OAuth/OIDC client applications")
+@Tag(name = "Admin — applications", description = "Register and manage application products (console scope)")
 @SecurityRequirement(name = "adminHttpBasic")
 @RestController
 @RequestMapping("/api/admin/v1/applications")
@@ -63,23 +61,31 @@ public class ApplicationAdminController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApplicationCreateResult create(@Valid @RequestBody ApplicationCreateRequest request) {
+    public ApplicationResponse create(
+            Authentication authentication, @Valid @RequestBody ApplicationCreateRequest request) {
+        access.requireSuperAdmin(authentication);
         return service.create(request);
     }
 
-    @PostMapping("/{id}/rotate-secret")
-    public ApplicationSecretResponse rotateSecret(@PathVariable UUID id) {
-        return service.rotateClientSecret(id);
-    }
-
     @PutMapping("/{id}")
-    public ApplicationResponse update(@PathVariable UUID id, @Valid @RequestBody ApplicationUpdateRequest request) {
+    public ApplicationResponse update(
+            Authentication authentication,
+            @PathVariable UUID id,
+            @Valid @RequestBody ApplicationUpdateRequest request) {
+        access.requireSuperAdmin(authentication);
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID id) {
+    public void delete(Authentication authentication, @PathVariable UUID id) {
+        access.requireSuperAdmin(authentication);
         service.delete(id);
+    }
+
+    @PostMapping("/{id}/isolate")
+    public ApplicationResponse isolate(Authentication authentication, @PathVariable UUID id) {
+        access.requireSuperAdmin(authentication);
+        return service.isolate(id);
     }
 }

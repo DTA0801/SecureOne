@@ -1,8 +1,10 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ClientRegistry } from "@/components/applications/ClientRegistry";
-import { ApplicationFormModal } from "@/components/forms/ApplicationFormModal";
+import { RegisterApplicationWithClientFormModal } from "@/components/forms/RegisterApplicationWithClientFormModal";
+import { OAuthClientFormModal } from "@/components/forms/OAuthClientFormModal";
 import { listApplications } from "@/lib/api/applications";
+import { listOAuthClients } from "@/lib/api/oauth-clients";
 import { listTenants } from "@/lib/api/tenants";
 import { requirePlatformAccess } from "@/lib/platform-access";
 
@@ -10,27 +12,41 @@ export const dynamic = "force-dynamic";
 
 export default async function ApplicationsPage() {
   await requirePlatformAccess();
-  const [apps, tenants] = await Promise.all([listApplications(), listTenants()]);
+  const [clients, applications, tenants] = await Promise.all([
+    listOAuthClients(),
+    listApplications(),
+    listTenants(),
+  ]);
 
   return (
     <div className="w-full min-w-0">
       <PageHeader
         title="OAuth client registry"
-        description="Enterprise client onboarding: confidential and public applications, grant types, PKCE, redirect URIs, and protocol endpoints. Operational work stays in each application console."
-        actions={<ApplicationFormModal tenants={tenants} triggerLabel="+ Register client" />}
+        description="Register application products with OAuth credentials. Use one form for a new product + first client, or add extra OAuth clients to an existing application."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <RegisterApplicationWithClientFormModal tenants={tenants} />
+            <OAuthClientFormModal
+              applications={applications}
+              tenants={tenants}
+              triggerLabel="+ Add OAuth client"
+              triggerVariant="secondary"
+            />
+          </div>
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total clients" value={apps.length} />
+        <StatCard label="OAuth clients" value={clients.length} />
+        <StatCard label="Applications" value={applications.length} />
         <StatCard
           label="Confidential"
-          value={apps.filter((a) => a.confidential).length}
+          value={clients.filter((c) => c.confidential).length}
         />
-        <StatCard label="Public (SPA / native)" value={apps.filter((a) => !a.confidential).length} />
-        <StatCard label="Active" value={apps.filter((a) => a.status === "active").length} />
+        <StatCard label="Active clients" value={clients.filter((c) => c.status === "active").length} />
       </div>
 
-      <ClientRegistry apps={apps} tenants={tenants} />
+      <ClientRegistry clients={clients} tenants={tenants} applications={applications} />
     </div>
   );
 }

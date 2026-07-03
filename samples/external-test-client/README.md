@@ -44,8 +44,10 @@ See `.env.example` for variables your app should set.
 
 ## Add your own redirect URI
 
-1. Register the URI in **Admin → Applications → External Test Client** (or extend `V17__external_test_application.sql` and `OAuth2ServerConfig.java`).
-2. Restart **auth-server** so the in-memory OAuth client picks up new redirect URIs.
+1. Open **Admin → Applications** → select the OAuth client → **Edit client** and add redirect URIs.
+2. Or call `PUT /api/admin/v1/oauth-clients/{id}` with updated `redirectUris`.
+
+OAuth clients are stored in `platform.oauth_client` (see [Applications & OAuth clients](../../docs/15-applications-and-oauth-clients.md)).
 
 ## Smoke test
 

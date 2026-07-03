@@ -137,3 +137,42 @@ body {
   background-color: color-mix(in srgb, var(--ui-notify-error-bg) 92%, transparent);
   color: var(--ui-notify-error-text);
 }
+
+/* SecureOne Confluence — markdown body */
+.confluence-prose {
+  @apply text-sm leading-relaxed text-soft;
+}
+.confluence-prose h1 {
+  @apply mb-4 mt-8 text-2xl font-semibold text-ui first:mt-0;
+}
+.confluence-prose h2 {
+  @apply mb-3 mt-8 border-b border-ui pb-2 text-xl font-semibold text-ui;
+}
+.confluence-prose h3 {
+  @apply mb-2 mt-6 text-lg font-semibold text-ui;
+}
+.confluence-prose h4 {
+  @apply mb-2 mt-4 text-base font-semibold text-ui;
+}
+.confluence-prose p {
+  @apply my-3;
+}
+.confluence-prose ul {
+  @apply my-3 list-disc space-y-1 pl-6;
+}
+.confluence-prose ol {
+  @apply my-3 list-decimal space-y-1 pl-6;
+}
+.confluence-prose li {
+  @apply text-soft;
+}
+.confluence-prose blockquote {
+  @apply my-4 border-l-4 pl-4 italic text-muted;
+  border-left-color: color-mix(in srgb, var(--ui-primary) 40%, transparent);
+}
+.confluence-prose hr {
+  @apply my-8 border-ui;
+}
+.confluence-prose strong {
+  @apply font-semibold text-ui;
+}

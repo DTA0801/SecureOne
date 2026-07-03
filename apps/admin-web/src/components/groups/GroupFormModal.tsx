@@ -110,7 +110,7 @@ function GroupForm({
       <input type="hidden" name="tenantId" value={tenantId} />
       <input type="hidden" name="applicationId" value={applicationId} />
 
-      <FieldRow label="Name" required>
+      <FieldRow label="Name">
         <Input name="name" defaultValue={group?.name ?? ""} required placeholder="Engineering" />
       </FieldRow>
       <FieldRow label="Description">
@@ -176,7 +176,7 @@ function GroupForm({
                     }}
                     className="h-4 w-4 accent-[var(--ui-primary,#4f46e5)]"
                   />
-                  <span className="text-sm text-ui">{user.displayName || user.email}</span>
+                  <span className="text-sm text-ui">{user.firstName || user.username || user.email}</span>
                   <span className="text-xs text-muted">{user.email}</span>
                 </label>
               </li>

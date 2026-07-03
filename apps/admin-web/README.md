@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# admin-web
 
-## Getting Started
+Next.js admin console and platform operator UI for SecureOne.
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 20+
+- **auth-server** running on `http://localhost:9000` (see [Installation](../../docs/09-installation.md))
+- Platform super-admin credentials (dev default: `admin` / `admin`)
+
+## Setup
 
 ```bash
+cd apps/admin-web
+cp .env.local.example .env.local   # if present; set AUTH_SERVER_URL
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open **http://localhost:3001** (dev server port from `package.json`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Key routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Area | Who | Path |
+|------|-----|------|
+| Login | Everyone | `/login` |
+| OAuth client registry | Platform super-admin | `/applications` |
+| Application console | App operators | `/app/{applicationId}/users` (and roles, settings, …) |
+| Tenants | Platform / tenant super-admin | `/tenants` |
+| Platform settings | Platform super-admin | `/settings` |
+| **SecureOne Confluence** | All signed-in operators | `/confluence` |
 
-## Learn More
+## SecureOne Confluence
 
-To learn more about Next.js, take a look at the following resources:
+Standalone in-app documentation browser (Confluence-style): one **Documentation** section with architecture, database, installation, application integration, ADRs, and more.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Access | URL |
+|--------|-----|
+| UI | `/confluence` |
+| Open from console | **Platform admin → SecureOne Confluence** (opens in a **new tab**) |
+| Catalog API | `GET /api/confluence` (requires login session) |
+| Page content API | `GET /api/confluence/{slug}` |
+| Assets API | `GET /api/confluence/assets/{path}` (`.drawio` download) |
+| Public discovery | `GET {auth-server}/api/v1/confluence` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### UX
 
-## Deploy on Vercel
+- **Standalone layout** — `/confluence` routes skip `ConsoleShell` (no platform/app sidebar or topbar); only the Confluence doc catalog sidebar is shown.
+- **Categories** — sidebar groups pages: Getting started, Platform (fundamentals / operations / reference), Application integration.
+- **Draw.io** — diagrams embed **inline on the parent doc page** (not a separate viewer route). Requires internet for `embed.diagrams.net`.
+- **Legacy diagram URLs** — `/confluence/diagram/...` redirect to the doc page that contains the embed.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Source markdown is read from the monorepo `docs/` folder at runtime (`../../docs` from admin-web cwd).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [Environment & operations](../../docs/16-environment-setup-and-operations.md) for `start-all.ps1`, migrations, and schedulers.
+
+Implementation: `src/lib/confluence/`, `src/app/confluence/`, `src/components/confluence/`.
+
+## Register application + OAuth client
+
+On **/applications**, use **+ Register application & OAuth client** for a new product and its first OAuth credentials in one form. Use **+ Add OAuth client** to attach another client to an existing application.
+
+See [Applications & OAuth clients](../../docs/15-applications-and-oauth-clients.md).
+
+## Environment
+
+| Variable | Purpose |
+|----------|---------|
+| `AUTH_SERVER_URL` | Backend base URL (default `http://localhost:9000`) |
+| `SECUREONE_DEV_USER` / `SECUREONE_DEV_PASSWORD` | HTTP Basic for server-side API calls (must match auth-server) |
+
+## Scripts
+
+```bash
+npm run dev      # development server
+npm run build    # production build
+npm run start    # run production build
+npm run lint     # ESLint
+```
+
+## Architecture notes
+
+- Server actions in `src/lib/actions.ts` call auth-server admin APIs.
+- Browser calls go through `/api/proxy` where needed for cookies/CORS.
+- `ConsoleShell` switches between **platform sidebar** and **app sidebar** based on route (`/app/...`). `/confluence` uses a standalone layout (no console chrome).

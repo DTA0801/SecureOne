@@ -2,24 +2,28 @@
 
 A phased plan from MVP to enterprise. The architecture is production-shaped from day one, so phases add **feature breadth**, not structural rewrites.
 
-## Phase 0 — Foundations (current)
-- [x] Planning & architecture documentation (this `docs/` set)
-- [ ] Monorepo scaffold (`apps/auth-server`, `apps/admin-web`, `db/migration`, `packages/sdk-js`)
+## Phase 0 — Foundations
+- [x] Planning & architecture documentation (`docs/`)
+- [x] Monorepo scaffold (`apps/auth-server`, `apps/admin-web`, `deploy/`)
 - [ ] CI skeleton (build, lint, SAST, dependency scan)
-- [ ] PostgreSQL datasource config + Flyway wiring (incl. RLS policies)
+- [x] PostgreSQL + Flyway wiring
 
 ## Phase 1 — MVP core
 **Goal: a usable OIDC provider with multi-tenant user management and RBAC.**
-- [ ] Core schema migrations (tenants, applications, users, roles, permissions)
-- [ ] Spring Authorization Server integration (Auth Code + PKCE, Client Credentials)
-- [ ] JWT issuance + JWKS + refresh-token rotation & reuse detection
-- [ ] User management (CRUD, lifecycle: active/disabled/locked/pending)
-- [ ] Multi-tenancy (shared schema + `tenant_id` + Hibernate filters + PostgreSQL RLS + isolation tests)
-- [ ] Per-application RBAC (roles, permissions, `PolicyEvaluator`) — multi-role + **composite/hierarchical roles** (`role_composite`, cycle-safe resolution)
-- [ ] Hosted login UI + basic admin dashboard
-- [ ] Password reset + email verification
-- [ ] Platform-admin (super-admin) tier
-- [ ] **Admin control basics** — admin scopes, user lifecycle control (enable/disable/lock/unlock/reset password), session revoke (see [Admin Control](11-admin-control.md))
+- [x] Core schema migrations (tenants, applications, users, roles, permissions)
+- [x] Platform schema + `oauth_client` table (V45)
+- [x] Per-application PostgreSQL schema provisioning + isolate
+- [x] Spring Authorization Server integration (Auth Code + PKCE, Client Credentials)
+- [x] JWT issuance + JWKS
+- [x] User management (CRUD, lifecycle)
+- [x] Multi-tenancy (`tenant_id` + app-layer isolation)
+- [x] Per-application RBAC (roles, permissions, composite roles, groups)
+- [x] Hosted login UI + admin dashboard (admin-web)
+- [x] Password reset + email verification (basic)
+- [x] Platform-admin (super-admin) tier
+- [x] Admin control basics — scopes, user lifecycle, sessions
+- [x] OAuth client registry UI (application product separate from OAuth client)
+- [x] **SecureOne Confluence** — in-app docs browser (standalone UI, session APIs, inline draw.io on doc pages)
 
 ## Phase 2 — Hardening, MFA & M2M
 **Goal: production-grade security, phishing-resistant MFA, machine integration.**

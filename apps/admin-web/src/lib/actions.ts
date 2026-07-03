@@ -5,8 +5,14 @@ import { redirect } from "next/navigation";
 import {
   createApplicationApi,
   deleteApplicationApi,
+  isolateApplicationApi,
   updateApplicationApi,
 } from "./api/applications";
+import {
+  createOAuthClientApi,
+  deleteOAuthClientApi,
+  updateOAuthClientApi,
+} from "./api/oauth-clients";
 import {
   createPermissionApi,
   deletePermissionApi,
@@ -76,6 +82,7 @@ export type FormState = {
   createdUserId?: string;
   createdApplicationId?: string;
   createdClientSecret?: string;
+  schemaName?: string;
 };
 
 const ok = (extra?: Partial<FormState>): FormState => ({ ok: true, ...extra });
@@ -149,34 +156,34 @@ export async function tenantDeleteAction(fd: FormData): Promise<void> {
   redirect("/tenants");
 }
 
-// ---- Applications ----
+// ---- Applications (product) ----
 
-function applicationWritePayload(fd: FormData) {
+function applicationProductWritePayload(fd: FormData) {
   return {
     name: str(fd, "name"),
     description: str(fd, "description"),
-    type: str(fd, "type") || "web",
+    slug: str(fd, "slug"),
     status: str(fd, "status") || "active",
-    grantTypes: list(fd, "grantTypes"),
-    scopes: list(fd, "scopes"),
-    redirectUris: list(fd, "redirectUris"),
-    postLogoutRedirectUris: list(fd, "postLogoutRedirectUris"),
-    pkceRequired: fd.get("pkceRequired") === "on",
-    tokenEndpointAuthMethod: str(fd, "tokenEndpointAuthMethod"),
   };
 }
 
-export async function applicationCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+export async function applicationWithClientCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const name = str(fd, "name");
   const tenantId = str(fd, "tenantId");
-  if (!name) return fail("Name is required.");
+  if (!name) return fail("Application name is required.");
   if (!tenantId) return fail("Tenant is required.");
   try {
-    const payload = applicationWritePayload(fd);
-    const { application, clientSecret } = await createApplicationApi({
-      ...payload,
+    const application = await createApplicationApi({
+      name,
       tenantId,
-      clientId: str(fd, "clientId"),
+      slug: str(fd, "slug") || slugify(name),
+      description: str(fd, "description"),
+      status: str(fd, "status") || "active",
+    });
+    const { client, clientSecret } = await createOAuthClientApi({
+      ...oauthClientWritePayload(fd),
+      applicationId: application.id,
+      clientId: str(fd, "clientId") || application.slug,
     });
     revalidatePath("/applications");
     revalidatePath("/app");
@@ -191,13 +198,113 @@ export async function applicationCreateAction(_prev: FormState, fd: FormData): P
   }
 }
 
-export async function applicationUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+export async function applicationProductCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const name = str(fd, "name");
+  const tenantId = str(fd, "tenantId");
+  if (!name) return fail("Name is required.");
+  if (!tenantId) return fail("Tenant is required.");
+  try {
+    const application = await createApplicationApi({
+      ...applicationProductWritePayload(fd),
+      tenantId,
+    });
+    revalidatePath("/applications");
+    revalidatePath("/app");
+    revalidatePath("/tenants");
+    return ok({ createdApplicationId: application.id });
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function applicationProductUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const id = str(fd, "id");
   if (!id) return fail("Missing application id.");
   const name = str(fd, "name");
   if (!name) return fail("Name is required.");
   try {
-    await updateApplicationApi(id, applicationWritePayload(fd));
+    await updateApplicationApi(id, applicationProductWritePayload(fd));
+    revalidatePath("/applications");
+    revalidatePath(`/applications/${id}`);
+    revalidatePath("/app");
+    return ok();
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function applicationProductDeleteAction(fd: FormData): Promise<void> {
+  const id = str(fd, "id");
+  if (id) await deleteApplicationApi(id);
+  revalidatePath("/applications");
+  revalidatePath("/app");
+  revalidatePath("/audit");
+  redirect("/applications");
+}
+
+export async function applicationIsolateAction(fd: FormData): Promise<FormState> {
+  const id = str(fd, "id");
+  if (!id) return fail("Missing application id.");
+  try {
+    const application = await isolateApplicationApi(id);
+    revalidatePath("/applications");
+    revalidatePath(`/applications/${id}`);
+    revalidatePath(`/app/${id}`);
+    revalidatePath("/app");
+    return ok({ schemaName: application.schemaName ?? undefined });
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+// ---- OAuth clients ----
+
+function oauthClientWritePayload(fd: FormData) {
+  return {
+    type: str(fd, "type") || "web",
+    status: str(fd, "status") || "active",
+    grantTypes: list(fd, "grantTypes"),
+    scopes: list(fd, "scopes"),
+    redirectUris: list(fd, "redirectUris"),
+    postLogoutRedirectUris: list(fd, "postLogoutRedirectUris"),
+    pkceRequired: fd.get("pkceRequired") === "on",
+    tokenEndpointAuthMethod: str(fd, "tokenEndpointAuthMethod"),
+  };
+}
+
+export async function oauthClientCreateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const applicationId = str(fd, "applicationId");
+  const tenantId = str(fd, "tenantId");
+  if (!applicationId && !tenantId) {
+    return fail("Tenant is required when auto-creating an application.");
+  }
+  try {
+    const payload = oauthClientWritePayload(fd);
+    const { client, clientSecret } = await createOAuthClientApi({
+      ...payload,
+      applicationId: applicationId || undefined,
+      applicationName: str(fd, "applicationName") || undefined,
+      tenantId: tenantId || undefined,
+      clientId: str(fd, "clientId"),
+    });
+    revalidatePath("/applications");
+    revalidatePath("/app");
+    revalidatePath("/tenants");
+    revalidatePath("/audit");
+    return ok({
+      createdApplicationId: client.applicationId,
+      createdClientSecret: clientSecret,
+    });
+  } catch (e) {
+    return actionError(e);
+  }
+}
+
+export async function oauthClientUpdateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const id = str(fd, "id");
+  if (!id) return fail("Missing OAuth client id.");
+  try {
+    await updateOAuthClientApi(id, oauthClientWritePayload(fd));
     revalidatePath("/applications");
     revalidatePath(`/applications/${id}`);
     return ok();
@@ -206,9 +313,9 @@ export async function applicationUpdateAction(_prev: FormState, fd: FormData): P
   }
 }
 
-export async function applicationDeleteAction(fd: FormData): Promise<void> {
+export async function oauthClientDeleteAction(fd: FormData): Promise<void> {
   const id = str(fd, "id");
-  if (id) await deleteApplicationApi(id);
+  if (id) await deleteOAuthClientApi(id);
   revalidatePath("/applications");
   revalidatePath("/app");
   revalidatePath("/audit");
