@@ -10,7 +10,7 @@ import { FormSection, FormFieldGrid } from "@/components/forms/FormSection";
 import { roleCreateAction, roleUpdateAction, type FormState } from "@/lib/actions";
 import { FormActions, FormError, useCloseOnSuccess } from "./form-utils";
 import { canRenameRole } from "@/lib/role-management";
-import type { Application, Permission, Role, RoleDetail, Tenant } from "@/lib/types";
+import type { ApplicationProduct, Permission, Role, RoleDetail, Tenant } from "@/lib/types";
 
 const initial: FormState = { ok: false };
 
@@ -33,7 +33,7 @@ export function RoleFormModal({
   roles: Role[];
   permissions: Permission[];
   tenants: Tenant[];
-  applications: Application[];
+  applications: ApplicationProduct[];
   tenantId: string;
   applicationId: string;
   lockToApplication?: boolean;
@@ -93,7 +93,7 @@ function RoleForm({
   roles: Role[];
   permissions: Permission[];
   tenants: Tenant[];
-  applications: Application[];
+  applications: ApplicationProduct[];
   tenantId: string;
   applicationId: string;
   lockToApplication: boolean;

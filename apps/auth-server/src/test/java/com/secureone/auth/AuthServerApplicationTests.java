@@ -13,7 +13,7 @@ class AuthServerApplicationTests {
 
     @Test
     void infoEndpointReturnsStatus() {
-        InfoController controller = new InfoController();
+        InfoController controller = new InfoController("http://localhost:3001");
         assertNotNull(controller.info().get("status"));
     }
 }

@@ -15,6 +15,18 @@ The schema targets **PostgreSQL** via JPA/Hibernate + Flyway, and is **Spring Au
 | Tenant isolation | `tenant_id` on every tenant-scoped table + **RLS** policies | DB-enforced backstop (see [Database Strategy](06-database.md)) |
 | Migrations | Flyway, `db/migration/postgresql` | Versioned, repeatable |
 
+## Schema layout (implemented)
+
+> **Table & FK reference:** [17 — Database schemas & tables](17-database-schemas-and-tables.md) · **Migration SQL:** [18 — Flyway migration files](18-flyway-migration-files.md)
+
+| Schema | Contents |
+|--------|----------|
+| **`public`** | `flyway_schema_history` only (Flyway migration log) |
+| **`platform`** | Tenants, `application`, `oauth_client`, `application_schema`, identity, audit, platform settings, tenant RBAC |
+| **`{app_slug}`** | Per-application IAM: `role`, `permission`, `user_application`, `application_setting`, `rbac_group*`, `application_log` |
+
+Legacy applications may still have IAM rows in `platform.*` until isolated (`application.schema_name` set). See [15 — Applications & OAuth clients](15-applications-and-oauth-clients.md).
+
 ## ERD
 
 ```mermaid
@@ -64,25 +76,41 @@ erDiagram
 | created_at, updated_at | TIMESTAMP | UTC |
 
 ### `application`
+| Column | Type | Notes |
+|---|---|---|
 | id | UUID | PK |
 | tenant_id | UUID | FK → tenant |
 | name, slug, description | VARCHAR | unique `(tenant_id, slug)` |
 | status | VARCHAR | |
-| created_at | TIMESTAMP | |
+| schema_name | VARCHAR(63) | nullable; dedicated PG schema when set |
+| config | JSONB | non-OAuth settings only (OAuth moved to `oauth_client`) |
+| created_at, updated_at | TIMESTAMP | |
+
+### `application_schema` (registry)
+| application_id | UUID | PK, FK → application |
+| schema_name | VARCHAR(63) | unique |
+| status | VARCHAR | e.g. `ACTIVE` |
+| flyway_version | VARCHAR | template version (e.g. `V1__app_core`) |
+| provisioned_at | TIMESTAMP | |
 
 ### `oauth_client` (maps to Spring `RegisteredClient`)
 | id | UUID | PK |
-| application_id | UUID | FK |
+| application_id | UUID | FK → application |
 | client_id | VARCHAR | unique |
-| client_secret_hash | VARCHAR | hashed |
+| client_secret | VARCHAR | hashed/plain per implementation |
 | client_name | VARCHAR | |
-| redirect_uris, post_logout_uris, grant_types, scopes | JSON | |
-| auth_method | VARCHAR | `client_secret_basic / none / private_key_jwt` |
+| type | VARCHAR | `web / spa / native / m2m` |
+| redirect_uris, post_logout_redirect_uris, grant_types, scopes | JSONB | |
+| token_endpoint_auth_method | VARCHAR | |
 | require_pkce | BOOLEAN | |
-| access_token_ttl, refresh_token_ttl | INT (seconds) | |
-| reuse_refresh_tokens | BOOLEAN | |
+| status | VARCHAR | |
+| created_at, updated_at | TIMESTAMP | |
 
-> Implemented via a **custom `RegisteredClientRepository`** so client config is tenant-aware and lives in our model.
+> Loaded via **`ApplicationRegisteredClientRepository`** from `platform.oauth_client`. Multiple clients per application.
+
+### App-scoped tables (in `platform` legacy or `{schema}` when isolated)
+
+`permission`, `role`, `role_permission`, `role_composite`, `user_role`, `user_application`, `application_setting`, `rbac_group`, `rbac_group_role`, `rbac_group_member`, `application_log` — same shape in app schema template `V1__app_core.sql`.
 
 ---
 

@@ -2,7 +2,16 @@
 
 How operators manage **groups**, **roles**, and **permissions** for an integrated application in the admin console.
 
-Related: [Data model — Authorization](04-data-model.md#domain-3--authorization-rbac--composite-roles), [Admin control](11-admin-control.md).
+Related: [Data model — Authorization](04-data-model.md#domain-3--authorization-rbac--composite-roles), [Admin control](11-admin-control.md), [Applications & OAuth clients](15-applications-and-oauth-clients.md).
+
+## Where RBAC data lives
+
+| Mode | `application.schema_name` | Tables |
+|------|---------------------------|--------|
+| **Isolated** (new apps) | e.g. `flipkart` | `{schema}.role`, `{schema}.permission`, … |
+| **Legacy** (pre-isolate) | `NULL` | `platform.role`, `platform.permission`, … |
+
+API paths are unchanged (`/api/admin/v1/applications/{applicationId}/…`). Auth-server sets `search_path` per request so JPA hits the correct schema.
 
 ## Console sections
 

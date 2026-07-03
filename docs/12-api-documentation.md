@@ -23,8 +23,18 @@ Swagger UI opens **All APIs** by default (every endpoint). Use the **Select a de
 | **public** | `GET /api/info`, `GET /api/v1/auth/methods` |
 | **account** | Password reset, email verification, magic link |
 | **applications** | Public manifest and self-service sign-up |
-| **admin-platform** | Tenants, users, platform settings, audit, sessions, platform RBAC, application registry |
-| **admin-applications** | Per-application users, settings, app RBAC |
+| **admin-platform** | Tenants, platform settings, audit, sessions, platform RBAC |
+| **admin-applications** | Application products, OAuth clients, per-application users/settings/RBAC, **isolate** |
+
+### Application & OAuth admin endpoints (super-admin)
+
+Documented in [15 — Applications & OAuth clients](15-applications-and-oauth-clients.md):
+
+- `GET/POST /api/admin/v1/applications` — application products (`schemaName`, `oauthClientCount`)
+- `POST /api/admin/v1/applications/{id}/isolate` — migrate legacy IAM to dedicated schema
+- `GET/POST /api/admin/v1/oauth-clients` — OAuth client registry (separate from application product)
+
+Per-application console APIs: `/api/admin/v1/applications/{applicationId}/…` (users, roles, permissions, groups, settings).
 | **oauth-oidc** | Authorization server: authorize, token, revoke, introspect, JWKS, OIDC discovery, UserInfo |
 
 ## Authentication in Swagger UI
@@ -81,3 +91,16 @@ Use the JSON for SDK generation, Postman import, or CI contract tests.
 `apps/auth-server/src/main/resources/application.yml` → `springdoc.*`
 
 Java configuration: `com.secureone.auth.config.openapi.OpenApiConfig`, `OAuth2OpenApiDocumentation`.
+
+## SecureOne Confluence APIs (admin-web)
+
+Platform documentation is served by **admin-web**, not auth-server. Auth-server exposes public **discovery** only.
+
+| API | Host | Auth | Purpose |
+|-----|------|------|---------|
+| `GET /api/v1/confluence` | auth-server `:9000` | Public | Catalog by category + links to Confluence UI and content API |
+| `GET /api/confluence` | admin-web `:3001` | Session cookie | Full catalog JSON (`categories` + flat `section` for compatibility) |
+| `GET /api/confluence/{slug}` | admin-web | Session cookie | Page markdown + metadata |
+| `GET /api/confluence/assets/{path}` | admin-web | Session cookie | Download docs assets (`.drawio`, images) |
+
+UI: http://localhost:3001/confluence — standalone docs browser; draw.io diagrams embed inline on doc pages. See [Documentation hub](../docs/README.md#secureone-confluence-in-app-ui).

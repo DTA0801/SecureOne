@@ -18,3 +18,4 @@ Each ADR: Context → Decision → Consequences → Status.
 | [0007](0007-enterprise-scope-phasing.md) | Enterprise capabilities are phased, not in the MVP | Accepted |
 | [0008](0008-admin-control-layered-config.md) | Admin control via admin scopes + layered, lockable config | Accepted |
 | [0009](0009-composite-hierarchical-roles.md) | Composite / hierarchical roles | Accepted |
+| [0010](0010-platform-and-app-schemas.md) | Platform schema + per-application PostgreSQL schemas | Accepted |

@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/Toast";
 import { grantApplicationUser, revokeApplicationUser } from "@/lib/api/application-settings";
 import { ApplicationSettingsEditor } from "@/components/applications/ApplicationSettingsEditor";
 import { listUsers } from "@/lib/api/users";
-import type { Application, Tenant, User } from "@/lib/types";
+import type { ApplicationProduct, Tenant, User } from "@/lib/types";
 
 type Tab = "overview" | "users" | "settings";
 
@@ -18,7 +18,7 @@ export function ApplicationWorkspace({
   tenant,
   platformSettingsAccess = false,
 }: {
-  app: Application;
+  app: ApplicationProduct;
   tenant: Tenant | null;
   /** Platform operator (not tenant admin / act-as). */
   platformSettingsAccess?: boolean;
@@ -69,29 +69,26 @@ function OverviewPanel({
   tenant,
   platformSettingsAccess,
 }: {
-  app: Application;
+  app: ApplicationProduct;
   tenant: Tenant | null;
   platformSettingsAccess: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card padded={false}>
-        <CardHeader title="Credentials" />
+        <CardHeader title="Application product" />
         <div className="space-y-4 p-5 text-sm">
-          <Row label="Client ID" value={<code className="font-mono">{app.clientId}</code>} />
-          <Row label="Client type" value={<Badge tone="indigo" className="uppercase">{app.type}</Badge>} />
+          <Row label="Slug" value={<code className="font-mono">{app.slug}</code>} />
+          <Row label="Schema" value={<code className="font-mono">{app.schemaName ?? "platform (legacy)"}</code>} />
           <Row label="Tenant" value={tenant?.name ?? app.tenantId} />
+          <Row label="OAuth clients" value={String(app.oauthClientCount)} />
         </div>
       </Card>
       <Card padded={false}>
-        <CardHeader title="OAuth" />
+        <CardHeader title="Status" />
         <div className="space-y-3 p-5 text-sm">
-          <Row label="Grant types" value={app.grantTypes.join(", ") || "—"} />
-          <Row label="Scopes" value={app.scopes.join(", ") || "—"} />
-          <Row label="PKCE" value={app.pkceRequired ? "Required" : "Optional"} />
-          {app.confidential && (
-            <Row label="Secret" value={app.clientSecretConfigured ? "Configured" : "Not set"} />
-          )}
+          <Row label="Status" value={<Badge tone="indigo" className="uppercase">{app.status}</Badge>} />
+          {app.description && <Row label="Description" value={app.description} />}
         </div>
       </Card>
       <p className="text-sm text-muted lg:col-span-2">
@@ -121,7 +118,7 @@ export function UsersPanel({
   appName: string;
   tenantName: string;
 }) {
-  const app = { id: applicationId, tenantId, name: appName } as Application;
+  const app = { id: applicationId, tenantId, name: appName } as ApplicationProduct;
   const tenant = { name: tenantName } as Tenant;
   const { toast } = useToast();
   const [members, setMembers] = useState<User[]>([]);

@@ -1,199 +1,144 @@
-# 09 — Installation & Setup Notes
+# 09 — Installation & Setup
 
-> These notes describe the **intended** install/run experience. Code does not exist yet (see [Roadmap](08-roadmap.md)); this is the target that development implements.
+Local development setup for **auth-server** and **admin-web**.
+
+> **Full operations guide** (one-command start, Flyway migrations, startup bootstrap, scheduled jobs): [16 — Environment & operations](16-environment-setup-and-operations.md).
 
 ## Prerequisites
 
-| Tool | Version (target) | For |
+| Tool | Version | For |
 |---|---|---|
-| JDK | 21 (LTS) | Spring Boot backend |
-| Gradle | wrapper included | Backend build |
-| Node.js | 20+ LTS | admin-web, docs, SDK |
-| pnpm | 9+ | JS workspace package manager |
-| Docker + Compose | latest | Local Postgres/Redis |
+| JDK | 21+ (25 tested) | auth-server |
+| Gradle | wrapper in `apps/auth-server` | Backend build |
+| Node.js | 20+ LTS | admin-web |
+| Docker + Compose | latest | Postgres, Redis, MailHog |
 | PostgreSQL | 16+ | System of record |
-| Redis | 7+ | Sessions, cache, rate limiting |
+| Redis | 7+ | Sessions, cache |
 
-## 1. Clone & install
+## 1. Clone & infrastructure
+
+**One-command start (Windows):** `.\scripts\start-all.ps1` — see [16 — Environment & operations](16-environment-setup-and-operations.md).
 
 ```bash
 git clone <repo-url> secureone
 cd secureone
-pnpm install            # JS workspaces (admin-web, docs, sdk)
-./gradlew build         # backend (from apps/auth-server once scaffolded)
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-## 2. Configure the database (PostgreSQL)
+Starts **PostgreSQL** (`5432`), **Redis** (`6379`), **MailHog** (SMTP `1025`, UI `http://localhost:8025`).
 
-SecureOne runs on **PostgreSQL**. Set the connection via environment/config (see [Database Strategy](06-database.md)). The data layer is abstracted behind repository interfaces so another engine could be added later, but only Postgres is supported today.
+## 2. Configure auth-server
 
-Copy the example env and edit:
-
-```bash
-cp .env.example .env
-```
+Environment variables (or `apps/auth-server` defaults in `application.yml`):
 
 ```dotenv
-SECUREONE_DB_URL=jdbc:postgresql://localhost:5432/secureone
+SECUREONE_DB_URL=jdbc:postgresql://localhost:5432/secureone?currentSchema=platform
 SECUREONE_DB_USERNAME=secureone
-SECUREONE_DB_PASSWORD=change-me
-```
-
-## 3. Other required configuration
-
-```dotenv
-# Redis
+SECUREONE_DB_PASSWORD=secureone
 SECUREONE_REDIS_URL=redis://localhost:6379
-
-# JWT signing (DEV ONLY: generate locally; PROD: use KMS/Vault)
-SECUREONE_JWT_KEY_SOURCE=local        # local | kms | vault
 SECUREONE_ISSUER_URL=http://localhost:9000
-
-# Secret encryption key for MFA seeds / client secrets (PROD: KMS-managed)
-SECUREONE_ENCRYPTION_KEY=base64:...
-
-# Email (password reset / verification)
-SECUREONE_MAIL_PROVIDER=smtp          # smtp | ses | resend
-SECUREONE_MAIL_FROM=no-reply@example.com
-
-# Password expiry scheduler (auth-server background job)
-SECUREONE_PASSWORD_EXPIRY_SCHEDULER=true
-SECUREONE_PASSWORD_EXPIRY_CRON=0 0 */6 * * *
+SECUREONE_DEV_USER=admin
+SECUREONE_DEV_PASSWORD=admin
 ```
 
-See [Password expiry notifications — scheduled job](10-settings-governance.md#scheduled-job-passwordexpiryscheduler) for cron format, behavior, and logging.
+> Never commit production secrets. See [Security](07-security.md).
 
-> **Never commit `.env`.** Production secrets belong in a KMS/Vault/cloud secrets manager (see [Security](07-security.md)).
-
-## 4. Run dependencies locally (Docker Compose)
+## 3. Start auth-server
 
 ```bash
-docker compose up -d postgres redis
+cd apps/auth-server
+./gradlew bootRun          # Windows: .\gradlew bootRun
 ```
 
-## 5. Run migrations
+- Listens on **http://localhost:9000**
+- **Flyway** applies `db/migration/postgresql` on boot (through V45+ platform schema)
+- API docs: **http://localhost:9000/docs**
+- Health: `GET /api/info`
 
-Flyway runs automatically on backend startup, applying the `db/migration/postgresql` scripts (schema, RBAC, RLS policies).
+## 4. Start admin-web
 
 ```bash
-./gradlew flywayMigrate     # or automatic on app boot
+cd apps/admin-web
+npm install
+npm run dev
 ```
 
-## 6. Start the services
+Open **http://localhost:3001** (admin-web dev server; see `package.json`). Sign in as platform super-admin: **`admin` / `admin`**.
 
-```bash
-# Backend (OIDC + APIs)
-./gradlew :apps:auth-server:bootRun     # http://localhost:9000
+Set `AUTH_SERVER_URL=http://localhost:9000` in `.env.local` if the default differs.
 
-# Admin dashboard + hosted login UI
-pnpm --filter admin-web dev             # http://localhost:3000
+## 5. Register your first application
 
-# Docs portal (optional)
-pnpm --filter docs dev                  # http://localhost:3001
-```
+1. Go to **/applications**
+2. Click **+ Register application & OAuth client**
+3. Fill application (name, tenant, slug) and OAuth client (template, redirect URIs)
+4. Copy the **client secret** if shown (confidential clients only)
 
-**API documentation:** with auth-server running, open [Swagger UI](http://localhost:9000/docs) or `GET /api/info` for OpenAPI links. See [API documentation](12-api-documentation.md).
+This provisions a **PostgreSQL schema** for the app and seeds default RBAC. See [Applications & OAuth clients](15-applications-and-oauth-clients.md).
 
-## 7. Clean database (no sample tenants)
+## 6. End-to-end operator test
 
-Dev migrations historically inserted Acme/Globex sample data; **V25+ removes it** on upgrade. For a completely empty database:
+1. Sign in as platform admin (`admin` / `admin`, no tenant slug).
+2. **Tenants** → create a tenant (note slug, e.g. `myorg`).
+3. **Applications** → **Register application & OAuth client** for that tenant.
+4. **Tenants** → open tenant → **+ Add user** (Active).
+5. **Grant access** → Tenant Super Admin (or app-scoped role).
+6. **Applications** → **Application console →** Users → set password.
+7. Sign out → sign in with tenant slug `myorg`, user email, password.
 
-```powershell
-.\scripts\reset-database.ps1 -SkipInstall
-```
-
-### Repair catalog after TRUNCATE
-
-If you truncated catalog tables (`platform_setting`, `tenant_permission`, `permission`, etc.) and the admin UI breaks, re-apply idempotent seeds **without** wiping tenants or OAuth clients:
-
-```powershell
-.\scripts\reseed-catalog.ps1
-```
-
-This runs `R__z_repair_catalog.sql` (also applied by Flyway when that file changes). Auth-server also runs **startup bootstrap** on boot to fill missing platform settings and per-tenant/per-app catalogs.
+## 7. Database maintenance
 
 | Situation | Command |
 |-----------|---------|
 | Empty database / start fresh | `.\scripts\reset-database.ps1` |
 | Truncated catalog tables only | `.\scripts\reseed-catalog.ps1` |
-| Apply pending Flyway migrations | `docker run ... flyway migrate` (see §5) |
+| Repair after partial migration | Restart auth-server; check `public.flyway_schema_history` |
 
-**Platform super admin** (in-memory, not in Postgres): username `admin`, password from `SECUREONE_DEV_PASSWORD` (default `admin`). Sign in at http://localhost:3001/login with **no tenant slug**.
+**Platform super admin** (dev): HTTP Basic `admin` / `admin` — not stored in Postgres.
 
-### End-to-end tenant operator test
+### Legacy application isolation
 
-1. Sign in as platform admin (above).
-2. **Tenants** → create a tenant (note the slug, e.g. `myorg`).
-3. **Applications** → register an OAuth client for that tenant.
-4. **Tenants** → open the tenant → **+ Add user** (status Active).
-5. **Grant access** → Tenant Super Admin (or Tenant Admin + pick an app).
-6. **Applications** table → **Open console → Users** → open the user → **Set password**.
-7. Sign out → sign in with tenant slug `myorg`, user email, and the password you set.
+If an app has `schema_name = NULL` (seeded before schema isolation), platform super-admins can run **Isolate application** from the OAuth client detail page or `POST /api/admin/v1/applications/{id}/isolate`.
 
 ## 8. Email & notifications (dev)
 
-`deploy/docker-compose.yml` includes **MailHog** (SMTP `1025`, web UI `8025`). With the stack running, open **Settings → Notifications** in the admin UI, save recipients, and use **Send test** — messages appear in MailHog, not a real inbox.
+MailHog catches outbound mail. Configure in **Settings → Notifications**, then test flows (verify email, password reset). Links log to auth-server console if SMTP is down (`SECUREONE_MAIL_LOG_WHEN_UNAVAILABLE`).
 
-Two channels are enabled when SMTP is up:
-
-| Channel | Setting | Who receives |
-|--------|---------|----------------|
-| **Admin / operational** | Email notifications + Security alerts + Admin recipients | Platform operators |
-| **User transactional** | User email (transactional) | End users (verify email, password reset, password changed) |
-
-**Try user flows (dev):**
-
-| Flow | URL / API | Dev credentials |
-|------|-----------|-----------------|
-| Password login | http://localhost:9000/login.html | Create a tenant + user in Admin, set a password, then sign in with `tenant-slug:email` |
-| Magic link | http://localhost:9000/account/magic-link.html?applicationId={id} | Same tenant + email; link in MailHog. See [Auth UI integration](13-auth-ui-integration.md). |
-| Forgot password | http://localhost:9000/account/forgot-password.html | `POST /api/v1/account/password/forgot` |
-| Reset password | MailHog link → `/account/reset-password.html?token=…` | `POST /api/v1/account/password/reset` |
-| Set password (invite) | MailHog link → `/account/set-password.html?token=…` | New users without a credential |
-| Verify email | MailHog → `GET /api/v1/account/email/verify?token=…` | |
-| Enabled methods | `GET /api/v1/auth/methods` | Lists `available` (enabled + implemented) |
-| Admin triggers | **Users → user detail → Email & password** | Resend verification, send reset, mark verified, reset MFA |
-| Auth settings | **Settings → Authentication / MFA / Password / Flags** | Persisted in `platform_setting` (`auth_methods`, `password_policy`, `feature_flags`) |
-
-Passkeys, TOTP, SMS/email OTP, push, Google/GitHub/OIDC/SAML/LDAP, and self-registration are stored in settings with `implemented: false` until Phase 2/3.
-
-Set `SECUREONE_PUBLIC_BASE_URL` if links must point at a host other than `http://localhost:9000`.
-
-## 9. Admin console layout (application-first)
+## 9. Admin console layout
 
 | Area | Who | URL |
 |------|-----|-----|
-| **Application console** | Super admin + app operators (users with a role on that client) | http://localhost:3001/app → pick application → Users / Roles / Settings / Audit / Sessions |
-| **Manage clients** | Platform super-admin only (`admin` dev user) | http://localhost:3001/applications |
-| **Platform settings** | Super-admin only | http://localhost:3001/settings |
+| **Application console** | Super admin + app operators | `/app/{applicationId}/users` |
+| **OAuth client registry** | Platform super-admin | `/applications` |
+| **Platform settings** | Super-admin | `/settings` |
+| **Tenants** | Platform / tenant super-admin | `/tenants` |
+| **SecureOne Confluence** | All signed-in operators | `/confluence` (sidebar opens **new tab**; standalone docs UI) |
 
-Optional: set `SECUREONE_ACT_AS_EMAIL` to a tenant user email to debug API access as that operator (development only).
+## 10. Verify
 
-For production, point SMTP at your provider (e.g. SendGrid, SES) via `SECUREONE_SMTP_*` and set notification toggles in the same Settings tab (stored in `platform_setting` in Postgres).
+| Check | URL |
+|-------|-----|
+| Discovery | `GET http://localhost:9000/.well-known/openid-configuration` |
+| Confluence discovery | `GET http://localhost:9000/api/v1/confluence` |
+| SecureOne Confluence UI | http://localhost:3001/confluence |
+| JWKS | `GET http://localhost:9000/oauth2/jwks` |
+| Admin UI | http://localhost:3001 |
+| MailHog | `http://localhost:8025` |
+| App schema (SQL) | `SELECT name, schema_name FROM platform.application;` |
 
-## 9. Verify
+## Production (summary)
 
-- Discovery: `GET http://localhost:9000/.well-known/openid-configuration`
-- JWKS: `GET http://localhost:9000/oauth2/jwks`
-- Admin UI: `http://localhost:3000`
-- MailHog (dev): `http://localhost:8025`
-
-## Production deployment (summary)
-
-- Containerized; **Docker Compose / PaaS** for small installs, **Kubernetes + Helm** at scale.
-- Managed PostgreSQL + managed Redis; TLS via Caddy/Traefik or LB.
-- Signing keys & secrets in **KMS/Vault**.
-- See [Architecture](03-architecture.md) for topology and [Security](07-security.md) for hardening.
+Docker/Kubernetes, managed Postgres + Redis, TLS, KMS for secrets. See [Architecture](03-architecture.md) and [Security](07-security.md).
 
 ## Configuration reference
 
 | Variable | Purpose |
 |---|---|
-| `SECUREONE_DB_URL` / `_USERNAME` / `_PASSWORD` | PostgreSQL JDBC connection |
-| `SECUREONE_REDIS_URL` | Redis connection |
-| `SECUREONE_ISSUER_URL` | OIDC issuer / public base URL |
-| `SECUREONE_JWT_KEY_SOURCE` | `local` / `kms` / `vault` |
-| `SECUREONE_ENCRYPTION_KEY` | Key for encrypting MFA seeds / secrets |
-| `SECUREONE_SMTP_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` | Outbound email (dev default: MailHog on `localhost:1025`, UI at `http://localhost:8025`) |
-| `SECUREONE_DEV_USER` / `SECUREONE_DEV_PASSWORD` | HTTP Basic for admin API (used by admin-web server actions) |
-| `SECUREONE_BOOTSTRAP_ADMIN_*` | First-run super-admin |
+| `SECUREONE_DB_URL` | JDBC URL (`currentSchema=platform`) |
+| `SECUREONE_DB_USERNAME` / `_PASSWORD` | DB credentials |
+| `SECUREONE_REDIS_URL` | Redis |
+| `SECUREONE_ISSUER_URL` | OIDC issuer |
+| `SECUREONE_DEV_USER` / `_PASSWORD` | Admin API Basic auth |
+| `SECUREONE_ADMIN_WEB_URL` | admin-web base URL for Confluence links in `/api/info` (default `http://localhost:3001`) |
+| `SECUREONE_PUBLIC_BASE_URL` | Links in emails |
+| `SECUREONE_SMTP_*` | Outbound email |

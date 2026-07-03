@@ -41,6 +41,10 @@ public class Application {
     @Column(name = "status", nullable = false)
     private String status = "ACTIVE";
 
+    /** Dedicated PostgreSQL schema for app-isolated IAM tables; null = legacy shared platform tables. */
+    @Column(name = "schema_name")
+    private String schemaName;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "config", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> config = new HashMap<>();

@@ -27,11 +27,25 @@ export type OAuthEndpoints = {
   jwksUri: string;
 };
 
-export type Application = {
+export type ApplicationProduct = {
   id: string;
   tenantId: string;
   name: string;
+  slug: string;
   description?: string | null;
+  status: Status;
+  schemaName?: string | null;
+  oauthClientCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** OAuth protocol client registered under an application product. */
+export type OAuthClient = {
+  id: string;
+  applicationId: string;
+  tenantId: string;
+  applicationName: string;
   clientId: string;
   type: AppType;
   status: Status;
@@ -47,6 +61,9 @@ export type Application = {
   updatedAt: string;
   oAuthEndpoints: OAuthEndpoints;
 };
+
+/** @deprecated Use ApplicationProduct for product views or OAuthClient for OAuth registry views. */
+export type Application = ApplicationProduct;
 
 export type MfaFactorType = "passkey" | "totp" | "sms" | "email" | "push";
 
